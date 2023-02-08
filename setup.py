@@ -39,6 +39,9 @@ setup(
         "pyyaml>=5.1.2",
         "sqlglot>=10.6.2"
         "syncany>=0.1.10",
+        'Pygments>=2.14.0',
+        'Pygments>=2.14.0',
+        'prompt-toolkit>=3.0.36'
     ],
     package_data={
         '': ['README.md'],
