@@ -39,8 +39,17 @@ class Tasker(object):
                 dependency_arguments = {}
             dependency_taskers.append(self.load_core_task_dependency(tasker, filename, dependency_arguments))
 
-        run_arguments = {argument["name"]: argument["type"].filter(argument["default"]) if "type" in argument and isinstance(argument["type"], Filter) else argument["default"]
-                         for argument in arguments if "default" in argument}
+        run_arguments = {}
+        for argument in arguments:
+            if "default" not in argument:
+                continue
+            if "type" not in argument or not isinstance(argument["type"], Filter):
+                run_arguments[argument["name"]] = argument["default"]
+                continue
+            if "nargs" in argument and "action" in argument and isinstance(argument["default"], list):
+                run_arguments[argument["name"]] = [argument["type"].filter(v) for v in argument["default"]]
+            else:
+                run_arguments[argument["name"]] = argument["type"].filter(argument["default"])
         run_arguments.update(compile_arguments)
         return self.run_core_task(run_arguments, arguments, tasker, dependency_taskers)
 
