@@ -92,19 +92,55 @@ class Compiler(object):
             if isinstance(select_expression, expressions.Star):
                 config["schema"] = "$.*"
                 break
-            if isinstance(select_expression, (expressions.Column, expressions.Alias)):
-                column_table, column_name, column_alias = select_expression.args["table"].name if "table" in select_expression.args else None, \
-                                                          select_expression.args["this"].name, None
-                if "alias" in select_expression.args and select_expression.args["alias"]:
-                    column_alias = select_expression.args["alias"].name
+
+            if isinstance(select_expression, expressions.Column):
+                column_table, column_name, column_alias = self.compile_select_column(select_expression)
                 if primary_key is None or (column_alias and column_alias == "id"):
                     primary_key, primary_alias = column_name, column_alias
                 field_name = column_alias if column_alias else column_name
                 if column_table and column_table != table_name and column_table in join_tables:
-                    config["schema"][field_name] = self.compile_join_column(table_name, "$." + column_name,
-                                                                            join_tables[column_table], join_tables)
+                    column_join_tables = []
+                    self.compile_join_column_tables(table_name, [join_tables[column_table]], join_tables, column_join_tables)
+                    config["schema"][field_name] = self.compile_join_column(table_name, "$." + column_name, column_join_tables)
                 else:
                     config["schema"][field_name] = "$." + column_name
+                continue
+
+            if isinstance(select_expression, expressions.Alias):
+                if isinstance(select_expression.args["this"], expressions.Literal):
+                    const_value = select_expression.args["this"].args["this"]
+                    if select_expression.args["this"].is_int:
+                        const_value = int(const_value)
+                    config["schema"][select_expression.args["alias"].name] = ["#const", const_value]
+                    continue
+
+                if isinstance(select_expression.args["this"], expressions.Column):
+                    column_table, column_name, column_alias = self.compile_select_column(select_expression.args["this"])
+                    if primary_key is None or (column_alias and column_alias == "id"):
+                        primary_key, primary_alias = column_name, column_alias
+                    field_name = column_alias if column_alias else column_name
+                    if column_table and column_table != table_name and column_table in join_tables:
+                        column_join_tables = []
+                        self.compile_join_column_tables(table_name, [join_tables[column_table]], join_tables,column_join_tables)
+                        config["schema"][field_name] = self.compile_join_column(table_name, "$." + column_name, column_join_tables)
+                    else:
+                        config["schema"][field_name] = "$." + column_name
+                    continue
+
+                field_name = select_expression.args["alias"].name
+                calculate_fields = []
+                self.parse_calculate(table_name, select_expression.args["this"], calculate_fields)
+                if calculate_fields:
+                    column_join_tables = []
+                    calculate_table_names = {calculate_field["table_name"] for calculate_field in calculate_fields}
+                    self.compile_join_column_tables(table_name, [join_tables[calculate_table_name] for calculate_table_name in calculate_table_names],
+                                                                            join_tables, column_join_tables)
+                    calculate_column = self.compile_calculate(table_name, select_expression.args["this"], column_join_tables)
+                    config["schema"][field_name] = self.compile_join_column(table_name, calculate_column, column_join_tables)
+                else:
+                    config["schema"][field_name] = self.compile_calculate(table_name, select_expression.args["this"], [])
+                continue
+            raise SyncanySqlCompileException("unkonw table select field: " + str(expression))
 
         where_expression = expression.args.get("where")
         if where_expression and isinstance(where_expression, expressions.Where):
@@ -114,24 +150,31 @@ class Compiler(object):
         if limit_expression:
             arguments["@limit"] = int(limit_expression.args["expression"].args["this"])
 
-    def compile_join_column(self, table_name, column, join_table, join_tables):
-        column_join_tables = []
-        def gen_column_joins(join_table, join_tables):
-            column_join_tables.append(join_table)
-            column_join_names = sorted(list({join_field["table_name"] for join_field in join_table["join_fields"]}),
-                                       key=lambda x: 0xffffff if x == table_name else join_tables[x]["ref_count"])
-            for column_join_name in column_join_names:
-                if column_join_name == table_name:
-                    continue
-                gen_column_joins(join_tables[column_join_name], join_tables)
-        gen_column_joins(join_table, join_tables)
+    def compile_select_column(self, select_expression):
+        column_table, column_name, column_alias = select_expression.args["table"].name if "table" in select_expression.args else None, \
+                                                  select_expression.args["this"].name, None
+        if "alias" in select_expression.args and select_expression.args["alias"]:
+            column_alias = select_expression.args["alias"].name
+        return column_table, column_name, column_alias
 
-        def gen_column(ci, join_field):
-            if join_field["table_name"] == table_name:
-                return ("$" * (len(column_join_tables) - ci)) + "." + join_field["field_name"]
-            ji = [j for j in range(len(column_join_tables)) if join_field["table_name"] == column_join_tables[j]["name"]][0]
-            return ("$" * (ji - ci)) + "." + join_field["field_name"]
+    def compile_join_column_tables(self, table_name, current_join_tables, join_tables, column_join_tables):
+        if not current_join_tables:
+            return
+        current_join_table_names = {current_join_table["name"] for current_join_table in current_join_tables}
+        dup_column_join_tables = []
+        for column_join_table in column_join_tables:
+            if column_join_table["name"] in current_join_table_names:
+                dup_column_join_tables.append(column_join_table)
+        for dup_column_join_table in dup_column_join_tables:
+            column_join_tables.remove(dup_column_join_table)
+        column_join_tables.extend(current_join_tables)
+        column_join_names = sorted(list({join_field["table_name"] for join_table in current_join_tables
+                                         for join_field in join_table["join_fields"]}),
+                                   key=lambda x: 0xffffff if x == table_name else join_tables[x]["ref_count"])
+        self.compile_join_column_tables(table_name, [join_tables[column_join_name] for column_join_name in column_join_names
+                          if column_join_name != table_name], join_tables, column_join_tables)
 
+    def compile_join_column(self, table_name, column, column_join_tables):
         for i in range(len(column_join_tables)):
             join_table = column_join_tables[i]
             if isinstance(column, str):
@@ -143,15 +186,22 @@ class Compiler(object):
                     column = [":"] + column
             else:
                 column = [":", column]
-            if len(join_table["join_fields"]) == 1:
-                join_fields = gen_column(i, join_table["join_fields"][0])
+            if len(join_table["calculate_expressions"]) == 1:
+                join_fields = self.compile_calculate(table_name, join_table["calculate_expressions"][0], column_join_tables, i)
             else:
-                join_fields = [gen_column(i, join_field) for join_field in join_table["join_fields"]]
+                join_fields = [self.compile_calculate(table_name, calculate_expression, column_join_tables, i)
+                               for calculate_expression in join_table["calculate_expressions"]]
             join_db_table = "&." + join_table["db"] + "." + join_table["table"] + "::" + "+".join(join_table["primary_keys"])
             if join_table["querys"]:
                 join_db_table = [join_db_table, join_table["querys"]]
             column = [join_fields, join_db_table, column]
         return column
+
+    def compile_join_column_field(self, table_name, ci, join_field, column_join_tables):
+        if join_field["table_name"] == table_name:
+            return ("$" * (len(column_join_tables) - ci)) + "." + join_field["field_name"]
+        ji = [j for j in range(len(column_join_tables)) if join_field["table_name"] == column_join_tables[j]["name"]][0]
+        return ("$" * (ji - ci)) + "." + join_field["field_name"]
 
     def compile_where_condition(self, expression, config):
         if not expression:
@@ -213,15 +263,10 @@ class Compiler(object):
             if "on" not in join_expression.args:
                 raise SyncanySqlCompileException("unkonw join on: " + str(join_expression))
             join_table = {
-                "db": db,
-                "table": table,
-                "name": name,
-                "primary_keys": set([]),
-                "join_fields": [],
-                "querys": {},
-                "ref_count": 0
+                "db": db, "table": table, "name": name, "primary_keys": set([]),
+                "join_fields": [], "calculate_expressions": [], "querys": {}, "ref_count": 0
             }
-            self.parse_on_condition(join_expression.args["on"], join_table)
+            self.parse_on_condition(table_name, join_expression.args["on"], join_table)
             if not join_table["primary_keys"] or not join_table["join_fields"]:
                 raise SyncanySqlCompileException("empty join table: " + str(join_expression))
             join_tables[join_table["name"]] = join_table
@@ -235,7 +280,7 @@ class Compiler(object):
                 join_tables[join_field["table_name"]]["ref_count"] += 1
         return join_tables
 
-    def parse_on_condition(self, expression, join_table):
+    def parse_on_condition(self, table_name, expression, join_table):
         if not expression:
             return
         if isinstance(expression, expressions.And):
@@ -244,40 +289,47 @@ class Compiler(object):
             return
 
         def parse(expression):
-            condition_table = expression.args["this"].args["table"].name if "table" in expression.args["this"].args else None
-            condition_name = expression.args["this"].name
-            if isinstance(expression.args["expression"], expressions.Literal):
-                condition_value = expression.args["expression"].args["this"]
-                if expression.args["expression"].is_int:
+            table_expression, value_expression = None, None
+            for arg_expression in expression.args["this"], expression.args["expression"]:
+                if not isinstance(arg_expression, expressions.Column):
+                    continue
+                condition_table = arg_expression.args["table"].name if "table" in arg_expression.args else None
+                if condition_table and condition_table == join_table["name"]:
+                    table_expression = arg_expression
+                    break
+            if table_expression is None:
+                raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
+            value_expression = expression.args["expression"] if table_expression == expression.args["this"] else expression.args["this"]
+
+            condition_table = table_expression.args["table"].name if "table" in table_expression.args else None
+            condition_name = table_expression.args["this"].name
+            if isinstance(value_expression, expressions.Literal):
+                condition_value = value_expression.args["this"]
+                if value_expression.is_int:
                     condition_name += "|int"
                 if condition_name not in join_table["querys"]:
                     join_table["querys"][condition_name] = {}
                 return (False, condition_table, condition_name, condition_value)
-            if isinstance(expression.args["expression"], expressions.Column):
-                if condition_table is None or "table" not in expression.args["expression"].args:
+            if isinstance(value_expression, expressions.Column):
+                if condition_table is None or "table" not in value_expression.args:
                     raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
-                return (True, condition_table, condition_name,
-                        (expression.args["expression"].args["table"].name,
-                         expression.args["expression"].args["this"].name))
-            raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
+                join_table["join_fields"].append({
+                    "table_name": value_expression.args["table"].name,
+                    "field_name": value_expression.args["this"].name
+                })
+                join_table["calculate_expressions"].append(value_expression)
+                return (True, condition_table, condition_name, None)
+
+            calculate_fields = []
+            self.parse_calculate(table_name, value_expression, calculate_fields)
+            join_table["join_fields"].extend(calculate_fields)
+            join_table["calculate_expressions"].append(value_expression)
+            return (True, condition_table, condition_name, None)
 
         if isinstance(expression, expressions.EQ):
             is_column, condition_table, condition_name, condition_value = parse(expression)
             if is_column:
-                if condition_table == join_table["name"]:
-                    join_table["primary_keys"].add(condition_name)
-                    join_table["join_fields"].append({
-                        "table_name": condition_value[0],
-                        "field_name": condition_value[1]
-                    })
-                elif condition_value[0] == join_table["name"]:
-                    join_table["primary_keys"].add(condition_value[1])
-                    join_table["join_fields"].append({
-                        "table_name": condition_table,
-                        "field_name": condition_name
-                    })
-                else:
-                    raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
+                join_table["primary_keys"].add(condition_name)
             else:
                 join_table["querys"][condition_name]["=="] = condition_value
         elif isinstance(expression, expressions.NEQ):
@@ -312,3 +364,74 @@ class Compiler(object):
             join_table["querys"][condition_name]["in"] = condition_value
         else:
             raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
+
+    def parse_calculate(self, table_name, expression, calculate_fields):
+        if isinstance(expression, expressions.Anonymous):
+            for arg_expression in expression.args.get("expressions", []):
+                self.parse_calculate(table_name, arg_expression, calculate_fields)
+        elif isinstance(expression, expressions.Add):
+            self.parse_calculate(table_name, expression.args["this"], calculate_fields)
+            self.parse_calculate(table_name, expression.args["expression"], calculate_fields)
+        elif isinstance(expression, expressions.Sub):
+            self.parse_calculate(table_name, expression.args["this"], calculate_fields)
+            self.parse_calculate(table_name, expression.args["expression"], calculate_fields)
+        elif isinstance(expression, expressions.Mul):
+            self.parse_calculate(table_name, expression.args["this"], calculate_fields)
+            self.parse_calculate(table_name, expression.args["expression"], calculate_fields)
+        elif isinstance(expression, expressions.Div):
+            self.parse_calculate(table_name, expression.args["this"], calculate_fields)
+            self.parse_calculate(table_name, expression.args["expression"], calculate_fields)
+        elif isinstance(expression, expressions.Paren):
+            self.parse_calculate(table_name, expression.args["this"], calculate_fields)
+        elif isinstance(expression, expressions.Column):
+            if table_name != expression.args["table"].name:
+                calculate_fields.append({
+                    "table_name": expression.args["table"].name,
+                    "field_name": expression.args["this"].name
+                })
+        elif isinstance(expression, expressions.Literal):
+            pass
+        else:
+            raise SyncanySqlCompileException("unkonw calculate: " + str(expression))
+
+    def compile_calculate(self, table_name, expression, column_join_tables, join_index=-1):
+        if isinstance(expression, expressions.Anonymous):
+            column = ["@" + expression.args["this"]]
+            for arg_expression in expression.args.get("expressions", []):
+                column.append(self.compile_calculate(table_name, arg_expression, column_join_tables, join_index))
+            return column
+        elif isinstance(expression, expressions.Add):
+            return ["@add",
+                    self.compile_calculate(table_name, expression.args["this"], column_join_tables, join_index),
+                    self.compile_calculate(table_name, expression.args["expression"], column_join_tables, join_index),
+                    ]
+        elif isinstance(expression, expressions.Sub):
+            return ["@sub",
+                    self.compile_calculate(table_name, expression.args["this"], column_join_tables, join_index),
+                    self.compile_calculate(table_name, expression.args["expression"], column_join_tables, join_index),
+                    ]
+        elif isinstance(expression, expressions.Mul):
+            return ["@mul",
+                    self.compile_calculate(table_name, expression.args["this"], column_join_tables, join_index),
+                    self.compile_calculate(table_name, expression.args["expression"], column_join_tables, join_index),
+                    ]
+        elif isinstance(expression, expressions.Div):
+            return ["@div",
+                    self.compile_calculate(table_name, expression.args["this"], column_join_tables, join_index),
+                    self.compile_calculate(table_name, expression.args["expression"], column_join_tables, join_index),
+                    ]
+        elif isinstance(expression, expressions.Paren):
+            return self.compile_calculate(table_name, expression.args["this"], column_join_tables, join_index)
+        elif isinstance(expression, expressions.Column):
+            join_field = {
+                "table_name": expression.args["table"].name,
+                "field_name": expression.args["this"].name
+            }
+            return self.compile_join_column_field(table_name, join_index, join_field, column_join_tables)
+        elif isinstance(expression, expressions.Literal):
+            const_value = expression.args["this"]
+            if expression.is_int:
+                const_value = int(const_value)
+            return ["#const", const_value]
+        else:
+            raise SyncanySqlCompileException("unkonw calculate: " + str(expression))
