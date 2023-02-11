@@ -14,7 +14,7 @@ class Config(object):
                     "format": "print"
                 },
                 {
-                    "name": "=",
+                    "name": "--",
                     "driver": "memory"
                 }
             ]

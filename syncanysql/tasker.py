@@ -20,14 +20,13 @@ class Tasker(object):
             self.run_one(name, sql)
 
     def run_one(self, name, sql):
-        compiler = Compiler(sql)
-        compile_config, compile_arguments = compiler.compile()
         config = {}
         config.update(self.config.get())
-        config.update(compile_config)
         config["name"] = name
-
-        tasker = CoreTasker(config, self.manager)
+        compiler = Compiler(config)
+        compile_arguments = {"@verbose": False}
+        compile_config = compiler.compile(sql, compile_arguments)
+        tasker = CoreTasker(compile_config, self.manager)
         arguments = tasker.load()
         tasker.config_logging()
 
@@ -58,6 +57,17 @@ class Tasker(object):
 
     def load_core_task_dependency(self, parent, filename, parent_arguments):
         tasker = CoreTasker(filename, parent.manager, parent)
+        arguments = tasker.load()
+        for argument in arguments:
+            if "default" not in argument:
+                continue
+            if "type" not in argument or not isinstance(argument["type"], Filter):
+                parent_arguments[argument["name"]] = argument["default"]
+                continue
+            if "nargs" in argument and "action" in argument and isinstance(argument["default"], list):
+                parent_arguments[argument["name"]] = [argument["type"].filter(v) for v in argument["default"]]
+            else:
+                parent_arguments[argument["name"]] = argument["type"].filter(argument["default"])
         setattr(tasker, "parent_arguments", parent_arguments)
 
         dependency_taskers = []
