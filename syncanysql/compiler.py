@@ -19,7 +19,7 @@ class Compiler(object):
         config.update(self.config)
         config.update({
             "input": "&.=.-::id",
-            "output": "&.-.&2::id",
+            "output": "&.-.&1::id",
             "querys": {},
             "schema": "$.*",
             "dependencys": []
@@ -49,7 +49,7 @@ class Compiler(object):
         if not isinstance(expression.args["this"], expressions.Table):
             raise SyncanySqlCompileException("unkonw insert info table: " + str(expression))
         if expression.args["this"].name == "_":
-            config["output"] = "&.-.&2::id"
+            config["output"] = "&.-.&1::id"
         else:
             config["output"] = "".join(["&.", expression.args["db"].name, ".", expression.args["this"].name, "::", "id"])
         select_expression = expression.args.get("expression")

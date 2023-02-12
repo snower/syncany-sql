@@ -10,8 +10,7 @@ class Config(object):
             "databases": [
                 {
                     "name": "-",
-                    "driver": "textline",
-                    "format": "print"
+                    "driver": "textline"
                 },
                 {
                     "name": "--",
