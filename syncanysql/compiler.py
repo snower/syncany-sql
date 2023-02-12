@@ -55,8 +55,8 @@ class Compiler(object):
         select_expression = expression.args.get("expression")
         if not select_expression or not isinstance(select_expression, (expressions.Select, expressions.Union)):
             raise SyncanySqlCompileException("unkonw insert info select: " + str(expression))
-        if isinstance(expression, expressions.Union):
-            self.compile_union(expression, config, arguments)
+        if isinstance(select_expression, expressions.Union):
+            self.compile_union(select_expression, config, arguments)
         else:
             self.compile_select(select_expression, config, arguments)
 
@@ -113,6 +113,10 @@ class Compiler(object):
                                         " use I" if primary_key is None else ""])
         join_tables = self.parse_joins(config, table_name, expression.args["joins"], arguments) \
             if "joins" in expression.args and expression.args["joins"] else {}
+        group_fields = []
+        group_expression = expression.args.get("group")
+        if group_expression:
+            self.parse_group(table_name, group_expression, group_fields)
 
         select_expressions = expression.args.get("expressions")
         if not select_expressions:
@@ -123,22 +127,28 @@ class Compiler(object):
                 config["schema"] = "$.*"
                 break
 
-            column_expression, column_alias = None, None
+            column_expression, aggregate_expression, column_alias = None, None, None
             if isinstance(select_expression, expressions.Column):
                 column_expression = select_expression
             elif isinstance(select_expression, expressions.Alias):
+                column_alias = select_expression.args["alias"].name if "alias" in select_expression.args else None
                 if isinstance(select_expression.args["this"], expressions.Literal):
                     literal_info = self.parse_literal(select_expression.args["this"])
-                    config["schema"][select_expression.args["alias"].name] = self.compile_literal(literal_info)
+                    config["schema"][column_alias] = self.compile_literal(literal_info)
                     continue
                 elif isinstance(select_expression.args["this"], expressions.Column):
-                    column_alias = expression.args["alias"].name if "alias" in expression.args else None
                     column_expression = select_expression.args["this"]
+                elif isinstance(select_expression.args["this"], (expressions.Count, expressions.Sum, expressions.Min, expressions.Max)):
+                    aggregate_expression = select_expression.args["this"]
             else:
                 raise SyncanySqlCompileException("unkonw table select field: " + str(expression))
             if column_expression:
                 primary_key, primary_alias = self.compile_select_column(table_name, column_expression, column_alias, config,
                                                                         join_tables, primary_key, primary_alias)
+                continue
+            if aggregate_expression:
+                self.compile_aggregate_column(table_name, column_alias, config, group_expression, aggregate_expression,
+                                              group_fields, join_tables)
                 continue
 
             column_alias = select_expression.args["alias"].name
@@ -277,6 +287,45 @@ class Compiler(object):
             config["querys"][condition_column["column_name"]]["in"] = literal_value["value"]
         else:
             raise SyncanySqlCompileException("unkonw where condition: " + str(expression))
+
+    def compile_aggregate_column(self, table_name, column_alias, config, group_expression, aggregate_expression, group_fields, join_tables):
+        calculate_fields = [group_field for group_field in group_fields]
+        self.parse_aggregate(table_name, aggregate_expression, calculate_fields)
+        column_join_tables = []
+        if calculate_fields:
+            calculate_table_names = {calculate_field["table_name"] for calculate_field in calculate_fields}
+            self.compile_join_column_tables(table_name, [join_tables[calculate_table_name] for calculate_table_name in calculate_table_names],
+                                            join_tables, column_join_tables)
+        if len(group_expression.args["expressions"]) > 1:
+            group_column = ["@add"]
+            for expression in group_expression.args["expressions"]:
+                group_column.append(self.compile_calculate(table_name, expression, column_join_tables, -1))
+        else:
+            group_column = self.compile_calculate(table_name, group_expression.args["expressions"][0], column_join_tables, -1)
+        calculate_column = self.compile_aggtegate(table_name, column_alias, aggregate_expression, column_join_tables)
+        if calculate_fields:
+            config["schema"][column_alias] = self.compile_join_column(table_name, ["#aggregate", group_column, calculate_column],
+                                                                      column_join_tables)
+        else:
+            config["schema"][column_alias] = ["#aggregate", group_column, calculate_column]
+
+    def compile_aggtegate(self, table_name, column_alias, expression, column_join_tables, join_index=-1):
+        if isinstance(expression, expressions.Count):
+            return ["@add", "$." + column_alias + "|int", 1]
+        elif isinstance(expression, expressions.Sum):
+            return ["@add", "$." + column_alias + "|float",
+                    self.compile_calculate(table_name, expression.args["this"], column_join_tables, join_index - 1),
+                    ]
+        elif isinstance(expression, expressions.Min):
+            return ["@min", "$." + column_alias + "|float",
+                    self.compile_calculate(table_name, expression.args["this"], column_join_tables, join_index - 1),
+                    ]
+        elif isinstance(expression, expressions.Max):
+            return ["@max", "$." + column_alias + "|float",
+                    self.compile_calculate(table_name, expression.args["this"], column_join_tables, join_index - 1),
+                    ]
+        else:
+            raise SyncanySqlCompileException("unkonw calculate: " + str(expression))
         
     def compile_calculate(self, table_name, expression, column_join_tables, join_index=-1):
         if isinstance(expression, expressions.Anonymous):
@@ -309,6 +358,8 @@ class Compiler(object):
         elif isinstance(expression, expressions.Column):
             join_column = self.parse_column(expression)
             return self.compile_join_column_field(table_name, join_index, join_column, column_join_tables)
+        elif isinstance(expression, expressions.Star):
+            return "$.*"
         elif isinstance(expression, expressions.Literal):
             return self.compile_literal(self.parse_literal(expression))
         else:
@@ -431,6 +482,22 @@ class Compiler(object):
         else:
             raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
 
+    def parse_group(self, table_name, expression, group_fields):
+        for group_expression in expression.args["expressions"]:
+            self.parse_calculate(table_name, group_expression, group_fields)
+
+    def parse_aggregate(self, table_name, expression, calculate_fields):
+        if isinstance(expression, expressions.Count):
+            self.parse_calculate(table_name, expression.args["this"], calculate_fields)
+        elif isinstance(expression, expressions.Sum):
+            self.parse_calculate(table_name, expression.args["this"], calculate_fields)
+        elif isinstance(expression, expressions.Min):
+            self.parse_calculate(table_name, expression.args["this"], calculate_fields)
+        elif isinstance(expression, expressions.Max):
+            self.parse_calculate(table_name, expression.args["this"], calculate_fields)
+        else:
+            raise SyncanySqlCompileException("unkonw aggregate calculate: " + str(expression))
+
     def parse_calculate(self, table_name, expression, calculate_fields):
         if isinstance(expression, expressions.Anonymous):
             for arg_expression in expression.args.get("expressions", []):
@@ -452,6 +519,8 @@ class Compiler(object):
         elif isinstance(expression, expressions.Column):
             if table_name != expression.args["table"].name:
                 calculate_fields.append(self.parse_column(expression))
+        elif isinstance(expression, expressions.Star):
+            pass
         elif isinstance(expression, expressions.Literal):
             pass
         else:
