@@ -8,8 +8,8 @@ import traceback
 from syncany.logger import get_logger
 from syncany.taskers.manager import TaskerManager
 from syncany.database.database import DatabaseManager
-from .config import Config
-from .tasker import Tasker
+from .config import SessionConfig
+from syncanysql.executor import Executor
 from .file_parser import FileParser
 from .prompt import CliPrompt
 
@@ -21,21 +21,21 @@ def main():
 
     try:
         if sys.platform != "win32":
-            signal.signal(signal.SIGHUP, lambda signum, frame: tasker.terminate())
-            signal.signal(signal.SIGTERM, lambda signum, frame: tasker.terminate())
+            signal.signal(signal.SIGHUP, lambda signum, frame: executor.terminate())
+            signal.signal(signal.SIGTERM, lambda signum, frame: executor.terminate())
 
-        config = Config()
-        config.load()
+        session_config = SessionConfig()
+        session_config.load()
         manager = TaskerManager(DatabaseManager())
 
         try:
             if len(sys.argv) >= 2:
                 file_parser = FileParser(sys.argv[1])
                 sqls = file_parser.load()
-                tasker = Tasker(manager, config)
-                exit(tasker.run(sys.argv[1], sqls))
+                executor = Executor(manager, session_config)
+                exit(executor.run(sys.argv[1], sqls))
             else:
-                cli_prompt = CliPrompt(manager, config)
+                cli_prompt = CliPrompt(manager, session_config)
                 exit(cli_prompt.run())
         finally:
             manager.close()

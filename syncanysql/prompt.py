@@ -9,7 +9,7 @@ from prompt_toolkit.history import FileHistory
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.lexers import PygmentsLexer
 from prompt_toolkit.styles import Style
-from .tasker import Tasker
+from syncanysql.executor import Executor
 
 sql_completer = WordCompleter(
     [
@@ -151,9 +151,9 @@ style = Style.from_dict(
 )
 
 class CliPrompt(object):
-    def __init__(self, manager, config):
+    def __init__(self, manager, session_config):
         self.manager = manager
-        self.config = config
+        self.session_config = session_config
 
     def run(self):
         home_config_path = os.path.join(os.path.expanduser('~'), ".syncany")
@@ -163,13 +163,13 @@ class CliPrompt(object):
         session = PromptSession(
             lexer=PygmentsLexer(SqlLexer), completer=sql_completer, style=style, history=history
         )
-        tasker = Tasker(self.manager, self.config)
+        executor = Executor(self.manager, self.session_config)
         while True:
             try:
                 text = session.prompt("> ")
                 if text.strip().lower() == "exit":
                     return 0
-                tasker.run_one("cli", text)
+                executor.run_one("cli", text)
             except KeyboardInterrupt:
                 continue  # Control-C pressed. Try again.
             except EOFError:
