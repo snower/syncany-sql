@@ -200,7 +200,7 @@ class Compiler(object):
                 elif isinstance(select_expression.args["this"], (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Min, sqlglot_expressions.Max)):
                     aggregate_expression = select_expression.args["this"]
             else:
-                raise SyncanySqlCompileException("unkonw table select field: " + self.to_sql(expression))
+                raise SyncanySqlCompileException("table select field must be alias: " + self.to_sql(expression))
             if column_expression:
                 self.compile_select_column(primary_table, column_expression, column_alias, config, join_tables)
                 continue
