@@ -2,6 +2,7 @@
 # 2023/2/13
 # create by: snower
 
+import copy
 from .compiler import Compiler
 
 class Executor(object):
@@ -13,12 +14,12 @@ class Executor(object):
     def run(self, name, sqls):
         for sql in sqls:
             exit_code = self.run_one(name, sql)
-            if exit_code != 0:
+            if exit_code is not None and exit_code != 0:
                 return exit_code
+        return 0
 
     def run_one(self, name, sql):
-        config = {}
-        config.update(self.session_config.get())
+        config = copy.deepcopy(self.session_config.get())
         config["name"] = name
         compiler = Compiler(config)
         arguments = {"@verbose": config.get("@verbose", False), "@timeout": config.get("@timeout", 0), "@limit": config.get("@limit", 100)}

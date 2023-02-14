@@ -2,21 +2,40 @@
 # 2023/2/8
 # create by: snower
 
+import os
+import copy
 from sqlglot import maybe_parse
 from sqlglot import expressions as sqlglot_expressions
+from sqlglot.dialects import Dialect
+from sqlglot import tokens
 from .errors import SyncanySqlCompileException
+from .parser import SqlParser
 from .taskers.query import QueryTasker
+from .taskers.explain import ExplainTasker
 from .taskers.set_command import SetCommandTasker
+
+class CompilerDialect(Dialect):
+    class Tokenizer(tokens.Tokenizer):
+        QUOTES = ["'", '"']
+        COMMENTS = ["--", "#", ("/*", "*/")]
+        IDENTIFIERS = ["`"]
+        ESCAPES = ["'", "\\"]
+        BIT_STRINGS = [("b'", "'"), ("B'", "'"), ("0b", "")]
+        HEX_STRINGS = [("x'", "'"), ("X'", "'"), ("0x", "")]
 
 class Compiler(object):
     def __init__(self, config):
         self.config = config
+        self.mapping = {}
 
     def compile(self, sql, arguments):
-        expression = maybe_parse(sql)
+        sql = self.parse_mapping(sql)
+        expression = maybe_parse(sql, dialect=CompilerDialect)
         if isinstance(expression, (sqlglot_expressions.Union, sqlglot_expressions.Insert, sqlglot_expressions.Select)):
             return QueryTasker(self.compile_query(expression, arguments))
         elif isinstance(expression, sqlglot_expressions.Command):
+            if expression.args["this"].lower() == "explain" and self.is_const(expression.args["expression"]):
+                return ExplainTasker(self.compile(self.parse_const(expression.args["expression"])["value"], arguments))
             if expression.args["this"].lower() == "set" and self.is_const(expression.args["expression"]):
                 value = self.parse_const(expression.args["expression"])["value"].split("=")
                 config = {"key": value[0].strip(), "value": "=".join(value[1:]).strip()}
@@ -24,8 +43,7 @@ class Compiler(object):
         raise SyncanySqlCompileException("unkonw sql: " + str(expression))
 
     def compile_query(self, expression, arguments):
-        config = {}
-        config.update(self.config)
+        config = copy.deepcopy(self.config)
         config.update({
             "input": "&.=.-::id",
             "output": "&.-.&1::id",
@@ -59,10 +77,37 @@ class Compiler(object):
     def compile_insert_into(self, expression, config, arguments):
         if not isinstance(expression.args["this"], sqlglot_expressions.Table):
             raise SyncanySqlCompileException("unkonw insert info table: " + str(expression))
-        if expression.args["this"].name == "_":
+        db_name = expression.args["db"].name if "db" in expression.args else None
+        table_name = expression.args["this"].name
+        if table_name in self.mapping:
+            table_name = self.mapping[table_name]
+        if table_name == "_":
             config["output"] = "&.-.&1::id"
+        elif not db_name:
+            path_info = os.path.split(table_name.split("#")[0])
+            path = os.path.abspath(path_info[0]) if path_info[0] else os.getcwd()
+            path_db_driver = {".txt": "textline", ".json": "json", ".csv": "csv", ".xls": "execl",
+                              ".xlsx": "execl"}.get(os.path.splitext(path_info[-1])[-1])
+            if path_db_driver:
+                path_db_name = "".join([c for c in path if c.isalpha() or c.isdigit() or c == os.path.sep]).replace(os.path.sep, "_")
+                databases = config.get("databases")
+                if not databases:
+                    config["databases"] = databases = []
+                path_database = None
+                for database in databases:
+                    if database["driver"] == path_db_driver and database["path"] == path:
+                        path_database = database
+                        break
+                if not path_database:
+                    path_database = {"name": path_db_name, "driver": path_db_driver, "path": path}
+                    databases.append(path_database)
+                if path_db_driver == "textline" and "format=" in table_name:
+                    path_database["format"] = table_name.split("format=")[-1].split("&")[0]
+                config["output"] = "".join(["&.", path_db_name, ".", path_info[1], "::", "id"])
+            else:
+                config["output"] = "".join(["&.--.", table_name, "::", "id"])
         else:
-            config["output"] = "".join(["&.", expression.args["db"].name, ".", expression.args["this"].name, "::", "id"])
+            config["output"] = "".join(["&.", db_name, ".", table_name, "::", "id"])
         select_expression = expression.args.get("expression")
         if not select_expression or not isinstance(select_expression, (sqlglot_expressions.Select, sqlglot_expressions.Union)):
             raise SyncanySqlCompileException("unkonw insert info select: " + str(expression))
@@ -98,8 +143,7 @@ class Compiler(object):
         arguments["@limit"] = 0
 
     def compile_select(self, expression, config, arguments):
-        primary_table = {"db": None, "name": None, "table_name": None, "table_alias": None, "primary_key": None,
-                         "primary_alias": None, "columns": {}}
+        primary_table = {"db": None, "name": None, "table_name": None, "table_alias": None, "primary_keys": None, "columns": {}}
 
         from_expression = expression.args.get("from")
         if not isinstance(from_expression, sqlglot_expressions.From) or not from_expression.expressions:
@@ -111,20 +155,18 @@ class Compiler(object):
             if "alias" in from_expression.args:
                 primary_table["table_alias"] = from_expression.args["alias"].args["this"].name
             primary_table["table_name"] = primary_table["table_alias"] if primary_table["table_alias"] else primary_table["name"]
-            config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::", primary_table["primary_key"] if primary_table["primary_key"] else "id"])
         elif isinstance(from_expression, sqlglot_expressions.Subquery):
             if "alias" not in from_expression.args:
                 raise SyncanySqlCompileException("subquery must be alias name: " + str(expression))
             primary_table["table_alias"] = from_expression.args["alias"].args["this"].name
             primary_table["table_name"] = primary_table["table_alias"]
             subquery_name, subquery_config = self.compile_subquery(from_expression, arguments)
-            config["input"] = "".join(["&.--.", subquery_name, "::", primary_table["primary_key"] if primary_table["primary_key"] else "id"])
+            primary_table["db"] = "--"
+            primary_table["name"] = subquery_name
             config["dependencys"].append(subquery_config)
         else:
             raise SyncanySqlCompileException("unkonw table: " + str(expression))
-        if primary_table["primary_alias"] and primary_table["primary_alias"] != "id":
-            config["output"] = "".join([config["output"].split("::")[0], "::", primary_table["primary_alias"] if primary_table["primary_alias"] else "id",
-                                        " use I" if primary_table["primary_key"] is None else ""])
+
         join_tables = self.parse_joins(primary_table, config, expression.args["joins"], arguments) \
             if "joins" in expression.args and expression.args["joins"] else {}
         group_fields = []
@@ -194,6 +236,14 @@ class Compiler(object):
         if limit_expression:
             arguments["@limit"] = int(limit_expression.args["expression"].args["this"])
 
+        if isinstance(primary_table["primary_keys"], tuple):
+            primary_table["primary_keys"] = [primary_table["primary_keys"]]
+        config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
+                                   "+".join([primary_key[0] for primary_key in primary_table["primary_keys"]]) if primary_table["primary_keys"] else "id"])
+        config["output"] = "".join([config["output"].split("::")[0], "::",
+                                    "+".join([primary_key[1] for primary_key in primary_table["primary_keys"]]) if primary_table["primary_keys"] else "id",
+                                    " use I" if not primary_table["primary_keys"] else ""])
+
     def compile_select_column(self, primary_table, column_expression, column_alias, config, join_tables):
         column_info = self.parse_column(column_expression)
         if not column_alias:
@@ -208,8 +258,12 @@ class Compiler(object):
             config["schema"][column_alias] = self.compile_column(column_info)
         if column_info["table_name"] == primary_table["table_name"]:
             primary_table["columns"][column_info["column_name"]] = column_info
-        if primary_table["primary_key"] is None or (column_alias and column_alias == "id"):
-            primary_table["primary_key"], primary_table["primary_alias"] = column_info["column_name"], column_alias
+        if "pk" in column_info["typing_options"]:
+            if not isinstance(primary_table["primary_keys"], list):
+                primary_table["primary_keys"] = []
+            primary_table["primary_keys"].append((column_info["column_name"], column_alias))
+        elif primary_table["primary_keys"] is None or (isinstance(primary_table["primary_keys"], tuple) and column_alias and column_alias == "id"):
+            primary_table["primary_keys"] = (column_info["column_name"], column_alias)
 
     def compile_join_column_tables(self, primary_table, current_join_tables, join_tables, column_join_tables):
         if not current_join_tables:
@@ -469,6 +523,16 @@ class Compiler(object):
             config["orders"].extend(primary_sort_keys)
         
     def compile_column(self, column, scope_depth=1):
+        if column["typing_filters"]:
+            typing_filter_column = ("$" * scope_depth) + "." + column["column_name"] + "|" + column["typing_filters"][0]
+            if len(column["typing_filters"]) == 1:
+                return typing_filter_column
+            def compile_column_filter(typing_filters):
+                child_filter_column = ":$.*|" + typing_filters[0]
+                if len(typing_filters) == 1:
+                    return child_filter_column
+                return [typing_filter_column, compile_column_filter(typing_filters[1:])]
+            return [typing_filter_column, compile_column_filter(column["typing_filters"][1:])]
         return ("$" * scope_depth) + "." + column["column_name"]
     
     def compile_const(self, literal):
@@ -670,9 +734,23 @@ class Compiler(object):
     def parse_column(self, expression):
         table_name = expression.args["table"].name if "table" in expression.args else None
         column_name = expression.args["this"].name
+        origin_name = self.mapping[column_name] if column_name in self.mapping else column_name
+        try:
+            start_index, end_index = origin_name.index("["), origin_name.rindex("]")
+            typing_filters = origin_name[start_index+1: end_index].split(";")
+        except ValueError:
+            typing_filters = []
+        try:
+            start_index, end_index = origin_name.index("<"), origin_name.rindex(">")
+            typing_options = origin_name[start_index+1: end_index].split(",")
+        except ValueError:
+            typing_options = []
         return {
             "table_name": table_name,
             "column_name": column_name,
+            "origin_name": origin_name,
+            "typing_filters": typing_filters,
+            "typing_options": typing_options,
             "expression": expression
         }
     
@@ -690,5 +768,37 @@ class Compiler(object):
             "expression": expression
         }
 
+    def parse_mapping(self, sql):
+        parser = SqlParser(sql)
+        segments = []
+        last_start_index, last_end_index = 0, 0
+
+        def get_allow_segment(segment):
+            allow_segment = []
+            for c in segment:
+                if c.isalpha() or c.isdigit() or c == "_":
+                    allow_segment.append(c)
+                    continue
+                break
+            return "".join(allow_segment)
+
+        while True:
+            try:
+                start_index, end_index, segment = parser.read_segment()
+                allow_segment = get_allow_segment(segment)
+                if allow_segment != segment:
+                    if not allow_segment or allow_segment in self.mapping:
+                        allow_segment = allow_segment + "_" + str(id(segment))
+                    self.mapping[allow_segment] = segment
+                    segment = allow_segment
+                segments.append(parser.sql[last_end_index: start_index])
+                segments.append(segment)
+                last_start_index, last_end_index = start_index, end_index
+            except EOFError:
+                segments.append(parser.sql[last_end_index:])
+                break
+        return "".join(segments)
+
     def is_const(self, expression):
-        return isinstance(expression, (sqlglot_expressions.Literal, sqlglot_expressions.Boolean, sqlglot_expressions.Null))
+        return isinstance(expression, (sqlglot_expressions.Literal, sqlglot_expressions.Boolean,
+                                       sqlglot_expressions.Null))

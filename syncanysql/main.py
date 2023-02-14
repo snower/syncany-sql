@@ -10,7 +10,7 @@ from syncany.taskers.manager import TaskerManager
 from syncany.database.database import DatabaseManager
 from .config import SessionConfig
 from syncanysql.executor import Executor
-from .file_parser import FileParser
+from .parser import FileParser
 from .prompt import CliPrompt
 
 def main():

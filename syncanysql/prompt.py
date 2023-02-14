@@ -9,7 +9,9 @@ from prompt_toolkit.history import FileHistory
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.lexers import PygmentsLexer
 from prompt_toolkit.styles import Style
+from prompt_toolkit.filters import Condition
 from syncanysql.executor import Executor
+from .parser import SqlParser
 
 sql_completer = WordCompleter(
     [
@@ -166,8 +168,8 @@ class CliPrompt(object):
         executor = Executor(self.manager, self.session_config)
         while True:
             try:
-                text = session.prompt("> ")
-                if text.strip().lower() == "exit":
+                text = session.prompt("> ", multiline=Condition(lambda: self.check_complete(session.app.current_buffer.text)))
+                if text.strip().lower()[:4] == "exit":
                     return 0
                 executor.run_one("cli", text)
             except KeyboardInterrupt:
@@ -177,3 +179,13 @@ class CliPrompt(object):
             except Exception as e:
                 print(str(e))
         return 0
+
+    def check_complete(self, content):
+        if content[:4] == "exit":
+            return False
+        sql_parser = SqlParser(content)
+        try:
+            sql_parser.read_util_complete()
+        except EOFError:
+            return True
+        return False
