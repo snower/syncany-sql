@@ -280,7 +280,7 @@ class Compiler(object):
             column_join_tables.remove(dup_column_join_table)
         column_join_tables.extend(current_join_tables)
         column_join_names = sorted(list({join_column["table_name"] for join_table in current_join_tables
-                                         for join_column in join_table["join_columns"]}),
+                                         for join_column in join_table["join_columns"] if join_column["table_name"] != primary_table["table_name"]}),
                                    key=lambda x: 0xffffff if x == primary_table["table_name"] else join_tables[x]["ref_count"])
         self.compile_join_column_tables(primary_table, [join_tables[column_join_name] for column_join_name in column_join_names
                           if column_join_name != primary_table["table_name"]], join_tables, column_join_tables)
@@ -639,8 +639,7 @@ class Compiler(object):
             self.parse_calculate(primary_table, value_expression, calculate_fields)
             if not calculate_fields and condition_column["table_name"] == join_table["name"]:
                 return (False, condition_column, self.compile_calculate(primary_table, value_expression, []))
-            join_table["join_columns"].extend([calculate_field for calculate_field in calculate_fields
-                                               if calculate_field["table_name"] != primary_table["table_name"]])
+            join_table["join_columns"].extend(calculate_fields)
             join_table["calculate_expressions"].append(value_expression)
             return (True, condition_column, None)
 
