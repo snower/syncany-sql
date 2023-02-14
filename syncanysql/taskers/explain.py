@@ -18,6 +18,7 @@ class ExplainTasker(object):
         beautify_print("%s tasker %s compiled config:" % (datetime.datetime.now(), self.tasker.config["name"]))
         beautify_print(self.tasker.config)
         print()
+        self.tasker.config["output"] = "&.-.&1::" + self.tasker.config["output"].split("::")[-1].split(" ")[0]
         return self.tasker.run(session_config, manager, arguments)
 
     def terminate(self):

@@ -9,10 +9,12 @@ from sqlglot import expressions as sqlglot_expressions
 from sqlglot.dialects import Dialect
 from sqlglot import tokens
 from .errors import SyncanySqlCompileException
+from .config import CONST_CONFIG_KEYS
 from .parser import SqlParser
 from .taskers.query import QueryTasker
 from .taskers.explain import ExplainTasker
 from .taskers.set_command import SetCommandTasker
+
 
 class CompilerDialect(Dialect):
     class Tokenizer(tokens.Tokenizer):
@@ -22,6 +24,7 @@ class CompilerDialect(Dialect):
         ESCAPES = ["'", "\\"]
         BIT_STRINGS = [("b'", "'"), ("B'", "'"), ("0b", "")]
         HEX_STRINGS = [("x'", "'"), ("X'", "'"), ("0x", "")]
+
 
 class Compiler(object):
     def __init__(self, config):
@@ -40,7 +43,7 @@ class Compiler(object):
                 value = self.parse_const(expression.args["expression"])["value"].split("=")
                 config = {"key": value[0].strip(), "value": "=".join(value[1:]).strip()}
                 return SetCommandTasker(config)
-        raise SyncanySqlCompileException("unkonw sql: " + str(expression))
+        raise SyncanySqlCompileException("unkonw sql: " + self.to_sql(expression))
 
     def compile_query(self, expression, arguments):
         config = copy.deepcopy(self.config)
@@ -61,13 +64,13 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Select):
             self.compile_select(expression, config, arguments)
         else:
-            raise SyncanySqlCompileException("unkonw sql: " + str(expression))
+            raise SyncanySqlCompileException("unkonw sql: " + self.to_sql(expression))
         return config
 
     def compile_subquery(self, expression, arguments):
         table_name = expression.args["alias"].args["this"].name
         subquery_name = "__subquery_" + str(id(expression)) + "_" + table_name
-        subquery_arguments = {key: arguments[key] for key in ("@timeout", "@limit") if key in arguments}
+        subquery_arguments = {key: arguments[key] for key in CONST_CONFIG_KEYS if key in arguments}
         subquery_config = self.compile_query(expression.args["this"], subquery_arguments)
         subquery_config["output"] = "&.--." + subquery_name + "::" + subquery_config["output"].split("::")[-1]
         subquery_config["name"] = subquery_config["name"] + "#" + subquery_name
@@ -76,7 +79,7 @@ class Compiler(object):
 
     def compile_insert_into(self, expression, config, arguments):
         if not isinstance(expression.args["this"], sqlglot_expressions.Table):
-            raise SyncanySqlCompileException("unkonw insert info table: " + str(expression))
+            raise SyncanySqlCompileException("unkonw insert info table: " + self.to_sql(expression))
         db_name = expression.args["db"].name if "db" in expression.args else None
         table_name = expression.args["this"].name
         if table_name in self.mapping:
@@ -110,7 +113,7 @@ class Compiler(object):
             config["output"] = "".join(["&.", db_name, ".", table_name, "::", "id"])
         select_expression = expression.args.get("expression")
         if not select_expression or not isinstance(select_expression, (sqlglot_expressions.Select, sqlglot_expressions.Union)):
-            raise SyncanySqlCompileException("unkonw insert info select: " + str(expression))
+            raise SyncanySqlCompileException("unkonw insert info select: " + self.to_sql(expression))
         if isinstance(select_expression, sqlglot_expressions.Union):
             self.compile_union(select_expression, config, arguments)
         else:
@@ -132,7 +135,7 @@ class Compiler(object):
         query_name = "__unionquery_" + str(id(expression))
         for select_expression in select_expressions:
             subquery_name = "__unionquery_" + str(id(expression)) + "_" + str(id(select_expression))
-            subquery_arguments = {key: arguments[key] for key in ("@timeout", "@limit") if key in arguments}
+            subquery_arguments = {key: arguments[key] for key in CONST_CONFIG_KEYS if key in arguments}
             subquery_config = self.compile_query(expression.args["this"], subquery_arguments)
             subquery_config["output"] = "&.--." + query_name + "::" + subquery_config["output"].split("::")[-1].split(" ")[0] + " use I"
             subquery_config["name"] = subquery_config["name"] + "#" + subquery_name
@@ -147,7 +150,7 @@ class Compiler(object):
 
         from_expression = expression.args.get("from")
         if not isinstance(from_expression, sqlglot_expressions.From) or not from_expression.expressions:
-            raise SyncanySqlCompileException("unkonw table: " + str(expression))
+            raise SyncanySqlCompileException("unkonw table: " + self.to_sql(expression))
         from_expression = from_expression.expressions[0]
         if isinstance(from_expression, sqlglot_expressions.Table):
             primary_table["db"] = from_expression.args["db"].name
@@ -157,7 +160,7 @@ class Compiler(object):
             primary_table["table_name"] = primary_table["table_alias"] if primary_table["table_alias"] else primary_table["name"]
         elif isinstance(from_expression, sqlglot_expressions.Subquery):
             if "alias" not in from_expression.args:
-                raise SyncanySqlCompileException("subquery must be alias name: " + str(expression))
+                raise SyncanySqlCompileException("subquery must be alias name: " + self.to_sql(expression))
             primary_table["table_alias"] = from_expression.args["alias"].args["this"].name
             primary_table["table_name"] = primary_table["table_alias"]
             subquery_name, subquery_config = self.compile_subquery(from_expression, arguments)
@@ -165,7 +168,7 @@ class Compiler(object):
             primary_table["name"] = subquery_name
             config["dependencys"].append(subquery_config)
         else:
-            raise SyncanySqlCompileException("unkonw table: " + str(expression))
+            raise SyncanySqlCompileException("unkonw table: " + self.to_sql(expression))
 
         join_tables = self.parse_joins(primary_table, config, expression.args["joins"], arguments) \
             if "joins" in expression.args and expression.args["joins"] else {}
@@ -176,7 +179,7 @@ class Compiler(object):
 
         select_expressions = expression.args.get("expressions")
         if not select_expressions:
-            raise SyncanySqlCompileException("unkonw table selects: " + str(expression))
+            raise SyncanySqlCompileException("unkonw table select fields: " + self.to_sql(expression))
         config["schema"] = {}
         for select_expression in select_expressions:
             if isinstance(select_expression, sqlglot_expressions.Star):
@@ -197,7 +200,7 @@ class Compiler(object):
                 elif isinstance(select_expression.args["this"], (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Min, sqlglot_expressions.Max)):
                     aggregate_expression = select_expression.args["this"]
             else:
-                raise SyncanySqlCompileException("unkonw table select field: " + str(expression))
+                raise SyncanySqlCompileException("unkonw table select field: " + self.to_sql(expression))
             if column_expression:
                 self.compile_select_column(primary_table, column_expression, column_alias, config, join_tables)
                 continue
@@ -315,8 +318,8 @@ class Compiler(object):
         if not expression:
             return
         if isinstance(expression, sqlglot_expressions.And):
-            self.compile_where_condition(primary_table, expression.args.get("expression"), config)
             self.compile_where_condition(primary_table, expression.args.get("this"), config)
+            self.compile_where_condition(primary_table, expression.args.get("expression"), config)
             return
 
         def parse(expression):
@@ -325,51 +328,51 @@ class Compiler(object):
             else:
                 table_expression, value_expression = expression.args["this"], expression.args["expression"]
             if not isinstance(table_expression, sqlglot_expressions.Column):
-                raise SyncanySqlCompileException("unkonw where condition: " + str(expression))
+                raise SyncanySqlCompileException("unkonw where condition: " + self.to_sql(expression))
             condition_table = table_expression.args["table"].name if "table" in table_expression.args else None
             if condition_table and condition_table != primary_table["table_name"]:
-                raise SyncanySqlCompileException("unkonw where condition: " + str(expression))
+                raise SyncanySqlCompileException("unkonw where condition: " + self.to_sql(expression))
 
             condition_column = self.parse_column(table_expression)
             if isinstance(expression, sqlglot_expressions.In):
                 value_column = []
                 for value_expression_item in value_expression:
                     if not self.is_const(value_expression_item):
-                        raise SyncanySqlCompileException("unkonw where condition: " + str(expression))
+                        raise SyncanySqlCompileException("unkonw where condition: " + self.to_sql(expression))
                     value_column.append(self.parse_const(value_expression_item)["value"])
             else:
                 calculate_fields = []
                 self.parse_calculate(primary_table, value_expression, calculate_fields)
                 if calculate_fields:
-                    raise SyncanySqlCompileException("unkonw where condition: " + str(expression))
+                    raise SyncanySqlCompileException("unkonw where condition: " + self.to_sql(expression))
                 value_column = self.compile_calculate(primary_table, value_expression, [])
-            if condition_column["column_name"] not in config["querys"]:
-                config["querys"][condition_column["column_name"]] = {}
+            if condition_column["typing_name"] not in config["querys"]:
+                config["querys"][condition_column["typing_name"]] = {}
             return (condition_column, value_column)
 
         if isinstance(expression, sqlglot_expressions.EQ):
             condition_column, value_column = parse(expression)
-            config["querys"][condition_column["column_name"]]["=="] = value_column
+            config["querys"][condition_column["typing_name"]]["=="] = value_column
         elif isinstance(expression, sqlglot_expressions.NEQ):
             condition_column, value_column = parse(expression)
-            config["querys"][condition_column["column_name"]]["!="] = value_column
+            config["querys"][condition_column["typing_name"]]["!="] = value_column
         elif isinstance(expression, sqlglot_expressions.GT):
             condition_column, value_column = parse(expression)
-            config["querys"][condition_column["column_name"]][">"] = value_column
+            config["querys"][condition_column["typing_name"]][">"] = value_column
         elif isinstance(expression, sqlglot_expressions.GTE):
             condition_column, value_column = parse(expression)
-            config["querys"][condition_column["column_name"]][">="] = value_column
+            config["querys"][condition_column["typing_name"]][">="] = value_column
         elif isinstance(expression, sqlglot_expressions.LT):
             condition_column, value_column = parse(expression)
-            config["querys"][condition_column["column_name"]]["<"] = value_column
+            config["querys"][condition_column["typing_name"]]["<"] = value_column
         elif isinstance(expression, sqlglot_expressions.LTE):
             condition_column, value_column = parse(expression)
-            config["querys"][condition_column["column_name"]]["<="] = value_column
+            config["querys"][condition_column["typing_name"]]["<="] = value_column
         elif isinstance(expression, sqlglot_expressions.In):
             condition_column, value_column = parse(expression)
-            config["querys"][condition_column["column_name"]]["in"] = value_column
+            config["querys"][condition_column["typing_name"]]["in"] = value_column
         else:
-            raise SyncanySqlCompileException("unkonw where condition: " + str(expression))
+            raise SyncanySqlCompileException("unkonw where condition: " + self.to_sql(expression))
 
     def compile_aggregate_column(self, primary_table, column_alias, config, group_expression, aggregate_expression, group_fields, join_tables):
         calculate_fields = [group_field for group_field in group_fields]
@@ -397,19 +400,22 @@ class Compiler(object):
         if isinstance(expression, sqlglot_expressions.Count):
             return ["@add", "$." + column_alias + "|int", 1]
         elif isinstance(expression, sqlglot_expressions.Sum):
-            return ["@add", "$." + column_alias + "|float",
-                    self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index - 1),
-                    ]
+            return [
+                "@add", "$." + column_alias + "|float",
+                self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index - 1)
+            ]
         elif isinstance(expression, sqlglot_expressions.Min):
-            return ["@min", "$." + column_alias + "|float",
-                    self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index - 1),
-                    ]
+            return [
+                "@min", "$." + column_alias + "|float",
+                self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index - 1)
+            ]
         elif isinstance(expression, sqlglot_expressions.Max):
-            return ["@max", "$." + column_alias + "|float",
-                    self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index - 1),
-                    ]
+            return [
+                "@max", "$." + column_alias + "|float",
+                self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index - 1)
+            ]
         else:
-            raise SyncanySqlCompileException("unkonw calculate: " + str(expression))
+            raise SyncanySqlCompileException("unkonw calculate: " + self.to_sql(expression))
         
     def compile_calculate(self, primary_table, expression, column_join_tables, join_index=-1):
         if isinstance(expression, sqlglot_expressions.Anonymous):
@@ -418,25 +424,29 @@ class Compiler(object):
                 column.append(self.compile_calculate(primary_table, arg_expression, column_join_tables, join_index))
             return column
         elif isinstance(expression, sqlglot_expressions.Add):
-            return ["@add",
-                    self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
-                    self.compile_calculate(primary_table, expression.args["expression"], column_join_tables, join_index),
-                    ]
+            return [
+                "@add",
+                self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
+                self.compile_calculate(primary_table, expression.args["expression"], column_join_tables, join_index)
+            ]
         elif isinstance(expression, sqlglot_expressions.Sub):
-            return ["@sub",
-                    self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
-                    self.compile_calculate(primary_table, expression.args["expression"], column_join_tables, join_index),
-                    ]
+            return [
+                "@sub",
+                self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
+                self.compile_calculate(primary_table, expression.args["expression"], column_join_tables, join_index)
+            ]
         elif isinstance(expression, sqlglot_expressions.Mul):
-            return ["@mul",
-                    self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
-                    self.compile_calculate(primary_table, expression.args["expression"], column_join_tables, join_index),
-                    ]
+            return [
+                "@mul",
+                self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
+                self.compile_calculate(primary_table, expression.args["expression"], column_join_tables, join_index)
+            ]
         elif isinstance(expression, sqlglot_expressions.Div):
-            return ["@div",
-                    self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
-                    self.compile_calculate(primary_table, expression.args["expression"], column_join_tables, join_index),
-                    ]
+            return [
+                "@div",
+                self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
+                self.compile_calculate(primary_table, expression.args["expression"], column_join_tables, join_index)
+            ]
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index)
         elif isinstance(expression, sqlglot_expressions.Column):
@@ -447,18 +457,20 @@ class Compiler(object):
         elif self.is_const(expression):
             return self.compile_const(self.parse_const(expression))
         else:
-            raise SyncanySqlCompileException("unkonw calculate: " + str(expression))
+            raise SyncanySqlCompileException("unkonw calculate: " + self.to_sql(expression))
 
     def compile_having_condition(self, primary_table, expression, config):
         if isinstance(expression, sqlglot_expressions.And):
-            return ["@and",
-                self.compile_having_condition(primary_table, expression.args.get("expression"), config),
-                self.compile_having_condition(primary_table, expression.args.get("this"), config)
+            return [
+                "@and",
+                self.compile_having_condition(primary_table, expression.args.get("this"), config),
+                self.compile_having_condition(primary_table, expression.args.get("expression"), config)
             ]
         if isinstance(expression, sqlglot_expressions.Or):
-            return ["@or",
-                self.compile_having_condition(primary_table, expression.args.get("expression"), config),
-                self.compile_having_condition(primary_table, expression.args.get("this"), config)
+            return [
+                "@or",
+                self.compile_having_condition(primary_table, expression.args.get("this"), config),
+                self.compile_having_condition(primary_table, expression.args.get("expression"), config)
             ]
 
         def parse(expression):
@@ -467,20 +479,20 @@ class Compiler(object):
             else:
                 table_expression, value_expression = expression.args["this"], expression.args["expression"]
             if not isinstance(table_expression, sqlglot_expressions.Column) or "table" in table_expression.args:
-                raise SyncanySqlCompileException("unkonw having condition: " + str(expression))
+                raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
             condition_column = self.parse_column(table_expression)
             if isinstance(expression, sqlglot_expressions.In):
                 value_items = []
                 for value_expression_item in value_expression:
                     if not self.is_const(value_expression_item):
-                        raise SyncanySqlCompileException("unkonw having condition: " + str(expression))
+                        raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
                     value_items.append(self.parse_const(value_expression_item)["value"])
                 return (condition_column, value_items)
 
             calculate_fields = []
             self.parse_calculate(primary_table, value_expression, calculate_fields)
             if calculate_fields:
-                raise SyncanySqlCompileException("unkonw having condition: " + str(expression))
+                raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
             return (self.compile_column(condition_column), self.compile_calculate(primary_table, value_expression, []))
 
         if isinstance(expression, sqlglot_expressions.EQ):
@@ -505,9 +517,9 @@ class Compiler(object):
             column, value = parse(expression)
             return ["@in", column, value]
         elif isinstance(expression, sqlglot_expressions.Paren):
-            return self.compile_having_condition(primary_table, expression.args.get("this"), config),
+            return self.compile_having_condition(primary_table, expression.args.get("this"), config)
         else:
-            raise SyncanySqlCompileException("unkonw where condition: " + str(expression))
+            raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
 
     def compile_order(self, primary_table, expressions, config):
         primary_sort_keys, sort_keys = [], []
@@ -542,7 +554,7 @@ class Compiler(object):
         join_tables = {}
         for join_expression in join_expressions:
             if "alias" not in join_expression.args["this"].args:
-                raise SyncanySqlCompileException("join table must be alias name: " + str(join_expression))
+                raise SyncanySqlCompileException("join table must be alias name: " + self.to_sql(join_expression))
             name = join_expression.args["this"].args["alias"].args["this"].name
             if isinstance(join_expression.args["this"], sqlglot_expressions.Table):
                 db, table = join_expression.args["this"].args["db"].name, join_expression.args["this"].args["this"].name
@@ -551,16 +563,16 @@ class Compiler(object):
                 db, table = "--", subquery_name
                 config["dependencys"].append(subquery_config)
             else:
-                raise SyncanySqlCompileException("unkonw join table: " + str(join_expression))
+                raise SyncanySqlCompileException("unkonw join table: " + self.to_sql(join_expression))
             if "on" not in join_expression.args:
-                raise SyncanySqlCompileException("unkonw join on: " + str(join_expression))
+                raise SyncanySqlCompileException("unkonw join on: " + self.to_sql(join_expression))
             join_table = {
                 "db": db, "table": table, "name": name, "primary_keys": set([]),
                 "join_columns": [], "calculate_expressions": [], "querys": {}, "ref_count": 0
             }
             self.parse_on_condition(primary_table, join_expression.args["on"], join_table)
             if not join_table["primary_keys"] or not join_table["join_columns"]:
-                raise SyncanySqlCompileException("empty join table: " + str(join_expression))
+                raise SyncanySqlCompileException("empty join table: " + self.to_sql(join_expression))
             join_tables[join_table["name"]] = join_table
 
         for name, join_table in join_tables.items():
@@ -576,8 +588,8 @@ class Compiler(object):
         if not expression:
             return
         if isinstance(expression, sqlglot_expressions.And):
-            self.parse_on_condition(primary_table, expression.args.get("expression"), join_table)
             self.parse_on_condition(primary_table, expression.args.get("this"), join_table)
+            self.parse_on_condition(primary_table, expression.args.get("expression"), join_table)
             return
 
         def parse(expression):
@@ -591,18 +603,18 @@ class Compiler(object):
                         table_expression = arg_expression
                         break
                 if table_expression is None:
-                    raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
+                    raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
                 value_expression = expression.args["expression"] if table_expression == expression.args["this"] else expression.args["this"]
             elif isinstance(expression, sqlglot_expressions.In):
                 table_expression, value_expression = expression.args["this"], expression.args["expressions"]
                 if not isinstance(table_expression, sqlglot_expressions.Column) or "table" not in table_expression.args \
                         or not table_expression.args["table"].name:
-                    raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
+                    raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
                 condition_column = self.parse_column(table_expression)
                 value_items = []
                 for value_expression_item in value_expression:
                     if not self.is_const(value_expression_item):
-                        raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
+                        raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
                     value_items.append(self.parse_const(value_expression_item)["value"])
                 return (False, condition_column, self.compile_calculate(primary_table, value_expression, []))
             else:
@@ -612,11 +624,11 @@ class Compiler(object):
             if not isinstance(expression, sqlglot_expressions.EQ) or self.is_const(value_expression):
                 if not isinstance(table_expression, sqlglot_expressions.Column) or "table" not in table_expression.args \
                         or not table_expression.args["table"].name:
-                    raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
+                    raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
                 calculate_fields = []
                 self.parse_calculate(primary_table, value_expression, calculate_fields)
                 if calculate_fields:
-                    raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
+                    raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
                 return (False, condition_column, self.compile_calculate(primary_table, value_expression, []))
 
             if isinstance(value_expression, sqlglot_expressions.Column):
@@ -637,53 +649,53 @@ class Compiler(object):
             if is_column:
                 join_table["primary_keys"].add(condition_column["column_name"])
             else:
-                if condition_column["column_name"] not in join_table["querys"]:
-                    join_table["querys"][condition_column["column_name"]] = {}
-                join_table["querys"][condition_column["column_name"]]["=="] = value_column
+                if condition_column["typing_name"] not in join_table["querys"]:
+                    join_table["querys"][condition_column["typing_name"]] = {}
+                join_table["querys"][condition_column["typing_name"]]["=="] = value_column
         elif isinstance(expression, sqlglot_expressions.NEQ):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
-                raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
-            if condition_column["column_name"] not in join_table["querys"]:
-                join_table["querys"][condition_column["column_name"]] = {}
-            join_table["querys"][condition_column["column_name"]]["!="] = value_column
+                raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+            if condition_column["typing_name"] not in join_table["querys"]:
+                join_table["querys"][condition_column["typing_name"]] = {}
+            join_table["querys"][condition_column["typing_name"]]["!="] = value_column
         elif isinstance(expression, sqlglot_expressions.GT):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
-                raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
-            if condition_column["column_name"] not in join_table["querys"]:
-                join_table["querys"][condition_column["column_name"]] = {}
-            join_table["querys"][condition_column["column_name"]][">"] = value_column
+                raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+            if condition_column["typing_name"] not in join_table["querys"]:
+                join_table["querys"][condition_column["typing_name"]] = {}
+            join_table["querys"][condition_column["typing_name"]][">"] = value_column
         elif isinstance(expression, sqlglot_expressions.GTE):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
-                raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
-            if condition_column["column_name"] not in join_table["querys"]:
-                join_table["querys"][condition_column["column_name"]] = {}
-            join_table["querys"][condition_column["column_name"]][">="] = value_column
+                raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+            if condition_column["typing_name"] not in join_table["querys"]:
+                join_table["querys"][condition_column["typing_name"]] = {}
+            join_table["querys"][condition_column["typing_name"]][">="] = value_column
         elif isinstance(expression, sqlglot_expressions.LT):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
-                raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
-            if condition_column["column_name"] not in join_table["querys"]:
-                join_table["querys"][condition_column["column_name"]] = {}
-            join_table["querys"][condition_column["column_name"]]["<"] = value_column
+                raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+            if condition_column["typing_name"] not in join_table["querys"]:
+                join_table["querys"][condition_column["typing_name"]] = {}
+            join_table["querys"][condition_column["typing_name"]]["<"] = value_column
         elif isinstance(expression, sqlglot_expressions.LTE):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
-                raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
-            if condition_column["column_name"] not in join_table["querys"]:
-                join_table["querys"][condition_column["column_name"]] = {}
-            join_table["querys"][condition_column["column_name"]]["<="] = value_column
+                raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+            if condition_column["typing_name"] not in join_table["querys"]:
+                join_table["querys"][condition_column["typing_name"]] = {}
+            join_table["querys"][condition_column["typing_name"]]["<="] = value_column
         elif isinstance(expression, sqlglot_expressions.In):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
-                raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
-            if condition_column["column_name"] not in join_table["querys"]:
-                join_table["querys"][condition_column["column_name"]] = {}
-            join_table["querys"][condition_column["column_name"]]["in"] = value_column
+                raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+            if condition_column["typing_name"] not in join_table["querys"]:
+                join_table["querys"][condition_column["typing_name"]] = {}
+            join_table["querys"][condition_column["typing_name"]]["in"] = value_column
         else:
-            raise SyncanySqlCompileException("unkonw join on condition: " + str(expression))
+            raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
 
     def parse_group(self, primary_table, expression, group_fields):
         for group_expression in expression.args["expressions"]:
@@ -699,7 +711,7 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Max):
             self.parse_calculate(primary_table, expression.args["this"], calculate_fields)
         else:
-            raise SyncanySqlCompileException("unkonw aggregate calculate: " + str(expression))
+            raise SyncanySqlCompileException("unkonw aggregate calculate: " + self.to_sql(expression))
 
     def parse_calculate(self, primary_table, expression, calculate_fields):
         if isinstance(expression, sqlglot_expressions.Anonymous):
@@ -729,7 +741,7 @@ class Compiler(object):
         elif self.is_const(expression):
             pass
         else:
-            raise SyncanySqlCompileException("unkonw calculate: " + str(expression))
+            raise SyncanySqlCompileException("unkonw calculate: " + self.to_sql(expression))
         
     def parse_column(self, expression):
         table_name = expression.args["table"].name if "table" in expression.args else None
@@ -738,8 +750,11 @@ class Compiler(object):
         try:
             start_index, end_index = origin_name.index("["), origin_name.rindex("]")
             typing_filters = origin_name[start_index+1: end_index].split(";")
+            column_name = origin_name[:start_index]
+            typing_name = (column_name + "|" + typing_filters[0]) if typing_filters else column_name
         except ValueError:
             typing_filters = []
+            typing_name = column_name
         try:
             start_index, end_index = origin_name.index("<"), origin_name.rindex(">")
             typing_options = origin_name[start_index+1: end_index].split(",")
@@ -749,6 +764,7 @@ class Compiler(object):
             "table_name": table_name,
             "column_name": column_name,
             "origin_name": origin_name,
+            "typing_name": typing_name,
             "typing_filters": typing_filters,
             "typing_options": typing_options,
             "expression": expression
@@ -787,8 +803,7 @@ class Compiler(object):
                 start_index, end_index, segment = parser.read_segment()
                 allow_segment = get_allow_segment(segment)
                 if allow_segment != segment:
-                    if not allow_segment or allow_segment in self.mapping:
-                        allow_segment = allow_segment + "_" + str(id(segment))
+                    allow_segment = allow_segment + "_" + str(id(segment))
                     self.mapping[allow_segment] = segment
                     segment = allow_segment
                 segments.append(parser.sql[last_end_index: start_index])
@@ -802,3 +817,22 @@ class Compiler(object):
     def is_const(self, expression):
         return isinstance(expression, (sqlglot_expressions.Literal, sqlglot_expressions.Boolean,
                                        sqlglot_expressions.Null))
+
+    def to_sql(self, expression_sql):
+        if not isinstance(expression_sql, str):
+            expression_sql = str(expression_sql)
+        parser = SqlParser(expression_sql)
+        segments = []
+        last_start_index, last_end_index = 0, 0
+        while True:
+            try:
+                start_index, end_index, segment = parser.read_segment()
+                if segment in self.mapping:
+                    segment = self.mapping[segment]
+                segments.append(parser.sql[last_end_index: start_index])
+                segments.append(segment)
+                last_start_index, last_end_index = start_index, end_index
+            except EOFError:
+                segments.append(parser.sql[last_end_index:])
+                break
+        return "".join(segments)

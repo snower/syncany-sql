@@ -92,6 +92,8 @@ class SqlParser(object):
             if start_index is None and self.sql[self.index].isalpha():
                 start_index = self.index
             self.index += 1
+        if start_index is not None:
+            segments.append(self.sql[start_index: self.index])
         return segments
 
 

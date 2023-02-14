@@ -2,24 +2,25 @@
 # 2023/2/13
 # create by: snower
 
-import json
+from ..config import CONST_CONFIG_KEYS
 
 class SetCommandTasker(object):
     def __init__(self, config):
         self.config = config
 
     def run(self, session_config, manager, arguments):
-        if self.config["key"][:7] == "@config":
-            self.set_config(session_config)
+        if self.config["key"] in CONST_CONFIG_KEYS:
+            self.set_config(session_config, self.config["key"])
+        elif self.config["key"][:7] == "@config":
+            self.set_config(session_config, self.config["key"][8:].strip())
         return 0
 
-    def set_config(self, session_config):
-        key = self.config["key"][8:].strip()
+    def set_config(self, session_config, key):
         if self.config["value"][:1] in ('"', "'"):
-            value = self.config["value"][3:-3].strip() if self.config["value"][:3] in ("'''", '"""') else self.config["value"][1:-1].strip()
-            try:
-                value = json.loads(value)
-            except: pass
+            if self.config["value"][:3] in ("'''", '"""'):
+                value = self.config["value"][3:-3].strip()
+            else:
+                value = self.config["value"][1:-1].strip()
         else:
             if self.config["value"].lower() == 'true':
                 value = True
@@ -34,5 +35,3 @@ class SetCommandTasker(object):
                 else:
                     value = self.config["value"].strip()
         session_config.set(key, value)
-
-
