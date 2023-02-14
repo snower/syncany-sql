@@ -38,7 +38,7 @@ setup(
     install_requires=[
         "pyyaml>=5.1.2",
         "sqlglot>=10.6.2"
-        "syncany>=0.1.10",
+        "syncany>=0.1.11",
         'Pygments>=2.14.0',
         'Pygments>=2.14.0',
         'prompt-toolkit>=3.0.36'

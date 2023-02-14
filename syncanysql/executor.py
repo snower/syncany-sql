@@ -26,7 +26,10 @@ class Executor(object):
             if arg[:2] != "--":
                 continue
             arg_info = arg[2:].split("=")
-            self.env_variables[arg_info[0]] = arg_info[1] if len(arg_info) >= 2 else True
+            arg_value = arg_info[1] if len(arg_info) >= 2 else True
+            if isinstance(arg_value, str) and arg_value and arg_value[0] in ('"', "'"):
+                arg_value = arg_value[1:-1]
+            self.env_variables[arg_info[0]] = arg_value
 
     def compile_env_variable(self, sql):
         if self.env_variables is None:
