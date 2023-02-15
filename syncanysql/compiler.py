@@ -11,6 +11,7 @@ from sqlglot import tokens
 from .errors import SyncanySqlCompileException
 from .config import CONST_CONFIG_KEYS
 from .parser import SqlParser
+from .taskers.delete import DeleteTasker
 from .taskers.query import QueryTasker
 from .taskers.explain import ExplainTasker
 from .taskers.set_command import SetCommandTasker
@@ -34,7 +35,9 @@ class Compiler(object):
     def compile(self, sql, arguments):
         sql = self.parse_mapping(sql)
         expression = maybe_parse(sql, dialect=CompilerDialect)
-        if isinstance(expression, (sqlglot_expressions.Union, sqlglot_expressions.Insert, sqlglot_expressions.Select)):
+        if isinstance(expression, sqlglot_expressions.Delete):
+            return DeleteTasker(self.compile_delete(expression, arguments))
+        elif isinstance(expression, (sqlglot_expressions.Union, sqlglot_expressions.Insert, sqlglot_expressions.Select)):
             return QueryTasker(self.compile_query(expression, arguments))
         elif isinstance(expression, sqlglot_expressions.Command):
             if expression.args["this"].lower() == "explain" and self.is_const(expression.args["expression"]):
@@ -45,10 +48,26 @@ class Compiler(object):
                 return SetCommandTasker(config)
         raise SyncanySqlCompileException("unkonw sql: " + self.to_sql(expression))
 
+    def compile_delete(self, expression, arguments):
+        config = copy.deepcopy(self.config)
+        config.update({
+            "input": "&.--.__null::id",
+            "output": "&.-.&1::id",
+            "querys": {},
+            "schema": "$.*",
+        })
+
+        table_info = self.parse_table(expression.args["this"], config)
+        where_expression = expression.args.get("where")
+        if where_expression and isinstance(where_expression, sqlglot_expressions.Where):
+            self.compile_where_condition(table_info, where_expression.args["this"], config)
+        config["output"] = "".join(["&.", table_info["db"], ".", table_info["name"], "::id use DI"])
+        return config
+
     def compile_query(self, expression, arguments):
         config = copy.deepcopy(self.config)
         config.update({
-            "input": "&.=.-::id",
+            "input": "&.-.&1::id",
             "output": "&.-.&1::id",
             "querys": {},
             "schema": "$.*",
@@ -80,37 +99,13 @@ class Compiler(object):
     def compile_insert_into(self, expression, config, arguments):
         if not isinstance(expression.args["this"], sqlglot_expressions.Table):
             raise SyncanySqlCompileException("unkonw insert info table: " + self.to_sql(expression))
-        db_name = expression.args["db"].name if "db" in expression.args else None
-        table_name = expression.args["this"].name
-        if table_name in self.mapping:
-            table_name = self.mapping[table_name]
-        if table_name == "_":
+        table_info = self.parse_table(expression.args["this"], config)
+        if table_info["db"] == "-" and table_info["name"] == "_":
             config["output"] = "&.-.&1::id"
-        elif not db_name:
-            path_info = os.path.split(table_name.split("#")[0])
-            path = os.path.abspath(path_info[0]) if path_info[0] else os.getcwd()
-            path_db_driver = {".txt": "textline", ".json": "json", ".csv": "csv", ".xls": "execl",
-                              ".xlsx": "execl"}.get(os.path.splitext(path_info[-1])[-1])
-            if path_db_driver:
-                path_db_name = "".join([c for c in path if c.isalpha() or c.isdigit() or c == os.path.sep]).replace(os.path.sep, "_")
-                databases = config.get("databases")
-                if not databases:
-                    config["databases"] = databases = []
-                path_database = None
-                for database in databases:
-                    if database["driver"] == path_db_driver and database["path"] == path:
-                        path_database = database
-                        break
-                if not path_database:
-                    path_database = {"name": path_db_name, "driver": path_db_driver, "path": path}
-                    databases.append(path_database)
-                if path_db_driver == "textline" and "format=" in table_name:
-                    path_database["format"] = table_name.split("format=")[-1].split("&")[0]
-                config["output"] = "".join(["&.", path_db_name, ".", path_info[1], "::", "id"])
-            else:
-                config["output"] = "".join(["&.--.", table_name, "::", "id"])
         else:
-            config["output"] = "".join(["&.", db_name, ".", table_name, "::", "id"])
+            update_types = [u for u in ("I", "UI", "UDI", "DI")]
+            config["output"] = "".join(["&.", table_info["db"], ".", table_info["name"], "::",
+                                        "id", (" use " + update_types[0]) if update_types else ""])
         select_expression = expression.args.get("expression")
         if not select_expression or not isinstance(select_expression, (sqlglot_expressions.Select, sqlglot_expressions.Union)):
             raise SyncanySqlCompileException("unkonw insert info select: " + self.to_sql(expression))
@@ -137,7 +132,7 @@ class Compiler(object):
             subquery_name = "__unionquery_" + str(id(expression)) + "_" + str(id(select_expression))
             subquery_arguments = {key: arguments[key] for key in CONST_CONFIG_KEYS if key in arguments}
             subquery_config = self.compile_query(expression.args["this"], subquery_arguments)
-            subquery_config["output"] = "&.--." + query_name + "::" + subquery_config["output"].split("::")[-1].split(" ")[0] + " use I"
+            subquery_config["output"] = "&.--." + query_name + "::" + subquery_config["output"].split("::")[-1].split(" use ")[0] + " use I"
             subquery_config["name"] = subquery_config["name"] + "#" + subquery_name
             arguments.update({subquery_config["name"] + "@" + key: value for key, value in subquery_arguments.items()})
             config["dependencys"].append(subquery_config)
@@ -153,7 +148,7 @@ class Compiler(object):
             raise SyncanySqlCompileException("unkonw table: " + self.to_sql(expression))
         from_expression = from_expression.expressions[0]
         if isinstance(from_expression, sqlglot_expressions.Table):
-            table_info = self.parse_table(from_expression)
+            table_info = self.parse_table(from_expression, config)
             primary_table["db"] = table_info["db"]
             primary_table["name"] = table_info["name"]
             primary_table["table_alias"] = table_info["table_alias"]
@@ -245,7 +240,7 @@ class Compiler(object):
                                    "+".join([primary_key[0] for primary_key in primary_table["primary_keys"]]) if primary_table["primary_keys"] else "id"])
         config["output"] = "".join([config["output"].split("::")[0], "::",
                                     "+".join([primary_key[1] for primary_key in primary_table["primary_keys"]]) if primary_table["primary_keys"] else "id",
-                                    " use I" if not primary_table["primary_keys"] else ""])
+                                    " use I" if not primary_table["primary_keys"] else ((" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else "")])
 
     def compile_select_column(self, primary_table, column_expression, column_alias, config, join_tables):
         column_info = self.parse_column(column_expression)
@@ -557,8 +552,8 @@ class Compiler(object):
                 raise SyncanySqlCompileException("join table must be alias name: " + self.to_sql(join_expression))
             name = join_expression.args["this"].args["alias"].args["this"].name
             if isinstance(join_expression.args["this"], sqlglot_expressions.Table):
-                table_info = self.parse_table(join_expression.args["this"])
-                db, table = table_info["db"].name, table_info["table_name"]
+                table_info = self.parse_table(join_expression.args["this"], config)
+                db, table = table_info["db"], table_info["name"]
             elif isinstance(join_expression.args["this"], sqlglot_expressions.Subquery):
                 subquery_name, subquery_config = self.compile_subquery(join_expression.args["this"], arguments)
                 db, table = "--", subquery_name
@@ -743,8 +738,8 @@ class Compiler(object):
         else:
             raise SyncanySqlCompileException("unkonw calculate: " + self.to_sql(expression))
 
-    def parse_table(self, expression):
-        db_name = expression.args["db"].name if "db" in expression.args else None
+    def parse_table(self, expression, config):
+        db_name = expression.args["db"].name if "db" in expression.args and expression.args["db"] else None
         if isinstance(expression.args["this"], sqlglot_expressions.Dot):
             def parse(expression):
                 return (parse(expression.args["this"]) if isinstance(expression.args["this"],
@@ -754,14 +749,52 @@ class Compiler(object):
             table_name = parse(expression.args["this"])
         else:
             table_name = expression.args["this"].name
+        origin_name = self.mapping[table_name] if table_name in self.mapping else table_name
+        try:
+            start_index, end_index = origin_name.index("<"), origin_name.rindex(">")
+            table_name = origin_name[:start_index]
+            typing_options = origin_name[start_index + 1: end_index].split(",")
+        except ValueError:
+            table_name = origin_name
+            typing_options = []
         if "catalog" in expression.args and expression.args["catalog"]:
             db_name, table_name = expression.args["catalog"].name, ((db_name + ".") if db_name else "") + table_name
         table_alias = expression.args["alias"].args["this"].name if "alias" in expression.args else None
+
+        if table_name == "_":
+            db_name = "-"
+        elif not db_name:
+            path_info = os.path.split(table_name)
+            path = os.path.abspath(path_info[0]) if path_info[0] else os.getcwd()
+            db_driver = {".txt": "textline", ".json": "json", ".csv": "csv", ".xls": "execl",
+                         ".xlsx": "execl"}.get(os.path.splitext(path_info[-1])[-1])
+            if db_driver:
+                path_db_name = "dir__" + "".join([c for c in path if c.isalpha() or c.isdigit() or c == os.path.sep]).replace(os.path.sep, "_")
+                database = None
+                if "databases" not in config:
+                    config["databases"] = []
+                for d in config["databases"]:
+                    if d["name"] == path_db_name or (d.get("driver") == database and d.get("path") == path):
+                        database = d
+                        break
+                if not database:
+                    database = {"name": path_db_name, "driver": db_driver, "path": path}
+                    config["databases"].append(database)
+                if db_driver == "textline":
+                    formats = [f for f in ("csv", "json", "richtable", "print") if f in typing_options]
+                    if formats:
+                        database["format"] = formats[0]
+                db_name = database["name"]
+            else:
+                db_name = "--"
+
         return {
             "db": db_name,
             "name": table_name,
             "table_name": table_alias if table_alias else table_name,
             "table_alias": table_alias,
+            "origin_name": origin_name,
+            "typing_options": typing_options,
         }
         
     def parse_column(self, expression):
