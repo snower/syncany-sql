@@ -53,16 +53,16 @@ class Executor(object):
                 if len(raw_name_info) != 2:
                     continue
                 raw_sql = "set @config.databases." + raw_name_info[0] + ".virtual_views." + raw_name_info[1] + "='''\n" + raw_sql.strip() + "\n'''"
-                exit_code = self.run_one(name, raw_sql)
+                exit_code = self.execute(name, raw_sql)
                 if exit_code is not None and exit_code != 0:
                     return exit_code
                 sql = sql.replace(raw, raw_name)
-            exit_code = self.run_one(name, sql)
+            exit_code = self.execute(name, sql)
             if exit_code is not None and exit_code != 0:
                 return exit_code
         return 0
 
-    def run_one(self, name, sql):
+    def execute(self, name, sql):
         config = copy.deepcopy(self.session_config.get())
         config["name"] = name
         compiler = Compiler(config)

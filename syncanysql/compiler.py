@@ -153,11 +153,11 @@ class Compiler(object):
             raise SyncanySqlCompileException("unkonw table: " + self.to_sql(expression))
         from_expression = from_expression.expressions[0]
         if isinstance(from_expression, sqlglot_expressions.Table):
-            primary_table["db"] = from_expression.args["db"].name
-            primary_table["name"] = from_expression.args["this"].name
-            if "alias" in from_expression.args:
-                primary_table["table_alias"] = from_expression.args["alias"].args["this"].name
-            primary_table["table_name"] = primary_table["table_alias"] if primary_table["table_alias"] else primary_table["name"]
+            table_info = self.parse_table(from_expression)
+            primary_table["db"] = table_info["db"]
+            primary_table["name"] = table_info["name"]
+            primary_table["table_alias"] = table_info["table_alias"]
+            primary_table["table_name"] = table_info["table_name"]
         elif isinstance(from_expression, sqlglot_expressions.Subquery):
             if "alias" not in from_expression.args:
                 raise SyncanySqlCompileException("subquery must be alias name: " + self.to_sql(expression))
@@ -557,7 +557,8 @@ class Compiler(object):
                 raise SyncanySqlCompileException("join table must be alias name: " + self.to_sql(join_expression))
             name = join_expression.args["this"].args["alias"].args["this"].name
             if isinstance(join_expression.args["this"], sqlglot_expressions.Table):
-                db, table = join_expression.args["this"].args["db"].name, join_expression.args["this"].args["this"].name
+                table_info = self.parse_table(join_expression.args["this"])
+                db, table = table_info["db"].name, table_info["table_name"]
             elif isinstance(join_expression.args["this"], sqlglot_expressions.Subquery):
                 subquery_name, subquery_config = self.compile_subquery(join_expression.args["this"], arguments)
                 db, table = "--", subquery_name
@@ -741,6 +742,27 @@ class Compiler(object):
             pass
         else:
             raise SyncanySqlCompileException("unkonw calculate: " + self.to_sql(expression))
+
+    def parse_table(self, expression):
+        db_name = expression.args["db"].name if "db" in expression.args else None
+        if isinstance(expression.args["this"], sqlglot_expressions.Dot):
+            def parse(expression):
+                return (parse(expression.args["this"]) if isinstance(expression.args["this"],
+                                                                     sqlglot_expressions.Dot) else expression.args["this"].name) \
+                       + "." + (parse(expression.args["expression"]) if isinstance(expression.args["expression"],
+                                                                                   sqlglot_expressions.Dot) else expression.args["expression"].name)
+            table_name = parse(expression.args["this"])
+        else:
+            table_name = expression.args["this"].name
+        if "catalog" in expression.args and expression.args["catalog"]:
+            db_name, table_name = expression.args["catalog"].name, ((db_name + ".") if db_name else "") + table_name
+        table_alias = expression.args["alias"].args["this"].name if "alias" in expression.args else None
+        return {
+            "db": db_name,
+            "name": table_name,
+            "table_name": table_alias if table_alias else table_name,
+            "table_alias": table_alias,
+        }
         
     def parse_column(self, expression):
         table_name = expression.args["table"].name if "table" in expression.args else None

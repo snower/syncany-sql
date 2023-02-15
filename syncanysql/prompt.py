@@ -171,7 +171,7 @@ class CliPrompt(object):
                 text = session.prompt("> ", multiline=Condition(lambda: self.check_complete(session.app.current_buffer.text)))
                 if text.strip().lower()[:4] == "exit":
                     return 0
-                executor.run_one("cli", text)
+                executor.run("cli", [text])
             except KeyboardInterrupt:
                 continue  # Control-C pressed. Try again.
             except EOFError:

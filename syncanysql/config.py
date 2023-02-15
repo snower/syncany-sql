@@ -44,7 +44,14 @@ class SessionConfig(object):
             if not set_database:
                 set_database = {"name": key[1]}
                 self.config["databases"].append(set_database)
-            if key[2] == "virtual_views":
+            if len(key) <= 2:
+                try:
+                    set_database.clear()
+                    set_database["name"] = key[1]
+                    set_database.update(json.loads(value))
+                except:
+                    pass
+            elif key[2] == "virtual_views":
                 if "virtual_views" not in set_database:
                     set_database["virtual_views"] = []
                 set_virtual_view = None
@@ -62,6 +69,11 @@ class SessionConfig(object):
                         set_virtual_view[key[4]] = value
                 else:
                     set_virtual_view["query"], set_virtual_view["args"] = self.parse_virtual_view_args(value)
+            else:
+                try:
+                    set_database[key[2]] = json.loads(value)
+                except:
+                    pass
         elif key[0] in ("imports", "sources"):
             if key[0] not in self.config:
                 self.config[key[0]][key[1]] = {}
