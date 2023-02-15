@@ -13,10 +13,9 @@ class DeleteTasker(object):
     def __init__(self, config):
         self.config = config
 
-    def run(self, session_config, manager, arguments):
+    def run(self, executor, session_config, manager, arguments):
         tasker = CoreTasker(self.config, manager)
         tasker_arguments = tasker.load()
-        tasker.config_logging()
 
         run_arguments = {}
         for argument in tasker_arguments:

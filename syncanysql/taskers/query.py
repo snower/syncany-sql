@@ -13,10 +13,9 @@ class QueryTasker(object):
     def __init__(self, config):
         self.config = config
 
-    def run(self, session_config, manager, arguments):
+    def run(self, executor, session_config, manager, arguments):
         tasker = CoreTasker(self.config, manager)
         tasker_arguments = tasker.load()
-        tasker.config_logging()
 
         dependency_taskers = []
         for filename in tasker.get_dependencys():

@@ -26,6 +26,7 @@ def main():
 
         session_config = SessionConfig()
         session_config.load()
+        session_config.config_logging()
         manager = TaskerManager(DatabaseManager())
 
         try:

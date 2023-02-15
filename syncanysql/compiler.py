@@ -15,6 +15,7 @@ from .taskers.delete import DeleteTasker
 from .taskers.query import QueryTasker
 from .taskers.explain import ExplainTasker
 from .taskers.set_command import SetCommandTasker
+from .taskers.execute import ExecuteTasker
 
 
 class CompilerDialect(Dialect):
@@ -46,6 +47,13 @@ class Compiler(object):
                 value = self.parse_const(expression.args["expression"])["value"].split("=")
                 config = {"key": value[0].strip(), "value": "=".join(value[1:]).strip()}
                 return SetCommandTasker(config)
+            if expression.args["this"].lower() == "execute" and self.is_const(expression.args["expression"]):
+                filename = self.parse_const(expression.args["expression"])["value"]
+                if filename and filename[0] == '`':
+                    filename = filename[1:-1]
+                if filename in self.mapping:
+                    filename = self.mapping[filename]
+                return ExecuteTasker({"filename": filename})
         raise SyncanySqlCompileException("unkonw sql: " + self.to_sql(expression))
 
     def compile_delete(self, expression, arguments):
@@ -774,7 +782,11 @@ class Compiler(object):
                 if "databases" not in config:
                     config["databases"] = []
                 for d in config["databases"]:
-                    if d["name"] == path_db_name or (d.get("driver") == database and d.get("path") == path):
+                    if d["name"] == path_db_name:
+                        d.update({"name": path_db_name, "driver": db_driver, "path": path})
+                        database = d
+                        break
+                    if d.get("driver") == database and d.get("path") == path:
                         database = d
                         break
                 if not database:

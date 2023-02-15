@@ -9,7 +9,7 @@ class ExplainTasker(object):
     def __init__(self, tasker):
         self.tasker = tasker
 
-    def run(self, session_config, manager, arguments):
+    def run(self, executor, session_config, manager, arguments):
         for key in list(arguments.keys()):
             if key.endswith("@limit"):
                 arguments[key] = 1
@@ -19,7 +19,7 @@ class ExplainTasker(object):
         beautify_print(self.tasker.config)
         print()
         self.tasker.config["output"] = "&.-.&1::" + self.tasker.config["output"].split("::")[-1].split(" ")[0]
-        return self.tasker.run(session_config, manager, arguments)
+        return self.tasker.run(executor, session_config, manager, arguments)
 
     def terminate(self):
         return self.tasker.terminate()

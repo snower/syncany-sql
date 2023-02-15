@@ -8,9 +8,14 @@ class SetCommandTasker(object):
     def __init__(self, config):
         self.config = config
 
-    def run(self, session_config, manager, arguments):
+    def run(self, executor, session_config, manager, arguments):
+        keys = self.config["key"].split(".")[0]
         if self.config["key"] in CONST_CONFIG_KEYS:
             self.set_config(session_config, self.config["key"])
+        elif keys in ("databases", "imports", "sources", "defines", "variables", "options", "caches"):
+            self.set_config(session_config, self.config["key"])
+        elif keys == "virtual_views":
+            self.set_config(session_config, "databases." + self.config["key"])
         elif self.config["key"][:7] == "@config":
             self.set_config(session_config, self.config["key"][8:].strip())
         return 0

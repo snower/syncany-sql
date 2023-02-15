@@ -71,7 +71,7 @@ class Executor(object):
                      "@insert_batch": config.get("@insert_batch", 0)}
         self.tasker = compiler.compile(sql, arguments)
         try:
-            return self.tasker.run(self.session_config, self.manager, arguments)
+            return self.tasker.run(self, self.session_config, self.manager, arguments)
         finally:
             for factory in self.manager.database_manager.factorys.values():
                 if not isinstance(factory, MemoryDBFactory):

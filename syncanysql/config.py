@@ -3,11 +3,17 @@
 # create by: snower
 
 import os
+import copy
 import re
+import logging.config
 import json
+from syncany.taskers.core import CoreTasker
+from syncany.taskers.config import load_config
+
 
 VIRTUAL_VIEW_ARGS_RE = re.compile("(\#\{\w+?(:.*?){0,1}\})", re.DOTALL | re.M)
 CONST_CONFIG_KEYS = ("@verbose", "@limit", "@batch", "@recovery", "@join_batch", "@insert_batch")
+
 
 class SessionConfig(object):
     def __init__(self):
@@ -109,3 +115,67 @@ class SessionConfig(object):
                 self.config["extends"] = []
             if filename not in self.config["extends"]:
                 self.config["extends"].append(filename)
+        self.load_config()
+
+    def load_config(self, filename=None):
+        if filename is None:
+            config, self.config = self.config, copy.deepcopy(CoreTasker.DEFAULT_CONFIG)
+            for k, v in CoreTasker.DEFAULT_CONFIG.items():
+                if k in config and not config[k]:
+                    config.pop(k)
+        else:
+            config = load_config(filename)
+
+        extends = config.pop("extends") if "extends" in config else []
+        if isinstance(extends, list):
+            for config_filename in extends:
+                self.load_config(config_filename)
+        else:
+            self.load_config(extends)
+
+        for k, v in config.items():
+            if k in ("arguments", "imports", "defines", "variables", "sources", "logger", "options"):
+                if not isinstance(v, dict) or not isinstance(self.config.get(k, {}), dict):
+                    continue
+
+                if k not in self.config:
+                    self.config[k] = v
+                else:
+                    self.config[k].update(v)
+            elif k in ("databases", "caches"):
+                if not isinstance(v, list) or not isinstance(self.config.get(k, []), list):
+                    continue
+
+                if k not in self.config:
+                    self.config[k] = v
+                else:
+                    vs = {c["name"]: c for c in self.config[k]}
+                    for d in v:
+                        if d["name"] in vs:
+                            vs[d["name"]].update(d)
+                        else:
+                            self.config[k].append(d)
+            elif k == "pipelines":
+                if self.config[k]:
+                    pipelines = copy.copy(self.config[k] if isinstance(self.config[k], list)
+                                            and not isinstance(self.config[k][0], str) else [self.config[k]])
+                else:
+                    pipelines = []
+                if v:
+                    for pipeline in (v if isinstance(v, list) and not isinstance(v[0], str) else [v]):
+                        pipelines.append(pipeline)
+                self.config[k] = pipelines
+            elif k == "states":
+                if self.config[k]:
+                    self.config[k].extend(v if isinstance(v, list) else [v])
+                else:
+                    self.config[k] = v if isinstance(v, list) else [v]
+            else:
+                self.config[k] = v
+
+    def config_logging(self):
+        if "logger" in self.config and isinstance(self.config["logger"], dict):
+            logging.config.dictConfig(self.config["logger"])
+        else:
+            logging.basicConfig(level=logging.INFO, format='%(asctime)s %(process)d %(levelname)s %(message)s',
+                                datefmt='%Y-%m-%d %H:%M:%S', filemode='a+')
