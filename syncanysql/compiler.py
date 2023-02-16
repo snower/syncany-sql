@@ -95,7 +95,7 @@ class Compiler(object):
         return config
 
     def compile_subquery(self, expression, arguments):
-        table_name = expression.args["alias"].args["this"].name
+        table_name = expression.args["alias"].args["this"].name if "alias" in expression.args and expression.args["alias"] else "anonymous"
         subquery_name = "__subquery_" + str(id(expression)) + "_" + table_name
         subquery_arguments = {key: arguments[key] for key in CONST_CONFIG_KEYS if key in arguments}
         subquery_config = self.compile_query(expression.args["this"], subquery_arguments)
@@ -164,7 +164,8 @@ class Compiler(object):
         elif isinstance(from_expression, sqlglot_expressions.Subquery):
             if "alias" not in from_expression.args:
                 raise SyncanySqlCompileException("subquery must be alias name: " + self.to_sql(expression))
-            primary_table["table_alias"] = from_expression.args["alias"].args["this"].name
+            primary_table["table_alias"] = from_expression.args["alias"].args["this"].name \
+                if "alias" in from_expression.args and from_expression.args["alias"] else None
             primary_table["table_name"] = primary_table["table_alias"]
             subquery_name, subquery_config = self.compile_subquery(from_expression, arguments)
             primary_table["db"] = "--"
@@ -172,6 +173,8 @@ class Compiler(object):
             config["dependencys"].append(subquery_config)
             if self.compile_pipleline_select(expression, config, arguments, primary_table):
                 return config
+            if not primary_table["table_alias"]:
+                raise SyncanySqlCompileException("subquery must be alias: " + self.to_sql(expression))
         else:
             raise SyncanySqlCompileException("unkonw table: " + self.to_sql(expression))
 
@@ -260,14 +263,15 @@ class Compiler(object):
                 or expression.args.get("order") or expression.args.get("limit"):
             return None
         calculate_fields = []
-        self.parse_calculate(primary_table, select_expressions[0].args["this"], calculate_fields)
-        if not calculate_fields:
+        self.parse_calculate(primary_table, select_expressions[0], calculate_fields)
+        if calculate_fields:
             return None
-        pipeline = self.compile_calculate(primary_table, select_expressions[0].args["this"], [])
+        pipeline = self.compile_calculate(primary_table, select_expressions[0], [])
         if isinstance(pipeline, str):
-            pipeline = ">>" + pipeline
+            pipeline = [">>$.*|array", ":" + pipeline]
         else:
             pipeline[0] = ">>" + pipeline[0]
+            pipeline = pipeline[:1] + ["$.*|array"] + pipeline[1:]
         config["pipelines"].append(pipeline)
         if isinstance(primary_table["primary_keys"], tuple):
             primary_table["primary_keys"] = [primary_table["primary_keys"]]
