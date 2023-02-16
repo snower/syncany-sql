@@ -63,3 +63,6 @@ class DeleteTasker(object):
                 return 0
             tasker.close()
         return 0
+
+    def terminate(self):
+        pass

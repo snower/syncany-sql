@@ -40,3 +40,6 @@ class SetCommandTasker(object):
                 else:
                     value = self.config["value"].strip()
         session_config.set(key, value)
+
+    def terminate(self):
+        pass

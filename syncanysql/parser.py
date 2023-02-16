@@ -2,6 +2,9 @@
 # 2023/2/8
 # create by: snower
 
+import os
+
+
 class SqlParser(object):
     ESCAPE_CHARS = ['\a', '\b', '\f', '\n', '\r', '\t', '\v', '\\', '\'', '"', '\0']
 
@@ -102,7 +105,7 @@ class FileParser(object):
         self.filename = filename
 
     def load(self):
-        with open(self.filename, "r+") as fp:
+        with open(self.filename, "r+", encoding=os.environ.get("SYNCANYENCODING", "utf-8")) as fp:
             content = fp.read()
         sql_parser = SqlParser(content)
         sqls = sql_parser.split()

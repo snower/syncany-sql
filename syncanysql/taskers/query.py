@@ -3,18 +3,53 @@
 # create by: snower
 
 import os
+import copy
 import traceback
 from syncany.logger import get_logger
 from syncany.filters.filter import Filter
 from syncany.taskers.core import CoreTasker
+from syncany.hook import Hooker
 from syncany.main import show_tasker, show_dependency_tasker, compile_dependency, run_dependency, warp_database_logging
+
+
+class ReduceHooker(Hooker):
+    def __init__(self, executor, session_config, manager, arguments, tasker, config, batch, aggregate):
+        self.executor = executor
+        self.session_config = session_config
+        self.manager = manager
+        self.arguments = arguments
+        self.tasker = tasker
+        self.config = config
+        self.batch = batch
+        self.aggregate = aggregate
+        self.count = 0
+
+    def outputed(self, tasker, datas):
+        self.count += len(datas)
+        if self.count >= self.batch:
+            self.count = 0
+            self.tasker.run_aggregate_reduce(self.executor, self.session_config,
+                                             self.manager, self.arguments, False)
+
+    def finaled(self, tasker, e=None):
+        self.tasker.run_aggregate_reduce(self.executor, self.session_config,
+                                         self.manager, self.arguments, False)
+
 
 class QueryTasker(object):
     def __init__(self, config):
         self.config = config
+        self.aggregate_config = None
+        self.tasker = None
 
     def run(self, executor, session_config, manager, arguments):
+        batch, aggregate = int(self.config.get("@batch", 0)), self.config.pop("aggregate", None)
+        if aggregate and aggregate["key"] and aggregate["reduces"] and batch > 0:
+            self.compile_aggregate_config(aggregate)
         tasker = CoreTasker(self.config, manager)
+        if self.aggregate_config:
+            tasker.add_hooker(ReduceHooker(executor, session_config, manager, arguments,
+                                           self, copy.deepcopy(self.config), batch, aggregate))
         tasker_arguments = tasker.load()
 
         dependency_taskers = []
@@ -37,10 +72,67 @@ class QueryTasker(object):
             else:
                 run_arguments[argument["name"]] = argument["type"].filter(argument["default"])
         run_arguments.update(arguments)
-        return self.run_core_task(run_arguments, tasker_arguments, tasker, dependency_taskers)
+        exit_code = self.run_core_task(run_arguments, tasker_arguments, tasker, dependency_taskers)
+        if exit_code is not None and exit_code != 0:
+            return exit_code
+        if self.aggregate_config:
+            return self.run_aggregate_reduce(executor, session_config, manager, arguments, True)
+        return exit_code
 
     def terminate(self):
-        pass
+        if self.tasker:
+            self.tasker.terminate()
+
+    def compile_aggregate_config(self, aggregate):
+        subquery_name = "__subquery_" + str(id(self)) + "_reduce"
+        config = copy.deepcopy(self.config)
+        config.update({
+            "input": "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0],
+            "output": self.config["output"],
+            "querys": {},
+            "schema": {},
+            "intercepts": [],
+            "orders": [],
+            "dependencys": [],
+            "pipelines": []
+        })
+        for key, column in self.config["schema"].items():
+            if key in aggregate["reduces"]:
+                config["schema"][key] = ["#aggregate", "$._aggregate_key_", aggregate["reduces"][key]]
+            else:
+                config["schema"][key] = "$." + key
+        config["schema"]["_aggregate_key_"] = "$._aggregate_key_"
+        config["name"] = self.config["name"] + "#reduce"
+        self.config["schema"]["_aggregate_key_"] = aggregate["key"]
+        self.config["output"] = "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0] + " use I"
+        self.aggregate_config = config
+
+    def run_aggregate_reduce(self, executor, session_config, manager, arguments, final_reduce=False):
+        config = copy.deepcopy(self.aggregate_config)
+        if final_reduce:
+            config["schema"].pop("_aggregate_key_", None)
+            for key, column in config["schema"].items():
+                config["schema"][key] = "$." + key
+            config["name"] = config["name"] + "_final"
+        else:
+            config["output"] = config["input"] + " use DI"
+        tasker = CoreTasker(config, manager)
+        tasker_arguments = tasker.load()
+        run_arguments = {}
+        for argument in tasker_arguments:
+            if "default" not in argument:
+                continue
+            if "type" not in argument or not isinstance(argument["type"], Filter):
+                run_arguments[argument["name"]] = argument["default"]
+                continue
+            if "nargs" in argument and "action" in argument and isinstance(argument["default"], list):
+                run_arguments[argument["name"]] = [argument["type"].filter(v) for v in argument["default"]]
+            else:
+                run_arguments[argument["name"]] = argument["type"].filter(argument["default"])
+        run_arguments.update(arguments)
+        run_arguments["@batch"] = 0
+        run_arguments["@limit"] = 0
+        return self.run_core_task(run_arguments, tasker_arguments, tasker, [])
 
     def load_core_task_dependency(self, parent, filename, parent_arguments):
         tasker = CoreTasker(filename, parent.manager, parent)
@@ -67,6 +159,7 @@ class QueryTasker(object):
         return (tasker, dependency_taskers)
 
     def run_core_task(self, run_arguments, arguments, tasker, dependency_taskers):
+        self.tasker = tasker
         try:
             arguments = {key.lower(): value for key, value in os.environ.items()}
             arguments.update(run_arguments)
@@ -107,4 +200,6 @@ class QueryTasker(object):
             if "@show" in arguments and arguments["@show"]:
                 return 0
             tasker.close()
+        finally:
+            self.tasker = None
         return 0

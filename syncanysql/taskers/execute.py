@@ -19,3 +19,6 @@ class ExecuteTasker(object):
             return executor.run(self.config["filename"], sqls)
         finally:
             get_logger().info("execute file %s finish %.2fms", self.config["filename"], (time.time() - start_time) * 1000)
+
+    def terminate(self):
+        pass

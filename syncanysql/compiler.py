@@ -170,6 +170,8 @@ class Compiler(object):
             primary_table["db"] = "--"
             primary_table["name"] = subquery_name
             config["dependencys"].append(subquery_config)
+            if self.compile_pipleline_select(expression, config, arguments, primary_table):
+                return config
         else:
             raise SyncanySqlCompileException("unkonw table: " + self.to_sql(expression))
 
@@ -216,7 +218,7 @@ class Compiler(object):
             calculate_fields = []
             self.parse_calculate(primary_table, select_expression.args["this"], calculate_fields)
             calculate_table_names = {calculate_field["table_name"] for calculate_field in calculate_fields
-                                     if calculate_field["table_name"] != primary_table["table_name"]}
+                                     if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]}
             if calculate_table_names:
                 column_join_tables = []
                 self.compile_join_column_tables(primary_table, [join_tables[calculate_table_name] for calculate_table_name in calculate_table_names],
@@ -250,6 +252,32 @@ class Compiler(object):
                                     "+".join([primary_key[1] for primary_key in primary_table["primary_keys"]]) if primary_table["primary_keys"] else "id",
                                     " use I" if not primary_table["primary_keys"] else ((" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else "")])
 
+    def compile_pipleline_select(self, expression, config, arguments, primary_table):
+        select_expressions = expression.args.get("expressions")
+        if not select_expressions or len(select_expressions) != 1 or not isinstance(select_expressions[0], sqlglot_expressions.Anonymous):
+            return None
+        if expression.args.get("group") or expression.args.get("where") or expression.args.get("having") \
+                or expression.args.get("order") or expression.args.get("limit"):
+            return None
+        calculate_fields = []
+        self.parse_calculate(primary_table, select_expressions[0].args["this"], calculate_fields)
+        if not calculate_fields:
+            return None
+        pipeline = self.compile_calculate(primary_table, select_expressions[0].args["this"], [])
+        if isinstance(pipeline, str):
+            pipeline = ">>" + pipeline
+        else:
+            pipeline[0] = ">>" + pipeline[0]
+        config["pipelines"].append(pipeline)
+        if isinstance(primary_table["primary_keys"], tuple):
+            primary_table["primary_keys"] = [primary_table["primary_keys"]]
+        config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
+                                   "+".join([primary_key[0] for primary_key in primary_table["primary_keys"]]) if primary_table["primary_keys"] else "id"])
+        config["output"] = "".join([config["output"].split("::")[0], "::",
+                                    "+".join([primary_key[1] for primary_key in primary_table["primary_keys"]]) if primary_table["primary_keys"] else "id",
+                                    " use I" if not primary_table["primary_keys"] else ((" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else "")])
+        return config
+
     def compile_select_column(self, primary_table, column_expression, column_alias, config, join_tables):
         column_info = self.parse_column(column_expression)
         if not column_alias:
@@ -262,7 +290,7 @@ class Compiler(object):
                                                                                    column_join_tables)
         else:
             config["schema"][column_alias] = self.compile_column(column_info)
-        if column_info["table_name"] == primary_table["table_name"]:
+        if not column_info["table_name"] or column_info["table_name"] == primary_table["table_name"]:
             primary_table["columns"][column_info["column_name"]] = column_info
         if "pk" in column_info["typing_options"]:
             if not isinstance(primary_table["primary_keys"], list):
@@ -283,7 +311,7 @@ class Compiler(object):
             column_join_tables.remove(dup_column_join_table)
         column_join_tables.extend(current_join_tables)
         column_join_names = sorted(list({join_column["table_name"] for join_table in current_join_tables
-                                         for join_column in join_table["join_columns"] if join_column["table_name"] != primary_table["table_name"]}),
+                                         for join_column in join_table["join_columns"] if join_column["table_name"] and join_column["table_name"] != primary_table["table_name"]}),
                                    key=lambda x: 0xffffff if x == primary_table["table_name"] else join_tables[x]["ref_count"])
         self.compile_join_column_tables(primary_table, [join_tables[column_join_name] for column_join_name in column_join_names
                           if column_join_name != primary_table["table_name"]], join_tables, column_join_tables)
@@ -312,7 +340,7 @@ class Compiler(object):
         return column
 
     def compile_join_column_field(self, primary_table, ci, join_column, column_join_tables):
-        if join_column["table_name"] == primary_table["table_name"]:
+        if not join_column["table_name"] or join_column["table_name"] == primary_table["table_name"]:
             return self.compile_column(join_column, len(column_join_tables) - ci)
         ji = [j for j in range(len(column_join_tables)) if join_column["table_name"] == column_join_tables[j]["name"]][0]
         return self.compile_column(join_column, ji - ci)
@@ -380,7 +408,7 @@ class Compiler(object):
     def compile_aggregate_column(self, primary_table, column_alias, config, group_expression, aggregate_expression, group_fields, join_tables):
         calculate_fields = [group_field for group_field in group_fields]
         self.parse_aggregate(primary_table, aggregate_expression, calculate_fields)
-        calculate_fields = [calculate_field for calculate_field in calculate_fields if calculate_field["table_name"] != primary_table["table_name"]]
+        calculate_fields = [calculate_field for calculate_field in calculate_fields if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]]
         column_join_tables = []
         if calculate_fields:
             calculate_table_names = {calculate_field["table_name"] for calculate_field in calculate_fields}
@@ -392,14 +420,20 @@ class Compiler(object):
                 group_column.append(self.compile_calculate(primary_table, expression, column_join_tables, -1))
         else:
             group_column = self.compile_calculate(primary_table, group_expression.args["expressions"][0], column_join_tables, -1)
-        calculate_column = self.compile_aggtegate(primary_table, column_alias, aggregate_expression, column_join_tables)
+        calculate_column = self.compile_aggregate(primary_table, column_alias, aggregate_expression, column_join_tables)
+        if "aggregate" not in config:
+            config["aggregate"] = {"key": None, "reduces": {}}
         if calculate_fields:
             config["schema"][column_alias] = self.compile_join_column(primary_table, ["#aggregate", group_column, calculate_column],
                                                                       column_join_tables)
+            config["aggregate"]["key"] = self.compile_join_column(primary_table, group_column, column_join_tables)
+            config["aggregate"]["reduces"][column_alias] = [calculate_column[0], calculate_column[1], "$" + calculate_column[1]]
         else:
             config["schema"][column_alias] = ["#aggregate", group_column, calculate_column]
+            config["aggregate"]["key"] = group_column
+            config["aggregate"]["reduces"][column_alias] = [calculate_column[0], calculate_column[1], "$" + calculate_column[1]]
 
-    def compile_aggtegate(self, primary_table, column_alias, expression, column_join_tables, join_index=-1):
+    def compile_aggregate(self, primary_table, column_alias, expression, column_join_tables, join_index=-1):
         if isinstance(expression, sqlglot_expressions.Count):
             return ["@add", "$." + column_alias + "|int", 1]
         elif isinstance(expression, sqlglot_expressions.Sum):
@@ -422,34 +456,49 @@ class Compiler(object):
         
     def compile_calculate(self, primary_table, expression, column_join_tables, join_index=-1):
         if isinstance(expression, sqlglot_expressions.Anonymous):
-            column = ["@" + expression.args["this"]]
+            calculater_name = expression.args["this"]
+            if calculater_name == "call":
+                column = ["#call".join(calculater_name.split("__"))]
+                for arg_expression in expression.args.get("expressions", []):
+                    if self.is_const(arg_expression):
+                        column.append(self.parse_const(arg_expression)["value"])
+                    else:
+                        column.append(self.compile_calculate(primary_table, arg_expression, column_join_tables, join_index))
+                return column
+
+            column = ["@" + "::".join(calculater_name.split("__"))]
             for arg_expression in expression.args.get("expressions", []):
-                column.append(self.compile_calculate(primary_table, arg_expression, column_join_tables, join_index))
+                if self.is_const(arg_expression):
+                    column.append(self.parse_const(arg_expression)["value"])
+                else:
+                    column.append(self.compile_calculate(primary_table, arg_expression, column_join_tables, join_index))
             return column
-        elif isinstance(expression, sqlglot_expressions.Add):
+        elif isinstance(expression, sqlglot_expressions.Binary):
             return [
-                "@add",
+                "@" + expression.key.lower(),
                 self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
                 self.compile_calculate(primary_table, expression.args["expression"], column_join_tables, join_index)
             ]
-        elif isinstance(expression, sqlglot_expressions.Sub):
+        elif isinstance(expression, sqlglot_expressions.If):
             return [
-                "@sub",
+                "#if",
                 self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
-                self.compile_calculate(primary_table, expression.args["expression"], column_join_tables, join_index)
+                self.compile_calculate(primary_table, expression.args["true"], column_join_tables, join_index) if expression.args.get("true") else False,
+                self.compile_calculate(primary_table, expression.args["false"], column_join_tables, join_index) if expression.args.get("false") else False,
             ]
-        elif isinstance(expression, sqlglot_expressions.Mul):
-            return [
-                "@mul",
-                self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
-                self.compile_calculate(primary_table, expression.args["expression"], column_join_tables, join_index)
-            ]
-        elif isinstance(expression, sqlglot_expressions.Div):
-            return [
-                "@div",
-                self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
-                self.compile_calculate(primary_table, expression.args["expression"], column_join_tables, join_index)
-            ]
+        elif isinstance(expression, sqlglot_expressions.Case):
+            cases = {
+                "#case": self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
+            }
+            if expression.args.get("ifs"):
+                for case_expression in expression.args["ifs"]:
+                    if not isinstance(case_expression, sqlglot_expressions.If) or not self.is_const(case_expression.args["this"]):
+                        raise SyncanySqlCompileException("unkonw calculate: " + self.to_sql(expression))
+                    case_value = self.parse_const(case_expression.args["this"])["value"]
+                    cases[(":" + str(case_value)) if isinstance(case_value, (int, float)) else case_value] = \
+                        self.compile_calculate(primary_table, case_expression.args["true"], column_join_tables, join_index)
+            cases["#end"] = self.compile_calculate(primary_table, expression.args["default"], column_join_tables, join_index) if expression.args.get("default") else None,
+            return cases
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index)
         elif isinstance(expression, sqlglot_expressions.Column):
@@ -581,7 +630,7 @@ class Compiler(object):
 
         for name, join_table in join_tables.items():
             for join_column in join_table["join_columns"]:
-                if join_column["table_name"] == primary_table["table_name"]:
+                if not join_column["table_name"] or join_column["table_name"] == primary_table["table_name"]:
                     continue
                 if join_column["table_name"] not in join_tables:
                     raise SyncanySqlCompileException("unknown join table: " + join_column["table_name"])
@@ -720,23 +769,24 @@ class Compiler(object):
         if isinstance(expression, sqlglot_expressions.Anonymous):
             for arg_expression in expression.args.get("expressions", []):
                 self.parse_calculate(primary_table, arg_expression, calculate_fields)
-        elif isinstance(expression, sqlglot_expressions.Add):
+        elif isinstance(expression, sqlglot_expressions.If):
             self.parse_calculate(primary_table, expression.args["this"], calculate_fields)
-            self.parse_calculate(primary_table, expression.args["expression"], calculate_fields)
-        elif isinstance(expression, sqlglot_expressions.Sub):
+            if expression.args.get("true"):
+                self.parse_calculate(primary_table, expression.args["true"], calculate_fields)
+            if expression.args.get("false"):
+                self.parse_calculate(primary_table, expression.args["false"], calculate_fields)
+        elif isinstance(expression, sqlglot_expressions.Case):
             self.parse_calculate(primary_table, expression.args["this"], calculate_fields)
-            self.parse_calculate(primary_table, expression.args["expression"], calculate_fields)
-        elif isinstance(expression, sqlglot_expressions.Mul):
-            self.parse_calculate(primary_table, expression.args["this"], calculate_fields)
-            self.parse_calculate(primary_table, expression.args["expression"], calculate_fields)
-        elif isinstance(expression, sqlglot_expressions.Div):
-            self.parse_calculate(primary_table, expression.args["this"], calculate_fields)
-            self.parse_calculate(primary_table, expression.args["expression"], calculate_fields)
+            if expression.args.get("default"):
+                self.parse_calculate(primary_table, expression.args["default"], calculate_fields)
+            if "ifs" in expression.args:
+                for case_expression in expression.args["ifs"]:
+                    self.parse_calculate(primary_table, case_expression, calculate_fields)
         elif isinstance(expression, sqlglot_expressions.Paren):
             self.parse_calculate(primary_table, expression.args["this"], calculate_fields)
         elif isinstance(expression, sqlglot_expressions.Column):
             column = self.parse_column(expression)
-            if primary_table == expression.args["table"].name:
+            if not column["table_name"] or primary_table["table_name"] == column["table_name"]:
                 primary_table["columns"][column["column_name"]] = column
             calculate_fields.append(column)
         elif isinstance(expression, sqlglot_expressions.Star):
@@ -744,7 +794,13 @@ class Compiler(object):
         elif self.is_const(expression):
             pass
         else:
-            raise SyncanySqlCompileException("unkonw calculate: " + self.to_sql(expression))
+            if "this" in expression.args and expression.args["this"]:
+                self.parse_calculate(primary_table, expression.args["this"], calculate_fields)
+            if "expression" in expression.args and expression.args["expression"]:
+                self.parse_calculate(primary_table, expression.args["expression"], calculate_fields)
+            if "expressions" in expression.args and expression.args["expressions"] and isinstance(expression.args["expressions"], list):
+                for arg_expression in expression.args.get("expressions", []):
+                    self.parse_calculate(primary_table, arg_expression, calculate_fields)
 
     def parse_table(self, expression, config):
         db_name = expression.args["db"].name if "db" in expression.args and expression.args["db"] else None
