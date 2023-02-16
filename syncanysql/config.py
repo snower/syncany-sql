@@ -39,7 +39,10 @@ class SessionConfig(object):
         if not key:
             return
         if len(key) == 1:
-            self.config[key[0]] = value
+            if value is None:
+                self.config.pop(key[0], None)
+            else:
+                self.config[key[0]] = value
             return
         if key[0] == "databases":
             set_database = None
@@ -51,12 +54,15 @@ class SessionConfig(object):
                 set_database = {"name": key[1]}
                 self.config["databases"].append(set_database)
             if len(key) <= 2:
-                try:
-                    set_database.clear()
-                    set_database["name"] = key[1]
-                    set_database.update(json.loads(value))
-                except:
-                    pass
+                if value is None:
+                    self.config["databases"].remove(set_database)
+                else:
+                    try:
+                        set_database.clear()
+                        set_database["name"] = key[1]
+                        set_database.update(json.loads(value))
+                    except:
+                        pass
             elif key[2] == "virtual_views":
                 if "virtual_views" not in set_database:
                     set_database["virtual_views"] = []
@@ -69,28 +75,43 @@ class SessionConfig(object):
                     set_virtual_view = {"name": key[3], "query": "", "args": []}
                     set_database["virtual_views"].append(set_virtual_view)
                 if len(key) > 4:
-                    try:
-                        set_virtual_view[key[4]] = json.loads(value)
-                    except:
-                        set_virtual_view[key[4]] = value
+                    if value is None:
+                        set_virtual_view.pop(key[4], None)
+                    else:
+                        try:
+                            set_virtual_view[key[4]] = json.loads(value)
+                        except:
+                            set_virtual_view[key[4]] = value
                 else:
-                    set_virtual_view["query"], set_virtual_view["args"] = self.parse_virtual_view_args(value)
+                    if value is None:
+                        set_database["virtual_views"].remove(set_virtual_view)
+                    else:
+                        set_virtual_view["query"], set_virtual_view["args"] = self.parse_virtual_view_args(value)
             else:
-                try:
-                    set_database[key[2]] = json.loads(value)
-                except:
-                    pass
+                if value is None:
+                    set_database.pop(key[2], None)
+                else:
+                    try:
+                        set_database[key[2]] = json.loads(value)
+                    except:
+                        pass
         elif key[0] in ("imports", "sources"):
             if key[0] not in self.config:
-                self.config[key[0]][key[1]] = {}
-            self.config[key[0]] = json.loads(value)
+                self.config[key[0]] = {}
+            if value is None:
+                self.config[key[0]].pop(key[1], None)
+            else:
+                self.config[key[0]][key[1]] = json.loads(value)
         elif key[0] in ("defines", "variables", "options", "caches"):
             if key[0] not in self.config:
                 self.config[key[0]] = {}
-            try:
-                self.config[key[0]][key[1]] = json.loads(value)
-            except:
-                self.config[key[0]][key[1]] = value
+            if value is None:
+                self.config[key[0]].pop(key[1], None)
+            else:
+                try:
+                    self.config[key[0]][key[1]] = json.loads(value)
+                except:
+                    self.config[key[0]][key[1]] = value
 
     def parse_virtual_view_args(self, query):
         args = []

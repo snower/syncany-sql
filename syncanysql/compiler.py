@@ -14,7 +14,7 @@ from .parser import SqlParser
 from .taskers.delete import DeleteTasker
 from .taskers.query import QueryTasker
 from .taskers.explain import ExplainTasker
-from .taskers.set_command import SetCommandTasker
+from .taskers.set import SetCommandTasker
 from .taskers.execute import ExecuteTasker
 
 
@@ -435,20 +435,20 @@ class Compiler(object):
 
     def compile_aggregate(self, primary_table, column_alias, expression, column_join_tables, join_index=-1):
         if isinstance(expression, sqlglot_expressions.Count):
-            return ["@add", "$." + column_alias + "|int", 1]
+            return ["@add", "$." + column_alias, 1]
         elif isinstance(expression, sqlglot_expressions.Sum):
             return [
-                "@add", "$." + column_alias + "|float",
+                "@add", "$." + column_alias,
                 self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index - 1)
             ]
         elif isinstance(expression, sqlglot_expressions.Min):
             return [
-                "@min", "$." + column_alias + "|float",
+                "@min", "$." + column_alias,
                 self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index - 1)
             ]
         elif isinstance(expression, sqlglot_expressions.Max):
             return [
-                "@max", "$." + column_alias + "|float",
+                "@max", "$." + column_alias,
                 self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index - 1)
             ]
         else:
