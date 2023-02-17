@@ -1000,15 +1000,18 @@ class Compiler(object):
                 continue
             typing_filter = None
             for exp_key, exp_value in config["querys"][key].items():
-                if isinstance(exp_value, list) and len(exp_value) == 2:
-                    if exp_value[0] == "@now":
-                        if typing_filter and typing_filter != "datetime":
-                            typing_filter = None
-                            break
-                        typing_filter = "datetime"
+                if exp_key == "in":
+                    if not exp_value:
                         continue
-                    if exp_value[0] == "#const":
-                        exp_value = exp_value[1]
+                    exp_value = exp_value[0]
+                if (isinstance(exp_value, str) and exp_value == "@now") or (isinstance(exp_value, list) and exp_value and exp_value[0] == "@now"):
+                    if typing_filter and typing_filter != "datetime":
+                        typing_filter = None
+                        break
+                    typing_filter = "datetime"
+                    continue
+                if isinstance(exp_value, list) and len(exp_value) == 2 and exp_value[0] == "#const":
+                    exp_value = exp_value[1]
                 type_name = str(type(exp_value).__name__)
                 if type_name in ("int", "float", "bool"):
                     if typing_filter and typing_filter != type_name:
