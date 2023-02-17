@@ -38,7 +38,7 @@ def main():
                 executor = Executor(manager, session_config)
                 executor.run(sys.argv[1], sqls)
                 exit_code = executor.execute()
-                get_logger().error("execute file %s finish with code %d %.2fms", sys.argv[1], exit_code, (time.time() - start_time) * 1000)
+                get_logger().info("execute file %s finish with code %d %.2fms", sys.argv[1], exit_code, (time.time() - start_time) * 1000)
                 exit(exit_code)
             else:
                 cli_prompt = CliPrompt(manager, session_config)

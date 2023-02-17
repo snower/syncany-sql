@@ -153,31 +153,39 @@ class Compiler(object):
         primary_table = {"db": None, "name": None, "table_name": None, "table_alias": None, "primary_keys": None, "columns": {}}
 
         from_expression = expression.args.get("from")
-        if not isinstance(from_expression, sqlglot_expressions.From) or not from_expression.expressions:
-            raise SyncanySqlCompileException("unkonw table: " + self.to_sql(expression))
-        from_expression = from_expression.expressions[0]
-        if isinstance(from_expression, sqlglot_expressions.Table):
-            table_info = self.parse_table(from_expression, config)
-            primary_table["db"] = table_info["db"]
-            primary_table["name"] = table_info["name"]
-            primary_table["table_alias"] = table_info["table_alias"]
-            primary_table["table_name"] = table_info["table_name"]
-        elif isinstance(from_expression, sqlglot_expressions.Subquery):
-            if "alias" not in from_expression.args:
-                raise SyncanySqlCompileException("subquery must be alias name: " + self.to_sql(expression))
-            primary_table["table_alias"] = from_expression.args["alias"].args["this"].name \
-                if "alias" in from_expression.args and from_expression.args["alias"] else None
-            primary_table["table_name"] = primary_table["table_alias"]
-            subquery_name, subquery_config = self.compile_subquery(from_expression, arguments)
+        if not from_expression:
             primary_table["db"] = "--"
-            primary_table["name"] = subquery_name
-            config["dependencys"].append(subquery_config)
-            if self.compile_pipleline_select(expression, config, arguments, primary_table):
-                return config
-            if not primary_table["table_alias"]:
-                raise SyncanySqlCompileException("subquery must be alias: " + self.to_sql(expression))
+            primary_table["name"] = "--"
+            primary_table["table_alias"] = "--"
+            primary_table["table_name"] = "--"
         else:
-            raise SyncanySqlCompileException("unkonw table: " + self.to_sql(expression))
+            if not isinstance(from_expression, sqlglot_expressions.From) or not from_expression.expressions:
+                raise SyncanySqlCompileException("unkonw table: " + self.to_sql(expression))
+            if len(from_expression.expressions) > 1:
+                raise SyncanySqlCompileException("noly query one table: " + self.to_sql(expression))
+            from_expression = from_expression.expressions[0]
+            if isinstance(from_expression, sqlglot_expressions.Table):
+                table_info = self.parse_table(from_expression, config)
+                primary_table["db"] = table_info["db"]
+                primary_table["name"] = table_info["name"]
+                primary_table["table_alias"] = table_info["table_alias"]
+                primary_table["table_name"] = table_info["table_name"]
+            elif isinstance(from_expression, sqlglot_expressions.Subquery):
+                if "alias" not in from_expression.args:
+                    raise SyncanySqlCompileException("subquery must be alias name: " + self.to_sql(expression))
+                primary_table["table_alias"] = from_expression.args["alias"].args["this"].name \
+                    if "alias" in from_expression.args and from_expression.args["alias"] else None
+                primary_table["table_name"] = primary_table["table_alias"]
+                subquery_name, subquery_config = self.compile_subquery(from_expression, arguments)
+                primary_table["db"] = "--"
+                primary_table["name"] = subquery_name
+                config["dependencys"].append(subquery_config)
+                if self.compile_pipleline_select(expression, config, arguments, primary_table):
+                    return config
+                if not primary_table["table_alias"]:
+                    raise SyncanySqlCompileException("subquery must be alias: " + self.to_sql(expression))
+            else:
+                raise SyncanySqlCompileException("unkonw table: " + self.to_sql(expression))
 
         join_tables = self.parse_joins(primary_table, config, expression.args["joins"], arguments) \
             if "joins" in expression.args and expression.args["joins"] else {}
@@ -195,7 +203,7 @@ class Compiler(object):
                 config["schema"] = "$.*"
                 break
 
-            column_expression, aggregate_expression, column_alias = None, None, None
+            column_expression, aggregate_expression, calculate_expression, column_alias = None, None, None, None
             if isinstance(select_expression, sqlglot_expressions.Column):
                 column_expression = select_expression
             elif isinstance(select_expression, sqlglot_expressions.Alias):
@@ -208,6 +216,14 @@ class Compiler(object):
                     column_expression = select_expression.args["this"]
                 elif isinstance(select_expression.args["this"], (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Min, sqlglot_expressions.Max)):
                     aggregate_expression = select_expression.args["this"]
+                else:
+                    calculate_expression = select_expression.args["this"]
+            elif isinstance(select_expression, (sqlglot_expressions.Anonymous, sqlglot_expressions.If, sqlglot_expressions.Case)):
+                column_alias = str(select_expression)
+                calculate_expression = select_expression
+            elif isinstance(select_expression, (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Min, sqlglot_expressions.Max)):
+                column_alias = str(select_expression)
+                aggregate_expression = select_expression
             else:
                 raise SyncanySqlCompileException("table select field must be alias: " + self.to_sql(expression))
             if column_expression:
@@ -218,19 +234,18 @@ class Compiler(object):
                                               group_fields, join_tables)
                 continue
 
-            column_alias = select_expression.args["alias"].name
             calculate_fields = []
-            self.parse_calculate(primary_table, select_expression.args["this"], calculate_fields)
+            self.parse_calculate(primary_table, calculate_expression, calculate_fields)
             calculate_table_names = {calculate_field["table_name"] for calculate_field in calculate_fields
                                      if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]}
             if calculate_table_names:
                 column_join_tables = []
                 self.compile_join_column_tables(primary_table, [join_tables[calculate_table_name] for calculate_table_name in calculate_table_names],
                                                                         join_tables, column_join_tables)
-                calculate_column = self.compile_calculate(primary_table, select_expression.args["this"], column_join_tables)
+                calculate_column = self.compile_calculate(primary_table, calculate_expression, column_join_tables)
                 config["schema"][column_alias] = self.compile_join_column(primary_table, calculate_column, column_join_tables)
             else:
-                config["schema"][column_alias] = self.compile_calculate(primary_table, select_expression.args["this"], [])
+                config["schema"][column_alias] = self.compile_calculate(primary_table, calculate_expression, [])
 
         where_expression = expression.args.get("where")
         if where_expression and isinstance(where_expression, sqlglot_expressions.Where):
@@ -548,17 +563,18 @@ class Compiler(object):
                 self.compile_calculate(primary_table, expression.args["false"], column_join_tables, join_index) if expression.args.get("false") else False,
             ]
         elif isinstance(expression, sqlglot_expressions.Case):
-            cases = {
-                "#case": self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
-            }
+            cases = {}
+            cases["#case"] = self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index) \
+                                 if expression.args.get("this") else ["#const", True]
             if expression.args.get("ifs"):
                 for case_expression in expression.args["ifs"]:
                     if not isinstance(case_expression, sqlglot_expressions.If) or not self.is_const(case_expression.args["this"]):
                         raise SyncanySqlCompileException("unkonw calculate: " + self.to_sql(expression))
                     case_value = self.parse_const(case_expression.args["this"])["value"]
-                    cases[(":" + str(case_value)) if isinstance(case_value, (int, float)) else case_value] = \
+                    cases[(":" + str(case_value)) if isinstance(case_value, (int, float)) and not isinstance(case_value, bool) else case_value] = \
                         self.compile_calculate(primary_table, case_expression.args["true"], column_join_tables, join_index)
-            cases["#end"] = self.compile_calculate(primary_table, expression.args["default"], column_join_tables, join_index) if expression.args.get("default") else None,
+            cases["#end"] = self.compile_calculate(primary_table, expression.args["default"], column_join_tables, join_index) \
+                                if expression.args.get("default") else None
             return cases
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index)
@@ -838,7 +854,8 @@ class Compiler(object):
             if expression.args.get("false"):
                 self.parse_calculate(primary_table, expression.args["false"], calculate_fields)
         elif isinstance(expression, sqlglot_expressions.Case):
-            self.parse_calculate(primary_table, expression.args["this"], calculate_fields)
+            if expression.args.get("this"):
+                self.parse_calculate(primary_table, expression.args["this"], calculate_fields)
             if expression.args.get("default"):
                 self.parse_calculate(primary_table, expression.args["default"], calculate_fields)
             if "ifs" in expression.args:
