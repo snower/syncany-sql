@@ -218,7 +218,12 @@ class Compiler(object):
                     aggregate_expression = select_expression.args["this"]
                 else:
                     calculate_expression = select_expression.args["this"]
-            elif isinstance(select_expression, (sqlglot_expressions.Anonymous, sqlglot_expressions.If, sqlglot_expressions.Case)):
+            elif self.is_const(select_expression):
+                const_info = self.parse_const(select_expression)
+                column_alias = str(select_expression)
+                config["schema"][column_alias] = self.compile_const(const_info)
+                continue
+            elif isinstance(select_expression, (sqlglot_expressions.Anonymous, sqlglot_expressions.Binary, sqlglot_expressions.If, sqlglot_expressions.Case)):
                 column_alias = str(select_expression)
                 calculate_expression = select_expression
             elif isinstance(select_expression, (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Min, sqlglot_expressions.Max)):
