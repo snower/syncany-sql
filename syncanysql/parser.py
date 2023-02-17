@@ -81,7 +81,7 @@ class SqlParser(object):
 
     def split(self):
         segments = []
-        start_index = None
+        lineno, start_index = 0, None
         while self.index < self.len:
             if self.sql[self.index] in ('`', '"', "'"):
                 self.skip_escape(self.sql[self.index])
@@ -109,15 +109,15 @@ class SqlParser(object):
                 if start_index is None:
                     self.next()
                     continue
-                segments.append(SqlSegment(self.sql[start_index: self.index], self.lineno))
+                segments.append(SqlSegment(self.sql[start_index: self.index], lineno))
                 start_index = None
                 self.next()
                 continue
             if start_index is None and self.sql[self.index].isalpha():
-                start_index = self.index
+                lineno, start_index = self.lineno, self.index
             self.next()
         if start_index is not None:
-            segments.append(SqlSegment(self.sql[start_index: self.index], self.lineno))
+            segments.append(SqlSegment(self.sql[start_index: self.index], lineno))
         return segments
 
 
