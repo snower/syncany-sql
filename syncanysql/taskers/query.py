@@ -41,8 +41,10 @@ class QueryTasker(object):
         self.config = config
         self.aggregate_config = None
         self.tasker = None
+        self.dependency_taskers = None
+        self.arguments = None
 
-    def run(self, executor, session_config, manager, arguments):
+    def start(self, executor, session_config, manager, arguments):
         batch, aggregate = int(self.config.get("@batch", 0)), self.config.pop("aggregate", None)
         if aggregate and aggregate["key"] and aggregate["reduces"] and batch > 0:
             self.compile_aggregate_config(aggregate)
@@ -72,11 +74,16 @@ class QueryTasker(object):
             else:
                 run_arguments[argument["name"]] = argument["type"].filter(argument["default"])
         run_arguments.update(arguments)
-        exit_code = self.run_core_task(run_arguments, tasker_arguments, tasker, dependency_taskers)
+        self.compile_core_task(run_arguments, tasker, dependency_taskers)
+        self.tasker, self.dependency_taskers, self.arguments = tasker, dependency_taskers, run_arguments
+        return [self]
+
+    def run(self, executor, session_config, manager):
+        exit_code = self.run_core_task(self.arguments, self.tasker, self.dependency_taskers)
         if exit_code is not None and exit_code != 0:
             return exit_code
         if self.aggregate_config:
-            return self.run_aggregate_reduce(executor, session_config, manager, arguments, True)
+            return self.run_aggregate_reduce(executor, session_config, manager, self.arguments, True)
         return exit_code
 
     def terminate(self):
@@ -89,12 +96,19 @@ class QueryTasker(object):
         config.update({
             "input": "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0],
             "output": self.config["output"],
-            "querys": {},
-            "schema": {},
+            "querys": [],
+            "caches": [],
+            "imports": {},
+            "sources": {},
+            "defines": {},
+            "variables": {},
             "intercepts": [],
+            "schema": {},
             "orders": [],
+            "pipelines": [],
+            "options": {},
             "dependencys": [],
-            "pipelines": []
+            "states": [],
         })
         for key, column in self.config["schema"].items():
             if key in aggregate["reduces"]:
@@ -132,7 +146,8 @@ class QueryTasker(object):
         run_arguments.update(arguments)
         run_arguments["@batch"] = 0
         run_arguments["@limit"] = 0
-        return self.run_core_task(run_arguments, tasker_arguments, tasker, [])
+        self.compile_core_task(run_arguments, tasker, [])
+        return self.run_core_task(run_arguments, tasker, [])
 
     def load_core_task_dependency(self, parent, filename, parent_arguments):
         tasker = CoreTasker(filename, parent.manager, parent)
@@ -158,24 +173,26 @@ class QueryTasker(object):
             dependency_taskers.append(self.load_core_task_dependency(tasker, filename, dependency_arguments))
         return (tasker, dependency_taskers)
 
-    def run_core_task(self, run_arguments, arguments, tasker, dependency_taskers):
+    def compile_core_task(self, arguments, tasker, dependency_taskers):
+        self.tasker = tasker
+        tasker_arguments = {key.lower(): value for key, value in os.environ.items()}
+        tasker_arguments.update(arguments)
+
+        tasker.compile(tasker_arguments)
+        for dependency_tasker in dependency_taskers:
+            compile_dependency(tasker_arguments, *dependency_tasker)
+
+        if "@show" in tasker_arguments and tasker_arguments["@show"]:
+            for dependency_tasker in dependency_taskers:
+                show_dependency_tasker(*dependency_tasker)
+            show_tasker(tasker)
+            return 0
+        if "@verbose" in tasker_arguments and tasker_arguments["@verbose"]:
+            warp_database_logging(tasker)
+
+    def run_core_task(self, arguments, tasker, dependency_taskers):
         self.tasker = tasker
         try:
-            arguments = {key.lower(): value for key, value in os.environ.items()}
-            arguments.update(run_arguments)
-
-            tasker.compile(arguments)
-            for dependency_tasker in dependency_taskers:
-                compile_dependency(arguments, *dependency_tasker)
-
-            if "@show" in arguments and arguments["@show"]:
-                for dependency_tasker in dependency_taskers:
-                    show_dependency_tasker(*dependency_tasker)
-                show_tasker(tasker)
-                return 0
-            if "@verbose" in arguments and arguments["@verbose"]:
-                warp_database_logging(tasker)
-
             for dependency_tasker in dependency_taskers:
                 run_dependency(*dependency_tasker)
             tasker.run()

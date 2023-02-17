@@ -8,7 +8,7 @@ class SetCommandTasker(object):
     def __init__(self, config):
         self.config = config
 
-    def run(self, executor, session_config, manager, arguments):
+    def start(self, executor, session_config, manager, arguments):
         keys = self.config["key"].split(".")[0]
         if self.config["key"] in CONST_CONFIG_KEYS:
             self.set_config(session_config, self.config["key"])
@@ -18,7 +18,7 @@ class SetCommandTasker(object):
             self.set_config(session_config, "databases." + self.config["key"])
         elif self.config["key"][:7] == "@config":
             self.set_config(session_config, self.config["key"][8:].strip())
-        return 0
+        return []
 
     def set_config(self, session_config, key):
         if self.config["value"][:1] in ('"', "'"):
@@ -40,6 +40,9 @@ class SetCommandTasker(object):
                 else:
                     value = self.config["value"].strip()
         session_config.set(key, value)
+
+    def run(self, executor, session_config, manager):
+        return 0
 
     def terminate(self):
         pass

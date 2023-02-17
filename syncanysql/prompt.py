@@ -172,6 +172,10 @@ class CliPrompt(object):
                 if text.strip().lower()[:4] == "exit":
                     return 0
                 executor.run("cli", [text])
+                try:
+                    executor.execute()
+                finally:
+                    executor.runners.clear()
             except KeyboardInterrupt:
                 continue  # Control-C pressed. Try again.
             except EOFError:

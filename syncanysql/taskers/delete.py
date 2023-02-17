@@ -12,8 +12,10 @@ from syncany.main import show_tasker, warp_database_logging
 class DeleteTasker(object):
     def __init__(self, config):
         self.config = config
+        self.tasker = None
+        self.arguments = None
 
-    def run(self, executor, session_config, manager, arguments):
+    def start(self, executor, session_config, manager, arguments):
         tasker = CoreTasker(self.config, manager)
         tasker_arguments = tasker.load()
 
@@ -29,14 +31,18 @@ class DeleteTasker(object):
             else:
                 run_arguments[argument["name"]] = argument["type"].filter(argument["default"])
         run_arguments.update(arguments)
+        tasker.compile(run_arguments)
+        if "@show" in run_arguments and run_arguments["@show"]:
+            show_tasker(tasker)
+            return []
+        if "@verbose" in run_arguments and run_arguments["@verbose"]:
+            warp_database_logging(tasker)
+        self.tasker, self.arguments = tasker, run_arguments
+        return [self]
 
+    def run(self, executor, session_config, manager):
+        tasker, run_arguments = self.tasker, self.arguments
         try:
-            tasker.compile(run_arguments)
-            if "@show" in run_arguments and run_arguments["@show"]:
-                show_tasker(tasker)
-                return 0
-            if "@verbose" in run_arguments and run_arguments["@verbose"]:
-                warp_database_logging(tasker)
             get_logger().info("%s start %s -> %s", tasker.name, tasker.config_filename, tasker.config.get("name"))
             tasker.outputer.store([])
             tasker.print_stored_statistics(tasker.outputer, tasker.status["statistics"]["outputer"])
@@ -62,7 +68,10 @@ class DeleteTasker(object):
             if "@show" in run_arguments and run_arguments["@show"]:
                 return 0
             tasker.close()
+        finally:
+            self.tasker, self.arguments = None, None
         return 0
 
     def terminate(self):
-        pass
+        if self.tasker:
+            self.tasker.terminate()

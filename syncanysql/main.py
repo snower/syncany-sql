@@ -34,7 +34,8 @@ def main():
                 file_parser = FileParser(sys.argv[1])
                 sqls = file_parser.load()
                 executor = Executor(manager, session_config)
-                exit(executor.run(sys.argv[1], sqls))
+                executor.run(sys.argv[1], sqls)
+                exit(executor.execute())
             else:
                 cli_prompt = CliPrompt(manager, session_config)
                 exit(cli_prompt.run())

@@ -69,6 +69,7 @@ class Compiler(object):
         where_expression = expression.args.get("where")
         if where_expression and isinstance(where_expression, sqlglot_expressions.Where):
             self.compile_where_condition(table_info, where_expression.args["this"], config)
+            self.parse_condition_typing_filter(config)
         config["output"] = "".join(["&.", table_info["db"], ".", table_info["name"], "::id use DI"])
         return config
 
@@ -234,6 +235,7 @@ class Compiler(object):
         where_expression = expression.args.get("where")
         if where_expression and isinstance(where_expression, sqlglot_expressions.Where):
             self.compile_where_condition(primary_table, where_expression.args["this"], config)
+            self.parse_condition_typing_filter(config)
 
         having_expression = expression.args.get("having")
         if having_expression:
@@ -249,6 +251,8 @@ class Compiler(object):
 
         if isinstance(primary_table["primary_keys"], tuple):
             primary_table["primary_keys"] = [primary_table["primary_keys"]]
+        if group_expression and ("aggregate" not in config or not config["aggregate"] or not config["aggregate"]["reduces"]):
+            self.compile_group_column(primary_table, config, group_expression, group_fields, join_tables)
         config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
                                    "+".join([primary_key[0] for primary_key in primary_table["primary_keys"]]) if primary_table["primary_keys"] else "id"])
         config["output"] = "".join([config["output"].split("::")[0], "::",
@@ -409,32 +413,85 @@ class Compiler(object):
         else:
             raise SyncanySqlCompileException("unkonw where condition: " + self.to_sql(expression))
 
-    def compile_aggregate_column(self, primary_table, column_alias, config, group_expression, aggregate_expression, group_fields, join_tables):
-        calculate_fields = [group_field for group_field in group_fields]
-        self.parse_aggregate(primary_table, aggregate_expression, calculate_fields)
-        calculate_fields = [calculate_field for calculate_field in calculate_fields if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]]
+    def compile_group_column(self, primary_table, config, group_expression, group_fields, join_tables):
+        if not primary_table["primary_keys"]:
+            raise SyncanySqlCompileException("unkonw group by: " + self.to_sql(group_expression))
+        column, column_expression, column_alias = None, None, None
+        for cn, ca in primary_table["primary_keys"]:
+            if ca not in config["schema"]:
+                continue
+            if isinstance(config["schema"][ca], str):
+                if cn in primary_table["columns"]:
+                    column_expression, column_alias = primary_table["columns"][cn]["expression"], ca
+                break
+            if isinstance(config["schema"][ca], list) and config["schema"][ca] and config["schema"][ca][0] == "#const":
+                column, column_alias = config["schema"][ca], ca
+                break
+        if column is None and not column_expression:
+            raise SyncanySqlCompileException("group by must be master table primary_key: " + self.to_sql(group_expression))
+
+        calculate_fields = [group_field for group_field in group_fields if group_field["table_name"]
+                            and group_field["table_name"] != primary_table["table_name"]]
         column_join_tables = []
         if calculate_fields:
             calculate_table_names = {calculate_field["table_name"] for calculate_field in calculate_fields}
             self.compile_join_column_tables(primary_table, [join_tables[calculate_table_name] for calculate_table_name in calculate_table_names],
                                             join_tables, column_join_tables)
-        if len(group_expression.args["expressions"]) > 1:
-            group_column = ["@add"]
-            for expression in group_expression.args["expressions"]:
-                group_column.append(self.compile_calculate(primary_table, expression, column_join_tables, -1))
+        group_column = ["@add", ["#const", "k_"]]
+        if not group_expression:
+            group_column = ["@add", ["#const", "k_g"]]
+        elif len(group_expression.args["expressions"]) > 1:
+            for i in range(len(group_expression.args["expressions"]) - 1):
+                group_column.append(self.compile_calculate(primary_table, group_expression.args["expressions"][i], column_join_tables, -1))
+                group_column.append(["#const", "-"])
+            group_column.append(self.compile_calculate(primary_table, group_expression.args["expressions"][-1], column_join_tables, -1))
         else:
-            group_column = self.compile_calculate(primary_table, group_expression.args["expressions"][0], column_join_tables, -1)
+            group_column.append(self.compile_calculate(primary_table, group_expression.args["expressions"][0], column_join_tables, -1))
+        if column is None:
+            column = self.compile_calculate(primary_table, column_expression, column_join_tables, -2)
+        if "aggregate" not in config:
+            config["aggregate"] = {"key": None, "reduces": {}}
+        if calculate_fields:
+            config["schema"][column_alias] = self.compile_join_column(primary_table, ["#aggregate", group_column, column],
+                                                                      column_join_tables)
+            config["aggregate"]["key"] = self.compile_join_column(primary_table, copy.deepcopy(group_column), column_join_tables)
+            config["aggregate"]["reduces"][column_alias] = "$$." + column_alias
+        else:
+            config["schema"][column_alias] = ["#aggregate", group_column, column]
+            config["aggregate"]["key"] = copy.deepcopy(group_column)
+            config["aggregate"]["reduces"][column_alias] = "$$." + column_alias
+
+    def compile_aggregate_column(self, primary_table, column_alias, config, group_expression, aggregate_expression, group_fields, join_tables):
+        calculate_fields = [group_field for group_field in group_fields]
+        self.parse_aggregate(primary_table, aggregate_expression, calculate_fields)
+        calculate_fields = [calculate_field for calculate_field in calculate_fields if calculate_field["table_name"]
+                            and calculate_field["table_name"] != primary_table["table_name"]]
+        column_join_tables = []
+        if calculate_fields:
+            calculate_table_names = {calculate_field["table_name"] for calculate_field in calculate_fields}
+            self.compile_join_column_tables(primary_table, [join_tables[calculate_table_name] for calculate_table_name in calculate_table_names],
+                                            join_tables, column_join_tables)
+        group_column = ["@add", ["#const", "k_"]]
+        if not group_expression:
+            group_column = ["@add", ["#const", "k_g"]]
+        elif len(group_expression.args["expressions"]) > 1:
+            for i in range(len(group_expression.args["expressions"]) - 1):
+                group_column.append(self.compile_calculate(primary_table, group_expression.args["expressions"][i], column_join_tables, -1))
+                group_column.append(["#const", "-"])
+            group_column.append(self.compile_calculate(primary_table, group_expression.args["expressions"][-1], column_join_tables, -1))
+        else:
+            group_column.append(self.compile_calculate(primary_table, group_expression.args["expressions"][0], column_join_tables, -1))
         calculate_column = self.compile_aggregate(primary_table, column_alias, aggregate_expression, column_join_tables)
         if "aggregate" not in config:
             config["aggregate"] = {"key": None, "reduces": {}}
         if calculate_fields:
             config["schema"][column_alias] = self.compile_join_column(primary_table, ["#aggregate", group_column, calculate_column],
                                                                       column_join_tables)
-            config["aggregate"]["key"] = self.compile_join_column(primary_table, group_column, column_join_tables)
+            config["aggregate"]["key"] = self.compile_join_column(primary_table, copy.deepcopy(group_column), column_join_tables)
             config["aggregate"]["reduces"][column_alias] = [calculate_column[0], calculate_column[1], "$" + calculate_column[1]]
         else:
             config["schema"][column_alias] = ["#aggregate", group_column, calculate_column]
-            config["aggregate"]["key"] = group_column
+            config["aggregate"]["key"] = copy.deepcopy(group_column)
             config["aggregate"]["reduces"][column_alias] = [calculate_column[0], calculate_column[1], "$" + calculate_column[1]]
 
     def compile_aggregate(self, primary_table, column_alias, expression, column_join_tables, join_index=-1):
@@ -628,6 +685,7 @@ class Compiler(object):
                 "join_columns": [], "calculate_expressions": [], "querys": {}, "ref_count": 0
             }
             self.parse_on_condition(primary_table, join_expression.args["on"], join_table)
+            self.parse_condition_typing_filter(join_table)
             if not join_table["primary_keys"] or not join_table["join_columns"]:
                 raise SyncanySqlCompileException("empty join table: " + self.to_sql(join_expression))
             join_tables[join_table["name"]] = join_table
@@ -897,18 +955,47 @@ class Compiler(object):
         }
     
     def parse_const(self, expression):
+        typing_filter = None
         if isinstance(expression, sqlglot_expressions.Literal):
             value = expression.args["this"]
             if expression.is_number:
                 value = int(value) if expression.is_int else float(value)
+                typing_filter = "int" if expression.is_int else "float"
         elif isinstance(expression, sqlglot_expressions.Boolean):
             value = expression.args["this"]
+            typing_filter = "bool"
         else:
             value = None
         return {
             "value": value,
+            "typing_filter": typing_filter,
             "expression": expression
         }
+
+    def parse_condition_typing_filter(self, config):
+        for key in list(config["querys"].keys()):
+            if "|" in key:
+                continue
+            typing_filter = None
+            for exp_key, exp_value in config["querys"][key].items():
+                if isinstance(exp_value, list) and len(exp_value) == 2:
+                    if exp_value[0] == "@now":
+                        if typing_filter and typing_filter != "datetime":
+                            typing_filter = None
+                            break
+                        typing_filter = "datetime"
+                        continue
+                    if exp_value[0] == "#const":
+                        exp_value = exp_value[1]
+                type_name = str(type(exp_value).__name__)
+                if type_name in ("int", "float", "bool"):
+                    if typing_filter and typing_filter != type_name:
+                        typing_filter = None
+                        break
+                    typing_filter = type_name
+            if typing_filter:
+                config["querys"][key + "|" + typing_filter] = config["querys"][key]
+                config["querys"].pop(key)
 
     def parse_mapping(self, sql):
         parser = SqlParser(sql)

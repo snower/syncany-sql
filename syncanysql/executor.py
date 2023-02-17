@@ -6,6 +6,7 @@ import os
 import sys
 import re
 import copy
+from collections import deque
 from syncany.database.memory import MemoryDBFactory, MemoryDBDriver
 from .compiler import Compiler
 
@@ -16,6 +17,7 @@ class Executor(object):
     def __init__(self, manager, session_config):
         self.manager = manager
         self.session_config = session_config
+        self.runners = deque()
         self.tasker = None
         self.env_variables = None
 
@@ -53,35 +55,40 @@ class Executor(object):
                 if len(raw_name_info) != 2:
                     continue
                 raw_sql = "set @config.databases." + raw_name_info[0] + ".virtual_views." + raw_name_info[1] + "='''\n" + raw_sql.strip() + "\n'''"
-                exit_code = self.execute(name, raw_sql)
-                if exit_code is not None and exit_code != 0:
-                    return exit_code
+                self.compile(name, raw_sql)
                 sql = sql.replace(raw, raw_name)
-            exit_code = self.execute(name, sql)
-            if exit_code is not None and exit_code != 0:
-                return exit_code
-        return 0
+            self.compile(name, sql)
 
-    def execute(self, name, sql):
+    def compile(self, name, sql):
         config = copy.deepcopy(self.session_config.get())
         config["name"] = name
         compiler = Compiler(config)
-        arguments = {"@verbose": config.get("@verbose", False), "@timeout": config.get("@timeout", 0), "@limit": config.get("@limit", 100),
-                     "@batch": config.get("@batch", 0), "@recovery": config.get("@recovery", False), "@join_batch": config.get("@join_batch", 1000),
+        arguments = {"@verbose": config.get("@verbose", False), "@timeout": config.get("@timeout", 0),
+                     "@limit": config.get("@limit", 100 if name == "cli" else 0), "@batch": config.get("@batch", 0),
+                     "@recovery": config.get("@recovery", False), "@join_batch": config.get("@join_batch", 1000),
                      "@insert_batch": config.get("@insert_batch", 0)}
-        self.tasker = compiler.compile(sql, arguments)
-        try:
-            return self.tasker.run(self, self.session_config, self.manager, arguments)
-        finally:
-            for factory in self.manager.database_manager.factorys.values():
-                if not isinstance(factory, MemoryDBFactory):
-                    continue
-                for driver in factory.drivers:
-                    if not isinstance(driver.driver, MemoryDBDriver):
+        tasker = compiler.compile(sql, arguments)
+        self.runners.extend(tasker.start(self, self.session_config, self.manager, arguments))
+
+    def execute(self):
+        while self.runners:
+            self.tasker = self.runners.popleft()
+            try:
+                exit_code = self.tasker.run(self, self.session_config, self.manager)
+                if exit_code is not None and exit_code != 0:
+                    return exit_code
+            finally:
+                self.tasker = None
+                for factory in self.manager.database_manager.factorys.values():
+                    if not isinstance(factory, MemoryDBFactory):
                         continue
-                    for key in list(driver.driver.keys()):
-                        if "__subquery_" in key or "__unionquery_" in key:
-                            driver.driver.pop(key)
+                    for driver in factory.drivers:
+                        if not isinstance(driver.driver, MemoryDBDriver):
+                            continue
+                        for key in list(driver.driver.keys()):
+                            if "__subquery_" in key or "__unionquery_" in key:
+                                driver.driver.pop(key)
+        return 0
 
     def terminate(self):
         if not self.tasker:
