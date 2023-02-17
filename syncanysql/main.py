@@ -5,6 +5,7 @@
 import sys
 import signal
 import traceback
+import time
 from syncany.logger import get_logger
 from syncany.taskers.manager import TaskerManager
 from syncany.database.database import DatabaseManager
@@ -31,11 +32,14 @@ def main():
 
         try:
             if len(sys.argv) >= 2:
+                start_time = time.time()
                 file_parser = FileParser(sys.argv[1])
                 sqls = file_parser.load()
                 executor = Executor(manager, session_config)
                 executor.run(sys.argv[1], sqls)
-                exit(executor.execute())
+                exit_code = executor.execute()
+                get_logger().error("execute file %s finish with code %d %.2fms", sys.argv[1], exit_code, (time.time() - start_time) * 1000)
+                exit(exit_code)
             else:
                 cli_prompt = CliPrompt(manager, session_config)
                 exit(cli_prompt.run())
