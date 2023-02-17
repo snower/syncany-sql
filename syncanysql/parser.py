@@ -5,20 +5,41 @@
 import os
 
 
+class SqlSegment(object):
+    def __init__(self, sql, lineno=None):
+        self.sql = sql
+        self.lineno = lineno
+
+    def __str__(self):
+        return self.sql
+
+
 class SqlParser(object):
     ESCAPE_CHARS = ['\a', '\b', '\f', '\n', '\r', '\t', '\v', '\\', '\'', '"', '\0']
 
     def __init__(self, sql):
         self.sql = sql
         self.index = 0
+        self.lineno = 1
         self.len = len(sql)
+
+    def next(self):
+        if self.index >= len(self.sql):
+            return
+        if self.sql[self.index] == '\n':
+            self.lineno += 1
+        self.index += 1
+
+    def reset(self):
+        self.index = 0
+        self.lineno = 1
 
     def skip_escape(self, c):
         start_index = self.index
-        self.index += 1
+        self.next()
         while self.index < self.len:
             if self.sql[self.index] != c:
-                self.index += 1
+                self.next()
                 continue
             backslash = self.index - 1
             while backslash >= 0:
@@ -26,11 +47,11 @@ class SqlParser(object):
                     break
                 backslash -= 1
             if (self.index - backslash + 1) % 2 != 0:
-                self.index += 1
+                self.next()
                 continue
-            self.index += 1
+            self.next()
             return start_index, self.index, self.sql[start_index: self.index]
-        self.index += 1
+        self.next()
         raise EOFError(self.sql[start_index:])
 
     def read_util(self, cs, escape_chars=('"', "'")):
@@ -40,7 +61,7 @@ class SqlParser(object):
                 self.skip_escape(self.sql[self.index])
                 continue
             if self.sql[self.index: self.index + len(cs)] != cs:
-                self.index += 1
+                self.next()
                 continue
             return start_index, self.index + len(cs) - 1, self.sql[start_index: self.index + len(cs) - 1]
         raise EOFError(self.sql[start_index:])
@@ -48,9 +69,9 @@ class SqlParser(object):
     def read_segment(self, c='`'):
         while self.index < self.len:
             self.read_util(c)
-            self.index += 1
+            self.next()
             start_index, end_index, segment = self.read_util(c)
-            self.index += 1
+            self.next()
             return start_index, end_index, segment
         raise EOFError()
 
@@ -70,7 +91,7 @@ class SqlParser(object):
                     self.read_util('\n')
                 except EOFError:
                     pass
-                self.index += 1
+                self.next()
                 continue
             segment = self.sql[self.index: self.index + 2]
             if segment == "--":
@@ -78,25 +99,25 @@ class SqlParser(object):
                     self.read_util('\n')
                 except EOFError:
                     pass
-                self.index += 1
+                self.next()
                 continue
             if segment == "/*":
                 self.read_util("*/")
-                self.index += 1
+                self.next()
                 continue
             if self.sql[self.index] == ';':
                 if start_index is None:
-                    self.index += 1
+                    self.next()
                     continue
-                segments.append(self.sql[start_index: self.index])
+                segments.append(SqlSegment(self.sql[start_index: self.index], self.lineno))
                 start_index = None
-                self.index += 1
+                self.next()
                 continue
             if start_index is None and self.sql[self.index].isalpha():
                 start_index = self.index
-            self.index += 1
+            self.next()
         if start_index is not None:
-            segments.append(self.sql[start_index: self.index])
+            segments.append(SqlSegment(self.sql[start_index: self.index], self.lineno))
         return segments
 
 

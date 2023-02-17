@@ -48,16 +48,17 @@ class Executor(object):
 
     def run(self, name, sqls):
         for sql in sqls:
-            sql = self.compile_env_variable(sql)
+            lineno = sql.lineno
+            sql = self.compile_env_variable(str(sql))
             raw_sqls = RAW_SQL_RE.findall(sql)
             for raw, raw_name, raw_sql in raw_sqls:
                 raw_name_info = raw_name.split(".")
                 if len(raw_name_info) != 2:
                     continue
                 raw_sql = "set @config.databases." + raw_name_info[0] + ".virtual_views." + raw_name_info[1] + "='''\n" + raw_sql.strip() + "\n'''"
-                self.compile(name, raw_sql)
+                self.compile(name + "(" + str(lineno) + ")#set_virtual_view", raw_sql)
                 sql = sql.replace(raw, raw_name)
-            self.compile(name, sql)
+            self.compile(name + "(" + str(lineno) + ")", sql)
 
     def compile(self, name, sql):
         config = copy.deepcopy(self.session_config.get())
