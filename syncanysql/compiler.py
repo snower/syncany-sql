@@ -59,7 +59,7 @@ class Compiler(object):
     def compile_delete(self, expression, arguments):
         config = copy.deepcopy(self.config)
         config.update({
-            "input": "&.--.__null::id",
+            "input": "&.--.__null__::id",
             "output": "&.-.&1::id",
             "querys": {},
             "schema": "$.*",
@@ -101,7 +101,7 @@ class Compiler(object):
         subquery_arguments = {key: arguments[key] for key in CONST_CONFIG_KEYS if key in arguments}
         subquery_config = self.compile_query(expression.args["this"], subquery_arguments)
         subquery_config["output"] = "&.--." + subquery_name + "::" + subquery_config["output"].split("::")[-1]
-        subquery_config["name"] = subquery_config["name"] + "#" + subquery_name
+        subquery_config["name"] = subquery_config["name"] + "#" + subquery_name[2:]
         arguments.update({subquery_config["name"] + "@" + key: value for key, value in subquery_arguments.items()})
         return subquery_name, subquery_config
 
@@ -142,7 +142,7 @@ class Compiler(object):
             subquery_arguments = {key: arguments[key] for key in CONST_CONFIG_KEYS if key in arguments}
             subquery_config = self.compile_query(expression.args["this"], subquery_arguments)
             subquery_config["output"] = "&.--." + query_name + "::" + subquery_config["output"].split("::")[-1].split(" use ")[0] + " use I"
-            subquery_config["name"] = subquery_config["name"] + "#" + subquery_name
+            subquery_config["name"] = subquery_config["name"] + "#" + subquery_name[2:]
             arguments.update({subquery_config["name"] + "@" + key: value for key, value in subquery_arguments.items()})
             config["dependencys"].append(subquery_config)
         config["input"] = "&.--." + query_name + "::" + config["dependencys"][0]["output"].split("::")[-1].split(" ")[0]
@@ -200,6 +200,8 @@ class Compiler(object):
         config["schema"] = {}
         for select_expression in select_expressions:
             if isinstance(select_expression, sqlglot_expressions.Star):
+                if len(select_expressions) != 1:
+                    raise SyncanySqlCompileException("* query can only query the master table: " + self.to_sql(expression))
                 config["schema"] = "$.*"
                 break
 
@@ -324,8 +326,10 @@ class Compiler(object):
             if not isinstance(primary_table["primary_keys"], list):
                 primary_table["primary_keys"] = []
             primary_table["primary_keys"].append((column_info["column_name"], column_alias))
-        elif primary_table["primary_keys"] is None or (isinstance(primary_table["primary_keys"], tuple) and column_alias and column_alias == "id"):
-            primary_table["primary_keys"] = (column_info["column_name"], column_alias)
+        elif primary_table["primary_keys"] is None or (isinstance(primary_table["primary_keys"], tuple) and column_alias
+                                                       and column_alias == "id"):
+            if not column_info["table_name"] or column_info["table_name"] == primary_table["table_name"]:
+                primary_table["primary_keys"] = (column_info["column_name"], column_alias)
 
     def compile_join_column_tables(self, primary_table, current_join_tables, join_tables, column_join_tables):
         if not current_join_tables:
@@ -538,8 +542,17 @@ class Compiler(object):
     def compile_calculate(self, primary_table, expression, column_join_tables, join_index=-1):
         if isinstance(expression, sqlglot_expressions.Anonymous):
             calculater_name = expression.args["this"]
-            if calculater_name == "call":
-                column = ["#call".join(calculater_name.split("__"))]
+            if calculater_name == "call_define":
+                column = ["#call"]
+                for arg_expression in expression.args.get("expressions", []):
+                    if self.is_const(arg_expression):
+                        column.append(self.parse_const(arg_expression)["value"])
+                    else:
+                        column.append(self.compile_calculate(primary_table, arg_expression, column_join_tables, join_index))
+                return column
+
+            if calculater_name == "yield_data":
+                column = ["#yield"]
                 for arg_expression in expression.args.get("expressions", []):
                     if self.is_const(arg_expression):
                         column.append(self.parse_const(arg_expression)["value"])
@@ -588,6 +601,9 @@ class Compiler(object):
             return self.compile_join_column_field(primary_table, join_index, join_column, column_join_tables)
         elif isinstance(expression, sqlglot_expressions.Star):
             return "$.*"
+        elif isinstance(expression, sqlglot_expressions.Tuple):
+            return ["#const", [self.parse_const(tuple_expression)["value"] for tuple_expression in expression.args["expressions"]
+                               if self.is_const(tuple_expression)]]
         elif self.is_const(expression):
             return self.compile_const(self.parse_const(expression))
         else:

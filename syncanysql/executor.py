@@ -88,10 +88,13 @@ class Executor(object):
                             continue
                         for key in list(driver.driver.keys()):
                             if "__subquery_" in key or "__unionquery_" in key:
-                                driver.driver.pop(key)
+                                driver.driver.remove(key)
         return 0
 
     def terminate(self):
         if not self.tasker:
             return
         self.tasker.terminate()
+
+    def add_runner(self, tasker):
+        self.runners.append(tasker)

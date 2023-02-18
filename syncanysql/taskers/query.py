@@ -9,7 +9,7 @@ from syncany.logger import get_logger
 from syncany.filters.filter import Filter
 from syncany.taskers.core import CoreTasker
 from syncany.hook import Hooker
-from syncany.main import show_tasker, show_dependency_tasker, compile_dependency, run_dependency, warp_database_logging
+from syncany.main import show_tasker, show_dependency_tasker, compile_dependency, run_yield, TaskerYieldNext, warp_database_logging
 
 
 class ReduceHooker(Hooker):
@@ -32,6 +32,8 @@ class ReduceHooker(Hooker):
                                              self.manager, self.arguments, False)
 
     def finaled(self, tasker, e=None):
+        if e is not None:
+            return
         self.tasker.run_aggregate_reduce(self.executor, self.session_config,
                                          self.manager, self.arguments, False)
 
@@ -43,12 +45,15 @@ class QueryTasker(object):
         self.tasker = None
         self.dependency_taskers = None
         self.arguments = None
+        self.tasker_generator = None
 
     def start(self, executor, session_config, manager, arguments):
         batch, aggregate = int(self.config.get("@batch", 0)), self.config.pop("aggregate", None)
         if aggregate and aggregate["key"] and aggregate["reduces"] and batch > 0:
             self.compile_aggregate_config(aggregate)
         tasker = CoreTasker(self.config, manager)
+        if "#" not in tasker.config["name"]:
+            tasker.config["name"] = tasker.config["name"] + "#select"
         if self.aggregate_config:
             tasker.add_hooker(ReduceHooker(executor, session_config, manager, arguments,
                                            self, copy.deepcopy(self.config), batch, aggregate))
@@ -79,9 +84,19 @@ class QueryTasker(object):
         return [self]
 
     def run(self, executor, session_config, manager):
-        exit_code = self.run_core_task(self.arguments, self.tasker, self.dependency_taskers)
-        if exit_code is not None and exit_code != 0:
-            return exit_code
+        if not self.tasker_generator:
+            self.tasker_generator = self.run_core_task(self.arguments, self.tasker, self.dependency_taskers)
+        while True:
+            try:
+                value = self.tasker_generator.send(None)
+                if isinstance(value, TaskerYieldNext):
+                    executor.add_runner(self.tasker)
+                    return 0
+            except StopIteration as e:
+                exit_code = e.value
+                if exit_code is not None and exit_code != 0:
+                    return exit_code
+                break
         if self.aggregate_config:
             return self.run_aggregate_reduce(executor, session_config, manager, self.arguments, True)
         return exit_code
@@ -127,7 +142,7 @@ class QueryTasker(object):
             config["schema"].pop("_aggregate_key_", None)
             for key, column in config["schema"].items():
                 config["schema"][key] = "$." + key
-            config["name"] = config["name"] + "_final"
+            config["name"] = config["name"].split("#")[0] + "#final_reduce"
         else:
             config["output"] = config["input"] + " use DI"
         tasker = CoreTasker(config, manager)
@@ -147,7 +162,16 @@ class QueryTasker(object):
         run_arguments["@batch"] = 0
         run_arguments["@limit"] = 0
         self.compile_core_task(run_arguments, tasker, [])
-        return self.run_core_task(run_arguments, tasker, [])
+        tasker_generator = self.run_core_task(run_arguments, tasker, [])
+        while True:
+            try:
+                tasker_generator.send(None)
+            except StopIteration as e:
+                exit_code = e.value
+                if exit_code is not None and exit_code != 0:
+                    return exit_code
+                break
+        return 0
 
     def load_core_task_dependency(self, parent, filename, parent_arguments):
         tasker = CoreTasker(filename, parent.manager, parent)
@@ -193,9 +217,10 @@ class QueryTasker(object):
     def run_core_task(self, arguments, tasker, dependency_taskers):
         self.tasker = tasker
         try:
-            for dependency_tasker in dependency_taskers:
-                run_dependency(*dependency_tasker)
-            tasker.run()
+            for value in run_yield(tasker, dependency_taskers):
+                if isinstance(value, TaskerYieldNext):
+                    yield value
+                    self.tasker = tasker
         except SystemError:
             tasker.close(False, "signal terminaled")
             get_logger().error("signal exited")

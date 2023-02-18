@@ -18,6 +18,7 @@ class ExplainTasker(object):
             elif key.endswith("@verbose"):
                 arguments[key] = True
         self.tasker.config["output"] = "&.-.&1::" + self.tasker.config["output"].split("::")[-1].split(" ")[0]
+        self.tasker.config["name"] = self.tasker.config["name"] + "#explain"
         self.config = copy.deepcopy(self.tasker.config)
         self.tasker.start(executor, session_config, manager, arguments)
         return [self]
