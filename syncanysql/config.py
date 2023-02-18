@@ -17,18 +17,7 @@ CONST_CONFIG_KEYS = ("@verbose", "@limit", "@batch", "@recovery", "@join_batch",
 
 class SessionConfig(object):
     def __init__(self):
-        self.config = {
-            "databases": [
-                {
-                    "name": "-",
-                    "driver": "textline"
-                },
-                {
-                    "name": "--",
-                    "driver": "memory"
-                }
-            ]
-        }
+        self.config = {}
 
     def get(self):
         return self.config
@@ -138,6 +127,14 @@ class SessionConfig(object):
                 self.config["extends"].append(filename)
         self.load_config()
 
+        if "databases" not in self.config:
+            self.config["databases"] = []
+        database_names = {database["name"] for database in self.config["databases"]}
+        if "-" not in database_names:
+            self.config["databases"].append({"name": "-", "driver": "textline"})
+        if "--" not in database_names:
+            self.config["databases"].append({"name": "--", "driver": "memory"})
+
     def load_config(self, filename=None):
         if filename is None:
             config, self.config = self.config, copy.deepcopy(CoreTasker.DEFAULT_CONFIG)
@@ -195,8 +192,13 @@ class SessionConfig(object):
                 self.config[k] = v
 
     def config_logging(self):
+        logfile = self.config.pop("logfile", None)
+        logformat = self.config.pop("logformat", "%(asctime)s %(process)d %(levelname)s %(message)s")
+        loglevel = {"CRITICAL": logging.CRITICAL, "FATAL": logging.FATAL, "ERROR": logging.ERROR,
+                    "WARN": logging.CRITICAL, "WARNING": logging.WARNING, "INFO": logging.INFO,
+                    "DEBUG": logging.DEBUG}.get(self.config.pop("loglevel", "INFO"))
         if "logger" in self.config and isinstance(self.config["logger"], dict):
             logging.config.dictConfig(self.config["logger"])
         else:
-            logging.basicConfig(level=logging.INFO, format='%(asctime)s %(process)d %(levelname)s %(message)s',
+            logging.basicConfig(filename=logfile, level=loglevel, format=logformat,
                                 datefmt='%Y-%m-%d %H:%M:%S', filemode='a+')
