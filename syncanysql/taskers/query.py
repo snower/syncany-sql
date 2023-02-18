@@ -131,7 +131,6 @@ class QueryTasker(object):
             else:
                 config["schema"][key] = "$." + key
         config["schema"]["_aggregate_key_"] = "$._aggregate_key_"
-        config["name"] = self.config["name"] + "#reduce"
         self.config["schema"]["_aggregate_key_"] = aggregate["key"]
         self.config["output"] = "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0] + " use I"
         self.aggregate_config = config
@@ -142,9 +141,10 @@ class QueryTasker(object):
             config["schema"].pop("_aggregate_key_", None)
             for key, column in config["schema"].items():
                 config["schema"][key] = "$." + key
-            config["name"] = config["name"].split("#")[0] + "#final_reduce"
+            config["name"] = config["name"] + "#select@final_reduce"
         else:
             config["output"] = config["input"] + " use DI"
+            config["name"] = config["name"] + "#select@reduce"
         tasker = CoreTasker(config, manager)
         tasker_arguments = tasker.load()
         run_arguments = {}
