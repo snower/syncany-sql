@@ -993,11 +993,15 @@ class Compiler(object):
         }
     
     def parse_const(self, expression):
-        typing_filter = None
+        is_neg, typing_filter = False, None
+        if isinstance(expression, sqlglot_expressions.Neg):
+            is_neg, expression = True, expression.args["this"]
         if isinstance(expression, sqlglot_expressions.Literal):
             value = expression.args["this"]
             if expression.is_number:
                 value = int(value) if expression.is_int else float(value)
+                if is_neg:
+                    value = -value
                 typing_filter = "int" if expression.is_int else "float"
         elif isinstance(expression, sqlglot_expressions.Boolean):
             value = expression.args["this"]
@@ -1069,7 +1073,7 @@ class Compiler(object):
         return "".join(segments)
 
     def is_const(self, expression):
-        return isinstance(expression, (sqlglot_expressions.Literal, sqlglot_expressions.Boolean,
+        return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Literal, sqlglot_expressions.Boolean,
                                        sqlglot_expressions.Null))
 
     def to_sql(self, expression_sql):

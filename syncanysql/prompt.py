@@ -11,7 +11,7 @@ from prompt_toolkit.lexers import PygmentsLexer
 from prompt_toolkit.styles import Style
 from prompt_toolkit.filters import Condition
 from syncanysql.executor import Executor
-from .parser import SqlParser
+from .parser import SqlParser, SqlSegment
 
 sql_completer = WordCompleter(
     [
@@ -166,15 +166,17 @@ class CliPrompt(object):
             lexer=PygmentsLexer(SqlLexer), completer=sql_completer, style=style, history=history
         )
         executor = Executor(self.manager, self.session_config)
+        lineno = 1
         while True:
             try:
                 text = session.prompt("> ", multiline=Condition(lambda: self.check_complete(session.app.current_buffer.text)))
                 if text.strip().lower()[:4] == "exit":
                     return 0
-                executor.run("cli", [text])
+                executor.run("cli", [SqlSegment(text, lineno)])
                 try:
                     executor.execute()
                 finally:
+                    lineno += 1
                     executor.runners.clear()
             except KeyboardInterrupt:
                 continue  # Control-C pressed. Try again.
