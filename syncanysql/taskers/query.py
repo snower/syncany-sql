@@ -90,7 +90,7 @@ class QueryTasker(object):
             try:
                 value = self.tasker_generator.send(None)
                 if isinstance(value, TaskerYieldNext):
-                    executor.add_runner(self.tasker)
+                    executor.add_runner(self)
                     return 0
             except StopIteration as e:
                 exit_code = e.value
