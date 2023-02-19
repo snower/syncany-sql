@@ -170,7 +170,10 @@ class CliPrompt(object):
         while True:
             try:
                 text = session.prompt("> ", multiline=Condition(lambda: self.check_complete(session.app.current_buffer.text)))
-                if text.strip().lower()[:4] == "exit":
+                text = text.strip()
+                if not text:
+                    continue
+                if text.lower()[:4] == "exit":
                     return 0
                 executor.run("cli", [SqlSegment(text, lineno)])
                 try:
@@ -187,6 +190,8 @@ class CliPrompt(object):
         return 0
 
     def check_complete(self, content):
+        if not content.strip():
+            return False
         if content[:4] == "exit":
             return False
         sql_parser = SqlParser(content)

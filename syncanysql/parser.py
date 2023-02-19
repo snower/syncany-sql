@@ -109,14 +109,15 @@ class SqlParser(object):
                 if start_index is None:
                     self.next()
                     continue
-                segments.append(SqlSegment(self.sql[start_index: self.index], lineno))
+                if start_index < self.index:
+                    segments.append(SqlSegment(self.sql[start_index: self.index], lineno))
                 start_index = None
                 self.next()
                 continue
             if start_index is None and self.sql[self.index].isalpha():
                 lineno, start_index = self.lineno, self.index
             self.next()
-        if start_index is not None:
+        if start_index is not None and start_index < self.index:
             segments.append(SqlSegment(self.sql[start_index: self.index], lineno))
         return segments
 
