@@ -8,7 +8,6 @@ import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
-sys.path.append("C:\\Users\\admin\\workspace\\projects\\github\\syncany")
 
 from syncanysql.main import main
 
