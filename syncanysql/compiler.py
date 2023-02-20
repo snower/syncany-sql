@@ -714,11 +714,15 @@ class Compiler(object):
         primary_sort_keys, sort_keys = [], []
         for expression in expressions:
             column = self.parse_column(expression.args["this"])
-            if primary_table["table_alias"] == column["table_name"] or \
+            if (column["table_name"] and primary_table["table_alias"] == column["table_name"]) or \
                     (not column["table_name"] and column["column_name"] in primary_table["columns"]):
                 primary_sort_keys.append([column["column_name"], True if expression.args["desc"] else False])
             sort_keys.append((column["column_name"], True if expression.args["desc"] else False))
         if sort_keys and len(primary_sort_keys) < len(sort_keys):
+            if isinstance(config["schema"], dict):
+                for sort_key in sort_keys:
+                    if sort_key not in config["schema"]:
+                        raise SyncanySqlCompileException("unkonw order by key: " + str(sort_key))
             config["pipelines"].append([">>@sort", "$.*|array", False, sort_keys])
         elif primary_sort_keys:
             config["orders"].extend(primary_sort_keys)
