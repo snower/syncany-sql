@@ -9,7 +9,7 @@ import time
 from syncany.logger import get_logger
 from syncany.taskers.manager import TaskerManager
 from syncany.database.database import DatabaseManager
-from .config import SessionConfig
+from .config import GlobalConfig
 from syncanysql.executor import Executor
 from .parser import FileParser
 from .prompt import CliPrompt
@@ -25,9 +25,9 @@ def main():
             signal.signal(signal.SIGHUP, lambda signum, frame: executor.terminate())
             signal.signal(signal.SIGTERM, lambda signum, frame: executor.terminate())
 
-        session_config = SessionConfig()
-        session_config.load()
-        session_config.config_logging()
+        global_config = GlobalConfig()
+        global_config.load()
+        global_config.config_logging()
         manager = TaskerManager(DatabaseManager())
 
         try:
@@ -35,13 +35,13 @@ def main():
                 start_time = time.time()
                 file_parser = FileParser(sys.argv[1])
                 sqls = file_parser.load()
-                executor = Executor(manager, session_config)
+                executor = Executor(manager, global_config.session())
                 executor.run(sys.argv[1], sqls)
                 exit_code = executor.execute()
                 get_logger().info("execute file %s finish with code %d %.2fms", sys.argv[1], exit_code, (time.time() - start_time) * 1000)
                 exit(exit_code)
             else:
-                cli_prompt = CliPrompt(manager, session_config)
+                cli_prompt = CliPrompt(manager, global_config.session())
                 exit(cli_prompt.run())
         finally:
             manager.close()

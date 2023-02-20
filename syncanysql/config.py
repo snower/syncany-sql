@@ -17,9 +17,9 @@ VIRTUAL_VIEW_ARGS_RE = re.compile("(\#\{\w+?(:.*?){0,1}\})", re.DOTALL | re.M)
 CONST_CONFIG_KEYS = ("@verbose", "@limit", "@batch", "@streaming", "@recovery", "@join_batch", "@insert_batch")
 
 
-class SessionConfig(object):
+class GlobalConfig(object):
     def __init__(self):
-        self.config = {}
+        self.config = copy.deepcopy(CoreTasker.DEFAULT_CONFIG)
 
     def get(self):
         return self.config
@@ -155,7 +155,9 @@ class SessionConfig(object):
                 self.load_config(config_filename)
         else:
             self.load_config(extends)
+        self.merge_config(config)
 
+    def merge_config(self, config):
         for k, v in config.items():
             if k in ("arguments", "imports", "defines", "variables", "sources", "logger", "options"):
                 if not isinstance(v, dict) or not isinstance(self.config.get(k, {}), dict):
@@ -207,3 +209,32 @@ class SessionConfig(object):
         else:
             logging.basicConfig(filename=logfile, level=loglevel, format=logformat,
                                 datefmt='%Y-%m-%d %H:%M:%S', filemode='a+')
+
+    def session(self):
+        return SessionConfig(self, self)
+
+
+class SessionConfig(GlobalConfig):
+    def __init__(self, global_config, parent_config):
+        super(SessionConfig, self).__init__()
+
+        self.global_config = global_config
+        self.parent_config = parent_config
+
+    def merge(self):
+        session_config, self.config = copy.deepcopy(CoreTasker.DEFAULT_CONFIG), self.config
+        def do_merge(config):
+            if isinstance(config, SessionConfig):
+                do_merge(config.parent_config)
+            self.merge_config(copy.deepcopy(config.config))
+        do_merge(self.parent_config)
+        self.merge_config(session_config)
+
+    def get(self):
+        return self.config
+
+    def set(self, key, value):
+        super(SessionConfig, self).set(key, value)
+
+    def session(self):
+        return SessionConfig(self.global_config, self)

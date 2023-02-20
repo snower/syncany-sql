@@ -9,15 +9,21 @@ class SetCommandTasker(object):
         self.config = config
 
     def start(self, executor, session_config, manager, arguments):
-        keys = self.config["key"].split(".")[0]
-        if self.config["key"] in CONST_CONFIG_KEYS:
-            self.set_config(session_config, self.config["key"])
+        key, is_global = self.config["key"], False
+        if key[:6].lower() == "global":
+            key, is_global = key[6:].strip(), True
+        keys = key.split(".")[0]
+        seted_config = session_config.global_config if is_global else session_config
+        if key in CONST_CONFIG_KEYS:
+            self.set_config(seted_config, key)
         elif keys in ("databases", "imports", "sources", "defines", "variables", "options", "caches"):
-            self.set_config(session_config, self.config["key"])
+            self.set_config(seted_config, key)
         elif keys == "virtual_views":
-            self.set_config(session_config, "databases." + self.config["key"])
-        elif self.config["key"][:7] == "@config":
-            self.set_config(session_config, self.config["key"][8:].strip())
+            self.set_config(seted_config, "databases." + key)
+        elif key[:7] == "@config":
+            self.set_config(seted_config, key[8:].strip())
+        if is_global:
+            session_config.merge()
         return []
 
     def set_config(self, session_config, key):

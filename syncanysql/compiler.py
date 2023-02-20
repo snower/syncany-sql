@@ -720,7 +720,7 @@ class Compiler(object):
             sort_keys.append((column["column_name"], True if expression.args["desc"] else False))
         if sort_keys and len(primary_sort_keys) < len(sort_keys):
             if isinstance(config["schema"], dict):
-                for sort_key in sort_keys:
+                for sort_key, _ in sort_keys:
                     if sort_key not in config["schema"]:
                         raise SyncanySqlCompileException("unkonw order by key: " + str(sort_key))
             config["pipelines"].append([">>@sort", "$.*|array", False, sort_keys])

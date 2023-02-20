@@ -19,9 +19,10 @@ RAW_SQL_RE = re.compile("(\(\s*?\/\*\s*?raw\(([\w\.]+?)\)\s*?\*\/(.*?)\/\*\s*?en
 FUNC_RE = re.compile("^(\w+?)\(((.+),{0,1})*\)$", re.DOTALL)
 
 class Executor(object):
-    def __init__(self, manager, session_config):
+    def __init__(self, manager, session_config, parent_executor=None):
         self.manager = manager
         self.session_config = session_config
+        self.parent_executor = parent_executor
         self.runners = deque()
         self.tasker = None
         self.env_variables = None
