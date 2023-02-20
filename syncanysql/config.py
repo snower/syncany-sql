@@ -7,12 +7,14 @@ import copy
 import re
 import logging.config
 import json
+import pytz
 from syncany.taskers.core import CoreTasker
 from syncany.taskers.config import load_config
+from syncany.utils import set_timezone
 
 
 VIRTUAL_VIEW_ARGS_RE = re.compile("(\#\{\w+?(:.*?){0,1}\})", re.DOTALL | re.M)
-CONST_CONFIG_KEYS = ("@verbose", "@limit", "@batch", "@recovery", "@join_batch", "@insert_batch")
+CONST_CONFIG_KEYS = ("@verbose", "@limit", "@batch", "@streaming", "@recovery", "@join_batch", "@insert_batch")
 
 
 class SessionConfig(object):
@@ -127,6 +129,9 @@ class SessionConfig(object):
                 self.config["extends"].append(filename)
         self.load_config()
 
+        if "timezone" in self.config:
+            timezone = self.config.pop("timezone")
+            set_timezone(pytz.timezone(timezone))
         if "databases" not in self.config:
             self.config["databases"] = []
         database_names = {database["name"] for database in self.config["databases"]}

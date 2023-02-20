@@ -49,7 +49,7 @@ class QueryTasker(object):
 
     def start(self, executor, session_config, manager, arguments):
         batch, aggregate = int(self.config.get("@batch", 0)), self.config.pop("aggregate", None)
-        if aggregate and aggregate["key"] and aggregate["reduces"] and batch > 0:
+        if aggregate and aggregate["key"] and aggregate["reduces"] and batch > 0 and not self.config.get("@streaming"):
             self.compile_aggregate_config(aggregate)
         tasker = CoreTasker(self.config, manager)
         if "#" not in tasker.config["name"]:

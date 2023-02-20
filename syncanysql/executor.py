@@ -7,11 +7,16 @@ import sys
 import re
 import copy
 from collections import deque
+from syncany.filters import StringFilter
+from syncany.calculaters import find_calculater
 from syncany.database.memory import MemoryDBFactory, MemoryDBDriver
+from .errors import SyncanySqlCompileException
+from .utils import parse_value
 from .compiler import Compiler
 
 ENV_VARIABLE_RE = re.compile("(\$\{\w+?(:.*?){0,1}\})", re.DOTALL | re.M)
 RAW_SQL_RE = re.compile("(\(\s*?\/\*\s*?raw\(([\w\.]+?)\)\s*?\*\/(.*?)\/\*\s*?endraw\s*?\*\/\s*\))", re.DOTALL | re.M)
+FUNC_RE = re.compile("^(\w+?)\(((.+),{0,1})*\)$", re.DOTALL)
 
 class Executor(object):
     def __init__(self, manager, session_config):
@@ -39,7 +44,20 @@ class Executor(object):
         variables = ENV_VARIABLE_RE.findall(sql)
         for variable, default_value in variables:
             variable_name = variable[2:-1].split(":")[0]
-            variable_value = self.env_variables[variable_name] if variable_name in self.env_variables else default_value[1:]
+            if variable_name in self.env_variables:
+                variable_value = self.env_variables[variable_name]
+            else:
+                try:
+                    groups = FUNC_RE.match(default_value[1:].strip()).groups()
+                    calculater_args = []
+                    if groups[1]:
+                        for arg in groups[1].split(","):
+                            calculater_args.append(parse_value(arg))
+                    variable_value = find_calculater(groups[0].split("__")[0])(groups[0].replace("__", "::"),
+                                                                               *tuple(calculater_args)).calculate()
+                    variable_value = StringFilter().filter(variable_value)
+                except Exception as e:
+                    variable_value = default_value[1:]
             if isinstance(variable_value, str):
                 variable_value = "true" if variable_value is True else ("false" if variable_value is False else
                                                                         ("null" if variable_value is None else str(variable_value)))
@@ -54,7 +72,7 @@ class Executor(object):
             for raw, raw_name, raw_sql in raw_sqls:
                 raw_name_info = raw_name.split(".")
                 if len(raw_name_info) != 2:
-                    continue
+                    raise SyncanySqlCompileException("raw sql name error: %s", raw)
                 raw_sql = "set @config.databases." + raw_name_info[0] + ".virtual_views." + raw_name_info[1] + "='''\n" + raw_sql.strip() + "\n'''"
                 self.compile(name + "(" + str(lineno) + ")#set_virtual_view", raw_sql)
                 sql = sql.replace(raw, raw_name)
@@ -66,8 +84,8 @@ class Executor(object):
         compiler = Compiler(config)
         arguments = {"@verbose": config.get("@verbose", False), "@timeout": config.get("@timeout", 0),
                      "@limit": config.get("@limit", 100 if name == "cli" else 0), "@batch": config.get("@batch", 0),
-                     "@recovery": config.get("@recovery", False), "@join_batch": config.get("@join_batch", 1000),
-                     "@insert_batch": config.get("@insert_batch", 0)}
+                     "@streaming": config.get("@streaming", False), "@recovery": config.get("@recovery", False),
+                     "@join_batch": config.get("@join_batch", 1000), "@insert_batch": config.get("@insert_batch", 0)}
         tasker = compiler.compile(sql, arguments)
         self.runners.extend(tasker.start(self, self.session_config, self.manager, arguments))
 
