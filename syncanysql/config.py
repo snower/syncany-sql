@@ -211,7 +211,9 @@ class GlobalConfig(object):
                                 datefmt='%Y-%m-%d %H:%M:%S', filemode='a+')
 
     def session(self):
-        return SessionConfig(self, self)
+        session_config = SessionConfig(self, self)
+        session_config.merge()
+        return session_config
 
 
 class SessionConfig(GlobalConfig):
@@ -237,4 +239,6 @@ class SessionConfig(GlobalConfig):
         super(SessionConfig, self).set(key, value)
 
     def session(self):
-        return SessionConfig(self.global_config, self)
+        session_config = SessionConfig(self.global_config, self)
+        session_config.merge()
+        return session_config
