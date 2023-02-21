@@ -600,6 +600,8 @@ class Compiler(object):
                     if len(get_value_expressions) >= 2:
                         column.append(get_value_parse(get_value_expressions[1:]))
                     return column[0] if len(column) == 1 else column
+                if not isinstance(column[0], str):
+                    column = ["#if", True, column[0], None]
                 column.append(get_value_parse(get_value_expressions[1:]))
                 return column
 
