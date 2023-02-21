@@ -241,6 +241,7 @@ class SessionConfig(GlobalConfig):
 
     def merge(self):
         session_config, self.config = copy.deepcopy(CoreTasker.DEFAULT_CONFIG), self.config
+
         def do_merge(config):
             if isinstance(config, SessionConfig):
                 do_merge(config.parent_config)

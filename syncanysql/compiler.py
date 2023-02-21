@@ -424,7 +424,7 @@ class Compiler(object):
                 value_column = self.compile_calculate(primary_table, value_expression, [])
             if condition_column["typing_name"] not in config["querys"]:
                 config["querys"][condition_column["typing_name"]] = {}
-            return (condition_column, value_column)
+            return condition_column, value_column
 
         if isinstance(expression, sqlglot_expressions.EQ):
             condition_column, value_column = parse(expression)
@@ -586,6 +586,7 @@ class Compiler(object):
                 if not get_value_expressions or len(get_value_expressions) < 2:
                     raise SyncanySqlCompileException("get_value args error: " + self.to_sql(expression))
                 column = [self.compile_calculate(primary_table, get_value_expressions[0], column_join_tables, join_index)]
+
                 def get_value_parse(get_value_expressions):
                     column = []
                     if self.is_const(get_value_expressions[0]):
@@ -702,13 +703,13 @@ class Compiler(object):
                     if not self.is_const(value_expression_item):
                         raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
                     value_items.append(self.parse_const(value_expression_item)["value"])
-                return (condition_column, value_items)
+                return condition_column, value_items
 
             calculate_fields = []
             self.parse_calculate(primary_table, value_expression, calculate_fields)
             if calculate_fields:
                 raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
-            return (self.compile_column(condition_column), self.compile_calculate(primary_table, value_expression, []))
+            return self.compile_column(condition_column), self.compile_calculate(primary_table, value_expression, [])
 
         if isinstance(expression, sqlglot_expressions.EQ):
             column, value = parse(expression)
@@ -758,6 +759,7 @@ class Compiler(object):
             typing_filter_column = ("$" * scope_depth) + "." + column["column_name"] + "|" + column["typing_filters"][0]
             if len(column["typing_filters"]) == 1:
                 return typing_filter_column
+
             def compile_column_filter(typing_filters):
                 child_filter_column = ":$.*|" + typing_filters[0]
                 if len(typing_filters) == 1:
@@ -851,19 +853,19 @@ class Compiler(object):
                         value_column[1] = [":" + value_column[1], ":$.*|array"]
                     else:
                         value_column[1] = [":" + value_column[1], [":$.*|array", ":$.:0"]]
-                    return (False, condition_column, value_column)
+                    return False, condition_column, value_column
                 if isinstance(value_expression, list):
                     value_items = []
                     for value_expression_item in value_expression:
                         if not self.is_const(value_expression_item):
                             raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
                         value_items.append(self.parse_const(value_expression_item)["value"])
-                    return (False, condition_column, value_items)
+                    return False, condition_column, value_items
                 calculate_fields = []
                 self.parse_calculate(primary_table, value_expression, calculate_fields)
                 if calculate_fields:
                     raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
-                return (False, condition_column, self.compile_calculate(primary_table, value_expression, []))
+                return False, condition_column, self.compile_calculate(primary_table, value_expression, [])
 
             if self.is_column(value_expression):
                 if condition_column["column_name"] in join_table["primary_keys"]:
@@ -871,17 +873,17 @@ class Compiler(object):
                 join_table["join_columns"].append(self.parse_column(value_expression))
                 join_table["primary_keys"].append(condition_column["column_name"])
                 join_table["calculate_expressions"].append(value_expression)
-                return (True, condition_column, None)
+                return True, condition_column, None
             calculate_fields = []
             self.parse_calculate(primary_table, value_expression, calculate_fields)
             if not calculate_fields and condition_column["table_name"] == join_table["name"]:
-                return (False, condition_column, self.compile_calculate(primary_table, value_expression, []))
+                return False, condition_column, self.compile_calculate(primary_table, value_expression, [])
             if condition_column["column_name"] in join_table["primary_keys"]:
                 raise SyncanySqlCompileException("join on primary_key duplicate: " + self.to_sql(expression))
             join_table["join_columns"].extend(calculate_fields)
             join_table["primary_keys"].append(condition_column["column_name"])
             join_table["calculate_expressions"].append(value_expression)
-            return (True, condition_column, None)
+            return True, condition_column, None
 
         if isinstance(expression, sqlglot_expressions.EQ):
             is_column, condition_column, value_column = parse(expression)
@@ -1192,6 +1194,7 @@ class Compiler(object):
             return True
         if not isinstance(expression, sqlglot_expressions.Dot):
             return False
+
         def parse_dot(dot_expression):
             if isinstance(dot_expression.args["this"], sqlglot_expressions.Column):
                 return True
