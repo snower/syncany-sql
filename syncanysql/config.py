@@ -140,6 +140,22 @@ class GlobalConfig(object):
         if "--" not in database_names:
             self.config["databases"].append({"name": "--", "driver": "memory"})
 
+        encoding = self.config.pop("encoding", None)
+        datetime_format = self.config.pop("datetime_format", None)
+        date_format = self.config.pop("date_format", None)
+        time_format = self.config.pop("time_format", None)
+        for database in self.config["databases"]:
+            if database["driver"] not in ("textline", "json", "csv"):
+                continue
+            if encoding:
+                database["encoding"] = encoding
+            if datetime_format:
+                database["datetime_format"] = datetime_format
+            if date_format:
+                database["date_format"] = date_format
+            if time_format:
+                database["time_format"] = time_format
+
     def load_config(self, filename=None):
         if filename is None:
             config, self.config = self.config, copy.deepcopy(CoreTasker.DEFAULT_CONFIG)
