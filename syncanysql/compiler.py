@@ -208,7 +208,7 @@ class Compiler(object):
                 break
 
             column_expression, aggregate_expression, calculate_expression, column_alias = None, None, None, None
-            if isinstance(select_expression, sqlglot_expressions.Column):
+            if self.is_column(select_expression):
                 column_expression = select_expression
             elif isinstance(select_expression, sqlglot_expressions.Alias):
                 column_alias = select_expression.args["alias"].name if "alias" in select_expression.args else None
@@ -216,7 +216,7 @@ class Compiler(object):
                     const_info = self.parse_const(select_expression.args["this"])
                     config["schema"][column_alias] = self.compile_const(const_info)
                     continue
-                elif isinstance(select_expression.args["this"], sqlglot_expressions.Column):
+                elif self.is_column(select_expression.args["this"]):
                     column_expression = select_expression.args["this"]
                 elif isinstance(select_expression.args["this"], (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Min, sqlglot_expressions.Max)):
                     aggregate_expression = select_expression.args["this"]
@@ -396,7 +396,7 @@ class Compiler(object):
                 table_expression, value_expression = expression.args["this"], expression.args["expression"].args["this"]
             else:
                 table_expression, value_expression = expression.args["this"], expression.args["expression"]
-            if not isinstance(table_expression, sqlglot_expressions.Column):
+            if not self.is_column(table_expression):
                 raise SyncanySqlCompileException("unkonw where condition: " + self.to_sql(expression))
             condition_table = table_expression.args["table"].name if "table" in table_expression.args else None
             if condition_table and condition_table != primary_table["table_name"]:
@@ -452,7 +452,7 @@ class Compiler(object):
 
     def compile_query_condition(self, primary_table, config, expression, typing_filters):
         select_expressions = expression.args.get("expressions")
-        if not select_expressions or len(select_expressions) != 1 or not isinstance(select_expressions[0], sqlglot_expressions.Column):
+        if not select_expressions or len(select_expressions) != 1 or not self.is_column(select_expressions[0]):
             raise SyncanySqlCompileException("unkonw query condition: " + self.to_sql(expression))
         if expression.args.get("group") or expression.args.get("having") \
                 or expression.args.get("order") or expression.args.get("limit"):
@@ -581,6 +581,28 @@ class Compiler(object):
     def compile_calculate(self, primary_table, expression, column_join_tables, join_index=-1):
         if isinstance(expression, sqlglot_expressions.Anonymous):
             calculater_name = expression.args["this"]
+            if calculater_name == "get_value":
+                get_value_expressions = expression.args.get("expressions")
+                if not get_value_expressions or len(get_value_expressions) < 2:
+                    raise SyncanySqlCompileException("get_value args error: " + self.to_sql(expression))
+                column = [self.compile_calculate(primary_table, get_value_expressions[0], column_join_tables, join_index)]
+                def get_value_parse(get_value_expressions):
+                    column = []
+                    if self.is_const(get_value_expressions[0]):
+                        get_value_key = self.parse_const(get_value_expressions[0])["value"]
+                        column.append((":$.:" + str(int(get_value_key))) if isinstance(get_value_key, (int, float)) else (":$." + str(get_value_key)))
+                    elif isinstance(get_value_expressions[0], sqlglot_expressions.Tuple):
+                        get_value_indexs = [self.parse_const(tuple_expression)["value"] for tuple_expression in get_value_expressions[0].args["expressions"]
+                                          if self.is_const(tuple_expression)]
+                        column.append(":$.:" + ":".join([str(int(i)) for i in get_value_indexs if isinstance(i, (float, int))][:3]))
+                    else:
+                        raise SyncanySqlCompileException("get_value key must by string or int tuple: " + self.to_sql(get_value_expressions[0]))
+                    if len(get_value_expressions) >= 2:
+                        column.append(get_value_parse(get_value_expressions[1:]))
+                    return column[0] if len(column) == 1 else column
+                column.append(get_value_parse(get_value_expressions[1:]))
+                return column
+
             if calculater_name == "call_define":
                 column = ["#call"]
                 for arg_expression in expression.args.get("expressions", []):
@@ -635,7 +657,7 @@ class Compiler(object):
             return cases
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index)
-        elif isinstance(expression, sqlglot_expressions.Column):
+        elif self.is_column(expression):
             join_column = self.parse_column(expression)
             return self.compile_join_column_field(primary_table, join_index, join_column, column_join_tables)
         elif isinstance(expression, sqlglot_expressions.Star):
@@ -667,9 +689,11 @@ class Compiler(object):
                 table_expression, value_expression = expression.args["this"], expression.args["expressions"]
             else:
                 table_expression, value_expression = expression.args["this"], expression.args["expression"]
-            if not isinstance(table_expression, sqlglot_expressions.Column) or "table" in table_expression.args:
+            if not self.is_column(table_expression):
                 raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
             condition_column = self.parse_column(table_expression)
+            if condition_column["table_name"]:
+                raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
             if isinstance(expression, sqlglot_expressions.In):
                 value_items = []
                 for value_expression_item in value_expression:
@@ -790,10 +814,14 @@ class Compiler(object):
         def parse(expression):
             table_expression, value_expression = None, None
             if isinstance(expression, sqlglot_expressions.EQ) and expression.args.get("expression"):
-                for arg_expression in expression.args["this"], expression.args["expression"]:
+                for arg_expression in (expression.args["this"], expression.args["expression"]):
                     if not isinstance(arg_expression, sqlglot_expressions.Column):
-                        continue
-                    condition_table = arg_expression.args["table"].name if "table" in arg_expression.args else None
+                        if not self.is_column(arg_expression):
+                            continue
+                        arg_column = self.parse_column(arg_expression)
+                        condition_table = arg_column["table_name"]
+                    else:
+                        condition_table = arg_expression.args["table"].name if "table" in arg_expression.args else None
                     if condition_table and condition_table == join_table["name"]:
                         table_expression = arg_expression
                         break
@@ -812,8 +840,7 @@ class Compiler(object):
             condition_column = self.parse_column(table_expression)
             if not isinstance(expression, sqlglot_expressions.EQ) or self.is_const(value_expression) \
                     or isinstance(value_expression, list) or isinstance(value_expression, sqlglot_expressions.Select):
-                if not isinstance(table_expression, sqlglot_expressions.Column) or "table" not in table_expression.args \
-                        or not table_expression.args["table"].name:
+                if not self.is_column(table_expression) or not condition_column["table_name"]:
                     raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
                 if isinstance(value_expression, sqlglot_expressions.Select):
                     value_column = self.compile_query_condition(primary_table, config, value_expression,
@@ -824,7 +851,6 @@ class Compiler(object):
                         value_column[1] = [":" + value_column[1], [":$.*|array", ":$.:0"]]
                     return (False, condition_column, value_column)
                 if isinstance(value_expression, list):
-                    condition_column = self.parse_column(table_expression)
                     value_items = []
                     for value_expression_item in value_expression:
                         if not self.is_const(value_expression_item):
@@ -837,7 +863,7 @@ class Compiler(object):
                     raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
                 return (False, condition_column, self.compile_calculate(primary_table, value_expression, []))
 
-            if isinstance(value_expression, sqlglot_expressions.Column):
+            if self.is_column(value_expression):
                 join_table["join_columns"].append(self.parse_column(value_expression))
                 join_table["calculate_expressions"].append(value_expression)
                 return (True, condition_column, None)
@@ -938,7 +964,7 @@ class Compiler(object):
                     self.parse_calculate(primary_table, case_expression, calculate_fields)
         elif isinstance(expression, sqlglot_expressions.Paren):
             self.parse_calculate(primary_table, expression.args["this"], calculate_fields)
-        elif isinstance(expression, sqlglot_expressions.Column):
+        elif self.is_column(expression):
             column = self.parse_column(expression)
             if not column["table_name"] or primary_table["table_name"] == column["table_name"]:
                 primary_table["columns"][column["column_name"]] = column
@@ -1020,6 +1046,19 @@ class Compiler(object):
         }
         
     def parse_column(self, expression):
+        dot_keys = []
+        if isinstance(expression, sqlglot_expressions.Dot):
+            def parse_dot(dot_expression):
+                if isinstance(dot_expression.args["this"], sqlglot_expressions.Column):
+                    if dot_expression.args.get("expression"):
+                        dot_keys.append(dot_expression.args["expression"].name)
+                    return dot_expression.args["this"]
+                column_expression = parse_dot(dot_expression.args["this"])
+                if dot_expression.args.get("expression"):
+                    dot_keys.append(dot_expression.args["expression"].name)
+                return column_expression
+            expression = parse_dot(expression)
+
         table_name = expression.args["table"].name if "table" in expression.args else None
         column_name = expression.args["this"].name
         origin_name = self.mapping[column_name] if column_name in self.mapping else column_name
@@ -1030,6 +1069,7 @@ class Compiler(object):
             typing_name = (column_name + "|" + typing_filters[0]) if typing_filters else column_name
         except ValueError:
             typing_filters = []
+            column_name = origin_name
             typing_name = column_name
         try:
             start_index, end_index = origin_name.index("<"), origin_name.rindex(">")
@@ -1038,9 +1078,10 @@ class Compiler(object):
             typing_options = []
         return {
             "table_name": table_name,
-            "column_name": column_name,
+            "column_name": (column_name + "." + ".".join(dot_keys)) if dot_keys else column_name,
             "origin_name": origin_name,
             "typing_name": typing_name,
+            "dot_keys": dot_keys,
             "typing_filters": typing_filters,
             "typing_options": typing_options,
             "expression": expression
@@ -1135,6 +1176,19 @@ class Compiler(object):
                 segments.append(parser.sql[last_end_index:])
                 break
         return "".join(segments)
+
+    def is_column(self, expression):
+        if isinstance(expression, sqlglot_expressions.Column):
+            return True
+        if not isinstance(expression, sqlglot_expressions.Dot):
+            return False
+        def parse_dot(dot_expression):
+            if isinstance(dot_expression.args["this"], sqlglot_expressions.Column):
+                return True
+            if not isinstance(dot_expression.args["this"], sqlglot_expressions.Dot):
+                return False
+            return parse_dot(dot_expression.args["this"])
+        return parse_dot(expression)
 
     def is_const(self, expression):
         return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Literal, sqlglot_expressions.Boolean,
