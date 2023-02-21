@@ -1008,10 +1008,14 @@ class Compiler(object):
         if table_name == "_":
             db_name = "-"
         elif not db_name:
+            if table_name.lower().startswith("file://"):
+                db_driver, table_name = "textline", table_name[7:]
+            else:
+                db_driver = None
             path_info = os.path.split(table_name)
             path = os.path.abspath(path_info[0]) if path_info[0] else os.getcwd()
             db_driver = {".txt": "textline", ".json": "json", ".csv": "csv", ".xls": "execl",
-                         ".xlsx": "execl"}.get(os.path.splitext(path_info[-1])[-1])
+                         ".xlsx": "execl"}.get(os.path.splitext(path_info[-1])[-1], db_driver)
             if db_driver:
                 path_db_name = "dir__" + "".join([c for c in path if c.isalpha() or c.isdigit() or c == os.path.sep]).replace(os.path.sep, "_")
                 database = None
