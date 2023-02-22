@@ -9,7 +9,8 @@ from syncany.logger import get_logger
 from syncany.filters.filter import Filter
 from syncany.taskers.core import CoreTasker
 from syncany.hook import Hooker
-from syncany.main import show_tasker, show_dependency_tasker, compile_dependency, run_yield, TaskerYieldNext, warp_database_logging
+from syncany.taskers.tasker import _thread_local
+from syncany.main import TaskerYieldNext, warp_database_logging
 
 
 class ReduceHooker(Hooker):
@@ -41,11 +42,24 @@ class QueryTasker(object):
         self.config = config
         self.reduce_config = None
         self.tasker = None
-        self.dependency_taskers = None
+        self.dependency_taskers = []
         self.arguments = None
         self.tasker_generator = None
 
     def start(self, executor, session_config, manager, arguments):
+        dependency_taskers = []
+        for dependency_config in self.config.get("dependencys", []):
+            kn, knl = (dependency_config["name"] + "@"), len(dependency_config["name"] + "@")
+            dependency_arguments = {}
+            for key, value in arguments.items():
+                if key[:knl] != kn:
+                    continue
+                dependency_arguments[key[knl:]] = value
+                dependency_arguments.pop(key, None)
+            dependency_tasker = QueryTasker(dependency_config)
+            dependency_tasker.start(executor, session_config, manager, dependency_arguments)
+            dependency_taskers.append(dependency_tasker)
+
         limit, batch, aggregate = int(arguments.get("@limit", 0)), int(arguments.get("@batch", 0)), self.config.pop("aggregate", None)
         if ((aggregate and aggregate["key"] and aggregate["reduces"]) or self.config.get("intercepts")) and (batch > 0 or limit > 0) and not self.config.get("@streaming"):
             if limit > 0 and batch <= 0:
@@ -62,35 +76,15 @@ class QueryTasker(object):
         if self.reduce_config and "_aggregate_key_" in self.reduce_config["schema"]:
             tasker.add_hooker(ReduceHooker(executor, session_config, manager, arguments,
                                            self, copy.deepcopy(self.config), batch, aggregate))
-        tasker_arguments = tasker.load()
-
-        dependency_taskers = []
-        for filename in tasker.get_dependencys():
-            if isinstance(filename, list) and len(filename) == 2:
-                filename, dependency_arguments = filename[0], (filename[1] if isinstance(filename[1], dict) else {})
-            else:
-                dependency_arguments = {}
-            dependency_taskers.append(self.load_core_task_dependency(tasker, filename, dependency_arguments))
-
-        run_arguments = {}
-        for argument in tasker_arguments:
-            if "default" not in argument:
-                continue
-            if "type" not in argument or not isinstance(argument["type"], Filter):
-                run_arguments[argument["name"]] = argument["default"]
-                continue
-            if "nargs" in argument and "action" in argument and isinstance(argument["default"], list):
-                run_arguments[argument["name"]] = [argument["type"].filter(v) for v in argument["default"]]
-            else:
-                run_arguments[argument["name"]] = argument["type"].filter(argument["default"])
-        run_arguments.update(arguments)
-        self.compile_core_task(run_arguments, tasker, dependency_taskers)
-        self.tasker, self.dependency_taskers, self.arguments = tasker, dependency_taskers, run_arguments
+        arguments = self.compile_tasker(arguments, tasker)
+        self.tasker, self.dependency_taskers, self.arguments = tasker, dependency_taskers, arguments
         return [self]
 
     def run(self, executor, session_config, manager):
         if not self.tasker_generator:
-            self.tasker_generator = self.run_core_task(self.arguments, self.tasker, self.dependency_taskers)
+            self.tasker_generator = self.run_tasker(executor, session_config, manager, self.tasker, self.dependency_taskers)
+        else:
+            _thread_local.current_tasker = self.tasker
         while True:
             try:
                 value = self.tasker_generator.send(None)
@@ -105,6 +99,28 @@ class QueryTasker(object):
         if self.reduce_config:
             return self.run_reduce(executor, session_config, manager, self.arguments, True)
         return exit_code
+
+    def run_yield(self, executor, session_config, manager, tasker, dependency_taskers):
+        tasker_generator = tasker.run_yield()
+        dependency_tasker_generators = [(dependency_tasker, self.run_tasker(executor, session_config, manager,
+                                                                            dependency_tasker.tasker, dependency_tasker.dependency_taskers))
+                                        for dependency_tasker in dependency_taskers]
+        while True:
+            for dependency_tasker, dependency_tasker_generator in tuple(dependency_tasker_generators):
+                try:
+                    _thread_local.current_tasker = dependency_tasker.tasker
+                    yield dependency_tasker_generator.send(None)
+                except StopIteration:
+                    if dependency_tasker.reduce_config:
+                        dependency_tasker.run_reduce(executor, session_config, manager, dependency_tasker.arguments, True)
+                    dependency_tasker_generators.remove((dependency_tasker, dependency_tasker_generator))
+
+            try:
+                _thread_local.current_tasker = self.tasker
+                yield tasker_generator.send(None)
+            except StopIteration:
+                break
+            yield TaskerYieldNext()
 
     def terminate(self):
         if self.tasker:
@@ -142,7 +158,7 @@ class QueryTasker(object):
         self.reduce_config = config
 
     def run_reduce(self, executor, session_config, manager, arguments, final_reduce=False):
-        config = copy.deepcopy(self.reduce_config)
+        config, arguments = copy.deepcopy(self.reduce_config), copy.deepcopy(arguments)
         if final_reduce:
             config["schema"].pop("_aggregate_key_", None)
             for key, column in config["schema"].items():
@@ -152,24 +168,11 @@ class QueryTasker(object):
             config["output"] = config["input"] + " use DI"
             config["name"] = config["name"] + "#select@reduce"
         tasker = CoreTasker(config, manager)
-        tasker_arguments = tasker.load()
-        run_arguments = {}
-        for argument in tasker_arguments:
-            if "default" not in argument:
-                continue
-            if "type" not in argument or not isinstance(argument["type"], Filter):
-                run_arguments[argument["name"]] = argument["default"]
-                continue
-            if "nargs" in argument and "action" in argument and isinstance(argument["default"], list):
-                run_arguments[argument["name"]] = [argument["type"].filter(v) for v in argument["default"]]
-            else:
-                run_arguments[argument["name"]] = argument["type"].filter(argument["default"])
-        run_arguments.update(arguments)
-        run_arguments["@primary_order"] = False
-        run_arguments["@batch"] = 0
-        run_arguments["@limit"] = 0
-        self.compile_core_task(run_arguments, tasker, [])
-        tasker_generator = self.run_core_task(run_arguments, tasker, [])
+        arguments["@primary_order"] = False
+        arguments["@batch"] = 0
+        arguments["@limit"] = 0
+        self.compile_tasker(arguments, tasker)
+        tasker_generator = self.run_tasker(executor, session_config, manager, tasker, [])
         while True:
             try:
                 tasker_generator.send(None)
@@ -180,54 +183,33 @@ class QueryTasker(object):
                 break
         return 0
 
-    def load_core_task_dependency(self, parent, filename, parent_arguments):
-        tasker = CoreTasker(filename, parent.manager, parent)
-        arguments = tasker.load()
-        for argument in arguments:
+    def compile_tasker(self, arguments, tasker):
+        tasker_arguments = tasker.load()
+
+        compile_arguments = {}
+        for argument in tasker_arguments:
             if "default" not in argument:
                 continue
             if "type" not in argument or not isinstance(argument["type"], Filter):
-                parent_arguments[argument["name"]] = argument["default"]
+                compile_arguments[argument["name"]] = argument["default"]
                 continue
             if "nargs" in argument and "action" in argument and isinstance(argument["default"], list):
-                parent_arguments[argument["name"]] = [argument["type"].filter(v) for v in argument["default"]]
+                compile_arguments[argument["name"]] = [argument["type"].filter(v) for v in argument["default"]]
             else:
-                parent_arguments[argument["name"]] = argument["type"].filter(argument["default"])
-        setattr(tasker, "parent_arguments", parent_arguments)
+                compile_arguments[argument["name"]] = argument["type"].filter(argument["default"])
+        compile_arguments.update({key.lower(): value for key, value in os.environ.items()})
+        compile_arguments.update(arguments)
 
-        dependency_taskers = []
-        for filename in tasker.get_dependencys():
-            if isinstance(filename, list) and len(filename) == 2:
-                filename, dependency_arguments = filename[0], (filename[1] if isinstance(filename[1], dict) else {})
-            else:
-                dependency_arguments = {}
-            dependency_taskers.append(self.load_core_task_dependency(tasker, filename, dependency_arguments))
-        return (tasker, dependency_taskers)
-
-    def compile_core_task(self, arguments, tasker, dependency_taskers):
-        self.tasker = tasker
-        tasker_arguments = {key.lower(): value for key, value in os.environ.items()}
-        tasker_arguments.update(arguments)
-
-        tasker.compile(tasker_arguments)
-        for dependency_tasker in dependency_taskers:
-            compile_dependency(tasker_arguments, *dependency_tasker)
-
-        if "@show" in tasker_arguments and tasker_arguments["@show"]:
-            for dependency_tasker in dependency_taskers:
-                show_dependency_tasker(*dependency_tasker)
-            show_tasker(tasker)
-            return 0
-        if "@verbose" in tasker_arguments and tasker_arguments["@verbose"]:
+        tasker.compile(compile_arguments)
+        if "@verbose" in compile_arguments and compile_arguments["@verbose"]:
             warp_database_logging(tasker)
+        return compile_arguments
 
-    def run_core_task(self, arguments, tasker, dependency_taskers):
-        self.tasker = tasker
+    def run_tasker(self, executor, session_config, manager, tasker, dependency_taskers):
         try:
-            for value in run_yield(tasker, dependency_taskers):
+            for value in self.run_yield(executor, session_config, manager, tasker, dependency_taskers):
                 if isinstance(value, TaskerYieldNext):
                     yield value
-                    self.tasker = tasker
         except SystemError:
             tasker.close(False, "signal terminaled")
             get_logger().error("signal exited")
@@ -237,18 +219,9 @@ class QueryTasker(object):
             get_logger().error("Crtl+C exited")
             return 130
         except Exception as e:
-            if "@show" in arguments and arguments["@show"]:
-                for dependency_tasker in dependency_taskers:
-                    show_dependency_tasker(*dependency_tasker)
-                show_tasker(tasker)
-            else:
-                tasker.close(False, "Error: " + repr(e), traceback.format_exc())
+            tasker.close(False, "Error: " + repr(e), traceback.format_exc())
             get_logger().error("%s\n%s", e, traceback.format_exc())
             return 1
         else:
-            if "@show" in arguments and arguments["@show"]:
-                return 0
             tasker.close()
-        finally:
-            self.tasker = None
         return 0

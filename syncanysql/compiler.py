@@ -103,6 +103,7 @@ class Compiler(object):
         subquery_config["output"] = "&.--." + subquery_name + "::" + subquery_config["output"].split("::")[-1]
         subquery_config["name"] = subquery_config["name"] + "#" + subquery_name[2:]
         arguments.update({subquery_config["name"] + "@" + key: value for key, value in subquery_arguments.items()})
+        arguments["@primary_order"] = False
         return subquery_name, subquery_config
 
     def compile_insert_into(self, expression, config, arguments):
@@ -147,6 +148,7 @@ class Compiler(object):
             config["dependencys"].append(subquery_config)
         config["input"] = "&.--." + query_name + "::" + config["dependencys"][0]["output"].split("::")[-1].split(" ")[0]
         config["output"] = config["output"].split("::")[0] + "::" + config["input"].split("::")[-1].split(" ")[0]
+        arguments["@primary_order"] = False
         arguments["@limit"] = 0
 
     def compile_select(self, expression, config, arguments):
@@ -308,12 +310,13 @@ class Compiler(object):
         config["output"] = "".join([config["output"].split("::")[0], "::",
                                     "+".join([primary_key[1] for primary_key in primary_table["primary_keys"]]) if primary_table["primary_keys"] else "id",
                                     " use I" if not primary_table["primary_keys"] else ((" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else "")])
+        arguments["@primary_order"] = False
         return config
 
     def compile_select_column(self, primary_table, column_expression, column_alias, config, join_tables):
         column_info = self.parse_column(column_expression)
         if not column_alias:
-            column_alias = column_info["column_name"]
+            column_alias = column_info["column_name"].replace(".", "_")
         if column_info["table_name"] and column_info["table_name"] != primary_table["table_name"] and column_info["table_name"] in join_tables:
             column_join_tables = []
             self.compile_join_column_tables(primary_table, [join_tables[column_info["table_name"]]], join_tables,
