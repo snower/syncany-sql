@@ -28,33 +28,38 @@ class ReduceHooker(Hooker):
         self.count += len(datas)
         if self.count >= self.batch:
             self.count = 0
-            self.tasker.run_aggregate_reduce(self.executor, self.session_config,
-                                             self.manager, self.arguments, False)
+            self.tasker.run_reduce(self.executor, self.session_config, self.manager, self.arguments, False)
 
     def finaled(self, tasker, e=None):
         if e is not None:
             return
-        self.tasker.run_aggregate_reduce(self.executor, self.session_config,
-                                         self.manager, self.arguments, False)
+        self.tasker.run_reduce(self.executor, self.session_config, self.manager, self.arguments, False)
 
 
 class QueryTasker(object):
     def __init__(self, config):
         self.config = config
-        self.aggregate_config = None
+        self.reduce_config = None
         self.tasker = None
         self.dependency_taskers = None
         self.arguments = None
         self.tasker_generator = None
 
     def start(self, executor, session_config, manager, arguments):
-        batch, aggregate = int(self.config.get("@batch", 0)), self.config.pop("aggregate", None)
-        if aggregate and aggregate["key"] and aggregate["reduces"] and batch > 0 and not self.config.get("@streaming"):
-            self.compile_aggregate_config(aggregate)
+        limit, batch, aggregate = int(arguments.get("@limit", 0)), int(arguments.get("@batch", 0)), self.config.pop("aggregate", None)
+        if ((aggregate and aggregate["key"] and aggregate["reduces"]) or self.config.get("intercepts")) and (batch > 0 or limit > 0) and not self.config.get("@streaming"):
+            if limit > 0 and batch <= 0:
+                batch = max(*(int(arguments.get(key, 0)) for key in ("@limit", "@batch", "@join_batch", "@insert_batch")))
+                arguments["@batch"] = batch
+            if not aggregate:
+                aggregate = {"key": "", "reduces": []}
+            self.compile_reduce_config(aggregate)
+        elif 0 < limit < batch:
+            arguments["@batch"] = limit
         tasker = CoreTasker(self.config, manager)
         if "#" not in tasker.config["name"]:
             tasker.config["name"] = tasker.config["name"] + "#select"
-        if self.aggregate_config:
+        if self.reduce_config and "_aggregate_key_" in self.reduce_config["schema"]:
             tasker.add_hooker(ReduceHooker(executor, session_config, manager, arguments,
                                            self, copy.deepcopy(self.config), batch, aggregate))
         tasker_arguments = tasker.load()
@@ -97,15 +102,15 @@ class QueryTasker(object):
                 if exit_code is not None and exit_code != 0:
                     return exit_code
                 break
-        if self.aggregate_config:
-            return self.run_aggregate_reduce(executor, session_config, manager, self.arguments, True)
+        if self.reduce_config:
+            return self.run_reduce(executor, session_config, manager, self.arguments, True)
         return exit_code
 
     def terminate(self):
         if self.tasker:
             self.tasker.terminate()
 
-    def compile_aggregate_config(self, aggregate):
+    def compile_reduce_config(self, aggregate):
         subquery_name = "__subquery_" + str(id(self)) + "_reduce"
         config = copy.deepcopy(self.config)
         config.update({
@@ -130,13 +135,14 @@ class QueryTasker(object):
                 config["schema"][key] = ["#aggregate", "$._aggregate_key_", aggregate["reduces"][key]]
             else:
                 config["schema"][key] = "$." + key
-        config["schema"]["_aggregate_key_"] = "$._aggregate_key_"
-        self.config["schema"]["_aggregate_key_"] = aggregate["key"]
+        if aggregate["key"]:
+            config["schema"]["_aggregate_key_"] = "$._aggregate_key_"
+            self.config["schema"]["_aggregate_key_"] = aggregate["key"]
         self.config["output"] = "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0] + " use I"
-        self.aggregate_config = config
+        self.reduce_config = config
 
-    def run_aggregate_reduce(self, executor, session_config, manager, arguments, final_reduce=False):
-        config = copy.deepcopy(self.aggregate_config)
+    def run_reduce(self, executor, session_config, manager, arguments, final_reduce=False):
+        config = copy.deepcopy(self.reduce_config)
         if final_reduce:
             config["schema"].pop("_aggregate_key_", None)
             for key, column in config["schema"].items():
@@ -159,6 +165,7 @@ class QueryTasker(object):
             else:
                 run_arguments[argument["name"]] = argument["type"].filter(argument["default"])
         run_arguments.update(arguments)
+        run_arguments["@primary_order"] = False
         run_arguments["@batch"] = 0
         run_arguments["@limit"] = 0
         self.compile_core_task(run_arguments, tasker, [])
