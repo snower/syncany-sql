@@ -109,15 +109,18 @@ class QueryTasker(object):
             for dependency_tasker, dependency_tasker_generator in tuple(dependency_tasker_generators):
                 try:
                     _thread_local.current_tasker = dependency_tasker.tasker
-                    yield dependency_tasker_generator.send(None)
-                except StopIteration:
+                    dependency_tasker_generator.send(None)
+                except StopIteration as e:
+                    exit_code = e.value
+                    if exit_code is not None and exit_code != 0:
+                        return exit_code
                     if dependency_tasker.reduce_config:
                         dependency_tasker.run_reduce(executor, session_config, manager, dependency_tasker.arguments, True)
                     dependency_tasker_generators.remove((dependency_tasker, dependency_tasker_generator))
 
             try:
                 _thread_local.current_tasker = self.tasker
-                yield tasker_generator.send(None)
+                tasker_generator.send(None)
             except StopIteration:
                 break
             yield TaskerYieldNext()
@@ -207,9 +210,17 @@ class QueryTasker(object):
 
     def run_tasker(self, executor, session_config, manager, tasker, dependency_taskers):
         try:
-            for value in self.run_yield(executor, session_config, manager, tasker, dependency_taskers):
-                if isinstance(value, TaskerYieldNext):
-                    yield value
+            tasker_generator = self.run_yield(executor, session_config, manager, tasker, dependency_taskers)
+            while True:
+                try:
+                    value = tasker_generator.send(None)
+                    if isinstance(value, TaskerYieldNext):
+                        yield value
+                except StopIteration as e:
+                    exit_code = e.value
+                    if exit_code is not None and exit_code != 0:
+                        return exit_code
+                    break
         except SystemError:
             tasker.close(False, "signal terminaled")
             get_logger().error("signal exited")
