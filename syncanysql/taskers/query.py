@@ -220,7 +220,7 @@ class QueryTasker(object):
             return 130
         except Exception as e:
             tasker.close(False, "Error: " + repr(e), traceback.format_exc())
-            get_logger().error("%s\n%s", e, traceback.format_exc())
+            get_logger().error("tasker %s error: %s\n%s", tasker.name, e, traceback.format_exc())
             return 1
         else:
             tasker.close()
