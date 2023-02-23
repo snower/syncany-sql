@@ -59,7 +59,7 @@ class Compiler(object):
     def compile_delete(self, expression, arguments):
         config = copy.deepcopy(self.config)
         config.update({
-            "input": "&.--.__null__::id",
+            "input": "&.--.__subquery_null_" + str(id(expression)) + "::id",
             "output": "&.-.&1::id",
             "querys": {},
             "schema": "$.*",
