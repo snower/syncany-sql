@@ -9,7 +9,7 @@ import copy
 from collections import deque
 from syncany.filters import StringFilter
 from syncany.calculaters import find_calculater
-from syncany.database.memory import MemoryDBFactory, MemoryDBDriver
+from syncany.database.memory import MemoryDBFactory, MemoryDBCollection
 from .errors import SyncanySqlCompileException
 from .utils import parse_value
 from .compiler import Compiler
@@ -103,11 +103,11 @@ class Executor(object):
                     if not isinstance(factory, MemoryDBFactory):
                         continue
                     for driver in factory.drivers:
-                        if not isinstance(driver.driver, MemoryDBDriver):
+                        if not isinstance(driver.instance, MemoryDBCollection):
                             continue
-                        for key in list(driver.driver.keys()):
+                        for key in list(driver.instance.keys()):
                             if "__subquery_" in key or "__unionquery_" in key:
-                                driver.driver.remove(key)
+                                driver.instance.remove(key)
         return 0
 
     def terminate(self):
