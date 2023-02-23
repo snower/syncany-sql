@@ -1020,15 +1020,27 @@ class Compiler(object):
             db_name = "-"
         elif not db_name:
             if table_name.lower().startswith("file://"):
-                db_driver, table_name = "textline", table_name[7:]
+                from urllib.parse import unquote_plus, urlparse
+                try:
+                    url_info = urlparse(table_name)
+                    url_path = url_info.netloc + url_info.path + (("#" + url_info.fragment) if url_info.fragment else "")
+                    db_driver, db_params, path_info = "textline", {}, os.path.split(unquote_plus(url_path))
+                    for url_param in unquote_plus(url_info.query).split("&"):
+                        url_param = url_param.split("=")
+                        if len(url_param) >= 2:
+                            db_params[url_param[0]] = url_param[1]
+                except:
+                    db_driver, db_params, path_info = "textline", {}, os.path.split(table_name[7:])
             else:
-                db_driver = None
-            path_info = os.path.split(table_name)
-            path = os.path.abspath(path_info[0]) if path_info[0] else os.getcwd()
+                db_driver, db_params, path_info = None, {}, os.path.split(table_name)
+
             db_driver = {".txt": "textline", ".json": "json", ".csv": "csv", ".xls": "execl",
                          ".xlsx": "execl"}.get(os.path.splitext(path_info[-1])[-1], db_driver)
             if db_driver:
+                path, table_name = (os.path.abspath(path_info[0]) if path_info[0] else os.getcwd()), path_info[1]
                 path_db_name = "dir__" + "".join([c for c in path if c.isalpha() or c.isdigit() or c == os.path.sep]).replace(os.path.sep, "_")
+                if db_params:
+                    path_db_name = path_db_name + "_" + str(id(table_name))
                 database = None
                 if "databases" not in config:
                     config["databases"] = []
@@ -1037,12 +1049,14 @@ class Compiler(object):
                         d.update({"name": path_db_name, "driver": db_driver, "path": path})
                         database = d
                         break
-                    if d.get("driver") == database and d.get("path") == path:
+                    if d.get("driver") == database and d.get("path") == path and not db_params:
                         database = d
                         break
                 if not database:
                     database = {"name": path_db_name, "driver": db_driver, "path": path}
                     config["databases"].append(database)
+                if db_params:
+                    database.update(db_params)
                 if db_driver == "textline":
                     formats = [f for f in ("csv", "json", "richtable", "print") if f in typing_options]
                     if formats:
