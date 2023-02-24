@@ -5,6 +5,7 @@
 import os
 import copy
 import re
+import uuid
 import logging.config
 import json
 import pytz
@@ -134,11 +135,17 @@ class GlobalConfig(object):
             set_timezone(pytz.timezone(timezone))
         if "databases" not in self.config:
             self.config["databases"] = []
-        database_names = {database["name"] for database in self.config["databases"]}
-        if "-" not in database_names:
+        databases = {database["name"]: database for database in self.config["databases"]}
+        if "-" not in databases:
             self.config["databases"].append({"name": "-", "driver": "textline"})
-        if "--" not in database_names:
+        if "--" not in databases:
             self.config["databases"].append({"name": "--", "driver": "memory"})
+        elif databases["--"]["driver"] == "redis":
+            redis_default_config = {"prefix": "syncany:" + uuid.uuid1().hex + ":", "serialize": "pickle",
+                                    "ignore_serialize_error": True, "expire_seconds": 900}
+            for key, value in redis_default_config.items():
+                if key not in databases["--"]:
+                    databases["--"][key] = value
 
         encoding = self.config.pop("encoding", None)
         datetime_format = self.config.pop("datetime_format", None)
