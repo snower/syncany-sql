@@ -704,6 +704,17 @@ class Compiler(object):
             cases["#end"] = self.compile_calculate(primary_table, expression.args["default"], column_join_tables, join_index) \
                                 if expression.args.get("default") else None
             return cases
+        elif isinstance(expression, sqlglot_expressions.Func):
+            func_args = {
+                "substring": ["this", "start", "length"],
+            }
+            func_name = expression.key.lower()
+            column, arg_names = ["@" + func_name], (func_args.get(func_name) or ["this", "expression", "expressions"])
+            for arg_name in arg_names:
+                if not expression.args.get(arg_name):
+                    continue
+                column.append(self.compile_calculate(primary_table, expression.args[arg_name], column_join_tables, join_index))
+            return column
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index)
         elif self.is_column(expression):
@@ -734,50 +745,61 @@ class Compiler(object):
             ]
 
         def parse(expression):
-            if isinstance(expression, sqlglot_expressions.In):
-                table_expression, value_expression = expression.args["this"], expression.args["expressions"]
+            if expression.args.get("expressions"):
+                left_expression, right_expression = expression.args["this"], expression.args["expressions"]
             else:
-                table_expression, value_expression = expression.args["this"], expression.args["expression"]
-            if not self.is_column(table_expression):
-                raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
-            condition_column = self.parse_column(table_expression)
-            if condition_column["table_name"]:
-                raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
-            if isinstance(expression, sqlglot_expressions.In):
+                left_expression, right_expression = expression.args["this"], expression.args["expression"]
+            if self.is_column(left_expression):
+                left_column = self.parse_column(left_expression)
+                if left_column["table_name"]:
+                    raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
+                left_calculater = self.compile_column(left_column)
+            else:
+                calculate_fields = []
+                self.parse_calculate(primary_table, left_expression, calculate_fields)
+                if [calculate_field for calculate_field in calculate_fields if calculate_field["column_name"] not in config["schema"]]:
+                    raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
+                left_calculater = self.compile_calculate(primary_table, left_expression, [])
+
+            if isinstance(right_expression, list):
                 value_items = []
-                for value_expression_item in value_expression:
+                for value_expression_item in right_expression:
                     if not self.is_const(value_expression_item):
                         raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
                     value_items.append(self.parse_const(value_expression_item)["value"])
-                return condition_column, value_items
-
+                return left_calculater, value_items
+            if self.is_column(right_expression):
+                right_column = self.parse_column(right_expression)
+                if right_column["table_name"]:
+                    raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
+                return left_calculater, self.compile_column(right_column)
             calculate_fields = []
-            self.parse_calculate(primary_table, value_expression, calculate_fields)
-            if calculate_fields:
+            self.parse_calculate(primary_table, right_expression, calculate_fields)
+            if [calculate_field for calculate_field in calculate_fields if calculate_field["column_name"] not in config["schema"]]:
                 raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
-            return self.compile_column(condition_column), self.compile_calculate(primary_table, value_expression, [])
+            return left_calculater, self.compile_calculate(primary_table, right_expression, [])
 
         if isinstance(expression, sqlglot_expressions.EQ):
-            column, value = parse(expression)
-            return ["@eq", column, value]
+            left_calculater, right_calculater = parse(expression)
+            return ["@eq", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.NEQ):
-            column, value = parse(expression)
-            return ["@neq", column, value]
+            left_calculater, right_calculater = parse(expression)
+            return ["@neq", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.GT):
-            column, value = parse(expression)
-            return ["@gt", column, value]
+            left_calculater, right_calculater = parse(expression)
+            return ["@gt", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.GTE):
-            column, value = parse(expression)
-            return ["@gte", column, value]
+            left_calculater, right_calculater = parse(expression)
+            return ["@gte", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.LT):
-            column, value = parse(expression)
-            return ["@lt", column, value]
+            left_calculater, right_calculater = parse(expression)
+            return ["@lt", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.LTE):
-            column, value = parse(expression)
-            return ["@lte", column, value]
+            left_calculater, right_calculater = parse(expression)
+            return ["@lte", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.In):
-            column, value = parse(expression)
-            return ["@in", column, value]
+            left_calculater, right_calculater = parse(expression)
+            return ["@in", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_having_condition(primary_table, expression.args.get("this"), config)
         else:
