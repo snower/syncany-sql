@@ -12,14 +12,11 @@ class StreamingFollowHooker(Hooker):
         self.tasker = tasker
 
     def loaded(self, tasker, datas):
-        if hasattr(tasker.loader, "name"):
-            tasker.loader.db.set_streaming(tasker.loader.name, False)
+        tasker.loader.set_streaming(False)
         return datas
 
     def outputed(self, tasker, datas):
-        if hasattr(tasker.outputer, "name") and hasattr(tasker.loader, "name"):
-            is_streaming = tasker.outputer.db.is_streaming(tasker.outputer.name)
-            tasker.loader.db.set_streaming(tasker.loader.name, True if is_streaming else False)
+        tasker.loader.set_streaming(True if tasker.outputer.is_streaming() else False)
 
 
 class DeleteTasker(object):

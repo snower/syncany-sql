@@ -5,6 +5,7 @@
 import os
 import copy
 import traceback
+import uuid
 from syncany.logger import get_logger
 from syncany.filters.filter import Filter
 from syncany.taskers.core import CoreTasker
@@ -130,7 +131,7 @@ class QueryTasker(object):
             self.tasker.terminate()
 
     def compile_reduce_config(self, aggregate):
-        subquery_name = "__subquery_" + str(id(self)) + "_reduce"
+        subquery_name = "__subquery_" + str(uuid.uuid1().int) + "_reduce"
         config = copy.deepcopy(self.config)
         config.update({
             "input": "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0],

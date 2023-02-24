@@ -141,7 +141,7 @@ class GlobalConfig(object):
         if "--" not in databases:
             self.config["databases"].append({"name": "--", "driver": "memory"})
         elif databases["--"]["driver"] == "redis":
-            redis_default_config = {"prefix": "syncany:" + uuid.uuid1().hex + ":", "serialize": "pickle",
+            redis_default_config = {"prefix": "syncany:" + str(uuid.uuid1().int) + ":", "serialize": "pickle",
                                     "ignore_serialize_error": True, "expire_seconds": 900}
             for key, value in redis_default_config.items():
                 if key not in databases["--"]:

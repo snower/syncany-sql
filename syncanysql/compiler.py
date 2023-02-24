@@ -4,6 +4,7 @@
 
 import os
 import copy
+import uuid
 from sqlglot import maybe_parse
 from sqlglot import expressions as sqlglot_expressions
 from sqlglot.dialects import Dialect
@@ -59,7 +60,7 @@ class Compiler(object):
     def compile_delete(self, expression, arguments):
         config = copy.deepcopy(self.config)
         config.update({
-            "input": "&.--.__subquery_null_" + str(id(expression)) + "::id",
+            "input": "&.--.__subquery_null_" + str(uuid.uuid1().int) + "::id",
             "output": "&.-.&1::id",
             "querys": {},
             "schema": "$.*",
@@ -97,7 +98,7 @@ class Compiler(object):
 
     def compile_subquery(self, expression, arguments):
         table_name = expression.args["alias"].args["this"].name if "alias" in expression.args and expression.args["alias"] else "anonymous"
-        subquery_name = "__subquery_" + str(id(expression)) + "_" + table_name
+        subquery_name = "__subquery_" + str(uuid.uuid1().int) + "_" + table_name
         subquery_arguments = {key: arguments[key] for key in CONST_CONFIG_KEYS if key in arguments}
         subquery_config = self.compile_query(expression.args["this"], subquery_arguments)
         subquery_config["output"] = "&.--." + subquery_name + "::" + subquery_config["output"].split("::")[-1]
@@ -107,22 +108,64 @@ class Compiler(object):
         return subquery_name, subquery_config
 
     def compile_insert_into(self, expression, config, arguments):
-        if not isinstance(expression.args["this"], sqlglot_expressions.Table):
-            raise SyncanySqlCompileException("unkonw insert info table: " + self.to_sql(expression))
-        table_info = self.parse_table(expression.args["this"], config)
+        columns = []
+        if isinstance(expression.args["this"], sqlglot_expressions.Table):
+            table_info = self.parse_table(expression.args["this"], config)
+        elif isinstance(expression.args["this"], sqlglot_expressions.Schema):
+            schema_expression = expression.args["this"]
+            if not isinstance(schema_expression.args["this"], sqlglot_expressions.Table) or not schema_expression.args.get("expressions"):
+                raise SyncanySqlCompileException("unkonw insert info schema: " + self.to_sql(expression))
+            table_info = self.parse_table(schema_expression.args["this"], config)
+            for column_expression in schema_expression.args["expressions"]:
+                column_name = column_expression.name
+                if column_name in self.mapping:
+                    column_name = self.mapping[column_name]
+                try:
+                    start_index, end_index = column_name.index("["), column_name.rindex("]")
+                    typing_filters = column_name[start_index + 1: end_index].split(";")
+                    column_name = column_name[:start_index]
+                except ValueError:
+                    typing_filters = []
+                columns.append([column_name, typing_filters[0] if typing_filters else None])
+        else:
+            raise SyncanySqlCompileException("unkonw insert into expression: " + self.to_sql(expression))
+        if not expression.args.get("expression"):
+            raise SyncanySqlCompileException("unkonw insert expression: " + self.to_sql(expression))
+
         if table_info["db"] == "-" and table_info["name"] == "_":
             config["output"] = "&.-.&1::id"
         else:
             update_types = [u for u in ("I", "UI", "UDI", "DI")]
             config["output"] = "".join(["&.", table_info["db"], ".", table_info["name"], "::",
                                         "id", (" use " + update_types[0]) if update_types else ""])
-        select_expression = expression.args.get("expression")
-        if not select_expression or not isinstance(select_expression, (sqlglot_expressions.Select, sqlglot_expressions.Union)):
-            raise SyncanySqlCompileException("unkonw insert info select: " + self.to_sql(expression))
-        if isinstance(select_expression, sqlglot_expressions.Union):
-            self.compile_union(select_expression, config, arguments)
+
+        if isinstance(expression.args["expression"], (sqlglot_expressions.Select, sqlglot_expressions.Union)):
+            select_expression = expression.args["expression"]
+            if isinstance(select_expression, sqlglot_expressions.Union):
+                self.compile_union(select_expression, config, arguments)
+            else:
+                self.compile_select(select_expression, config, arguments)
+        elif isinstance(expression.args["expression"], sqlglot_expressions.Values):
+            values_expression = expression.args["expression"]
+            if not values_expression.args.get("expressions"):
+                raise SyncanySqlCompileException("unkonw insert expression: " + self.to_sql(expression))
+            datas = []
+            for data_expression in values_expression.args["expressions"]:
+                data = {}
+                for i in range(len(data_expression.args["expressions"])):
+                    value_expression = data_expression.args["expressions"][i]
+                    value = self.parse_const(value_expression)["value"]
+                    if columns[i][1] is None:
+                        columns[i][1] = str(type(value).__name__) if isinstance(value, (int, float, bool)) else None
+                    data[columns[i][0]] = value
+                datas.append(data)
+            config["schema"] = {column_name: "$." + column_name + (("|" + column_type) if column_type else "")
+                                for column_name, column_type in columns}
+            config["input"] = "&.-.-::" + columns[0][0]
+            config["loader"] = "const_loader"
+            config["loader_arguments"] = {"datas": datas}
         else:
-            self.compile_select(select_expression, config, arguments)
+            raise SyncanySqlCompileException("unkonw insert expression: " + self.to_sql(expression))
 
     def compile_union(self, expression, config, arguments):
         select_expressions = []
@@ -137,11 +180,11 @@ class Compiler(object):
                 parse(union_expression.args["expression"])
         parse(expression)
 
-        query_name = "__unionquery_" + str(id(expression))
+        query_name = "__unionquery_" + str(uuid.uuid1().int)
         for select_expression in select_expressions:
-            subquery_name = "__unionquery_" + str(id(expression)) + "_" + str(id(select_expression))
+            subquery_name = "__unionquery_" + str(uuid.uuid1().int)
             subquery_arguments = {key: arguments[key] for key in CONST_CONFIG_KEYS if key in arguments}
-            subquery_config = self.compile_query(expression.args["this"], subquery_arguments)
+            subquery_config = self.compile_query(select_expression, subquery_arguments)
             subquery_config["output"] = "&.--." + query_name + "::" + subquery_config["output"].split("::")[-1].split(" use ")[0] + " use I"
             subquery_config["name"] = subquery_config["name"] + "#" + subquery_name[2:]
             arguments.update({subquery_config["name"] + "@" + key: value for key, value in subquery_arguments.items()})
@@ -1040,7 +1083,7 @@ class Compiler(object):
                 path, table_name = (os.path.abspath(path_info[0]) if path_info[0] else os.getcwd()), path_info[1]
                 path_db_name = "dir__" + "".join([c for c in path if c.isalpha() or c.isdigit() or c == os.path.sep]).replace(os.path.sep, "_")
                 if db_params:
-                    path_db_name = path_db_name + "_" + str(id(table_name))
+                    path_db_name = path_db_name + "_" + str(uuid.uuid1().int)
                 database = None
                 if "databases" not in config:
                     config["databases"] = []
@@ -1195,7 +1238,7 @@ class Compiler(object):
                 start_index, end_index, segment = parser.read_segment()
                 allow_segment = get_allow_segment(segment)
                 if allow_segment != segment:
-                    allow_segment = allow_segment + "_" + str(id(segment))
+                    allow_segment = allow_segment + "_" + str(uuid.uuid1().int)
                     self.mapping[allow_segment] = segment
                     segment = allow_segment
                 segments.append(parser.sql[last_end_index: start_index])
