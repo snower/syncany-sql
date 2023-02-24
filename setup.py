@@ -41,8 +41,22 @@ setup(
         "syncany>=0.1.11",
         'Pygments>=2.14.0',
         'Pygments>=2.14.0',
-        'prompt-toolkit>=3.0.36'
+        'prompt-toolkit>=3.0.36',
+        "rich>=9.11.1"
     ],
+    extras_require={
+        "pyyaml": ['pyyaml>=5.1.2'],
+        "pymongo": ['pymongo>=3.6.1'],
+        "pymysql": ['PyMySQL>=0.8.1'],
+        "openpyxl": ["openpyxl>=2.5.0"],
+        "postgresql": ["psycopg2>=2.8.6"],
+        "elasticsearch": ["elasticsearch>=6.3.1"],
+        "influxdb": ["influxdb>=5.3.1"],
+        "clickhouse": ["clickhouse_driver>=0.1.5"],
+        "redis": ["redis>=3.5.3"],
+        "requests": ["requests>=2.22.0"],
+        "pymssql": ['pymssql>=2.2.7'],
+    },
     package_data={
         '': ['README.md'],
     },
