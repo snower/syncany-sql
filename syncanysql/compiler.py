@@ -559,7 +559,7 @@ class Compiler(object):
         if column is None:
             column = self.compile_calculate(primary_table, column_expression, column_join_tables, -2)
         if "aggregate" not in config:
-            config["aggregate"] = {"key": None, "reduces": {}}
+            config["aggregate"] = {"key": None, "reduces": {}, "having_columns": set([])}
         if calculate_fields:
             config["schema"][column_alias] = self.compile_join_column(primary_table, ["#aggregate", group_column, column],
                                                                       column_join_tables)
@@ -592,7 +592,7 @@ class Compiler(object):
             group_column.append(self.compile_calculate(primary_table, group_expression.args["expressions"][0], column_join_tables, -1))
         calculate_column = self.compile_aggregate(primary_table, column_alias, aggregate_expression, column_join_tables)
         if "aggregate" not in config:
-            config["aggregate"] = {"key": None, "reduces": {}}
+            config["aggregate"] = {"key": None, "reduces": {}, "having_columns": set([])}
         if calculate_fields:
             config["schema"][column_alias] = self.compile_join_column(primary_table, ["#aggregate", group_column, calculate_column],
                                                                       column_join_tables)
@@ -745,20 +745,27 @@ class Compiler(object):
             ]
 
         def parse(expression):
+            if "aggregate" not in config:
+                config["aggregate"] = {"key": None, "reduces": {}, "having_columns": set([])}
             if expression.args.get("expressions"):
                 left_expression, right_expression = expression.args["this"], expression.args["expressions"]
             else:
                 left_expression, right_expression = expression.args["this"], expression.args["expression"]
             if self.is_column(left_expression):
                 left_column = self.parse_column(left_expression)
-                if left_column["table_name"]:
+                if left_column["table_name"] or left_column["column_name"] not in config["schema"]:
                     raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
+                config["aggregate"]["having_columns"].add(left_column["column_name"])
                 left_calculater = self.compile_column(left_column)
             else:
                 calculate_fields = []
                 self.parse_calculate(primary_table, left_expression, calculate_fields)
                 if [calculate_field for calculate_field in calculate_fields if calculate_field["column_name"] not in config["schema"]]:
                     raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
+                for calculate_field in calculate_fields:
+                    if calculate_field["column_name"] not in config["schema"]:
+                        continue
+                    config["aggregate"]["having_columns"].add(calculate_field["column_name"])
                 left_calculater = self.compile_calculate(primary_table, left_expression, [])
 
             if isinstance(right_expression, list):
@@ -770,13 +777,18 @@ class Compiler(object):
                 return left_calculater, value_items
             if self.is_column(right_expression):
                 right_column = self.parse_column(right_expression)
-                if right_column["table_name"]:
+                if right_column["table_name"] or right_column["column_name"] not in config["schema"]:
                     raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
+                config["aggregate"]["having_columns"].add(right_column["column_name"])
                 return left_calculater, self.compile_column(right_column)
             calculate_fields = []
             self.parse_calculate(primary_table, right_expression, calculate_fields)
             if [calculate_field for calculate_field in calculate_fields if calculate_field["column_name"] not in config["schema"]]:
                 raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
+            for calculate_field in calculate_fields:
+                if calculate_field["column_name"] not in config["schema"]:
+                    continue
+                config["aggregate"]["having_columns"].add(calculate_field["column_name"])
             return left_calculater, self.compile_calculate(primary_table, right_expression, [])
 
         if isinstance(expression, sqlglot_expressions.EQ):

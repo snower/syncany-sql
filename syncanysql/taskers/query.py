@@ -62,13 +62,24 @@ class QueryTasker(object):
             dependency_taskers.append(dependency_tasker)
 
         limit, batch, aggregate = int(arguments.get("@limit", 0)), int(arguments.get("@batch", 0)), self.config.pop("aggregate", None)
-        if ((aggregate and aggregate["key"] and aggregate["reduces"]) or self.config.get("intercepts")) and (batch > 0 or limit > 0) and not self.config.get("@streaming"):
+        require_reduce, reduce_intercept = False, False
+        if self.config.get("intercepts"):
+            if aggregate and aggregate.get("reduces") and aggregate.get("having_columns"):
+                if [having_column for having_column in aggregate["having_columns"] if having_column in aggregate["reduces"]]:
+                    require_reduce, reduce_intercept = True, True
+            if (batch > 0 or limit > 0):
+                require_reduce = True
+        if (aggregate and aggregate.get("key") and aggregate.get("reduces")) and (batch > 0 or limit > 0):
+            require_reduce = True
+        if require_reduce and not arguments.get("@streaming"):
             if limit > 0 and batch <= 0:
                 batch = max(*(int(arguments.get(key, 0)) for key in ("@limit", "@batch", "@join_batch", "@insert_batch")))
                 arguments["@batch"] = batch
             if not aggregate:
-                aggregate = {"key": "", "reduces": []}
+                aggregate = {"key": "", "reduces": [], "having_columns": set([])}
             self.compile_reduce_config(aggregate)
+            if reduce_intercept:
+                self.reduce_config["intercepts"] = self.config.pop("intercepts")
         elif 0 < limit < batch:
             arguments["@batch"] = limit
         tasker = CoreTasker(self.config, manager)
