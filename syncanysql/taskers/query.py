@@ -182,6 +182,7 @@ class QueryTasker(object):
         else:
             config["output"] = config["input"] + " use DI"
             config["name"] = config["name"] + "#select@reduce"
+            config["intercepts"] = []
         tasker = CoreTasker(config, manager)
         arguments["@primary_order"] = False
         arguments["@batch"] = 0
