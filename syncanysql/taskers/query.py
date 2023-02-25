@@ -69,7 +69,7 @@ class QueryTasker(object):
                     require_reduce, reduce_intercept = True, True
             if (batch > 0 or limit > 0):
                 require_reduce = True
-        if (aggregate and aggregate.get("key") and aggregate.get("reduces")) and (batch > 0 or limit > 0):
+        if (aggregate and aggregate.get("reduces")) and (batch > 0 or limit > 0):
             require_reduce = True
         if require_reduce and not arguments.get("@streaming"):
             if limit > 0 and batch <= 0:
@@ -79,7 +79,8 @@ class QueryTasker(object):
                 aggregate = {"key": "", "reduces": [], "having_columns": set([])}
             self.compile_reduce_config(aggregate)
             if reduce_intercept:
-                self.reduce_config["intercepts"] = self.config.pop("intercepts")
+                self.reduce_config["intercepts"] = self.config.pop("intercepts", [])
+            self.reduce_config["pipelines"] = self.config.pop("pipelines", [])
         elif 0 < limit < batch:
             arguments["@batch"] = limit
         tasker = CoreTasker(self.config, manager)
@@ -183,6 +184,7 @@ class QueryTasker(object):
             config["output"] = config["input"] + " use DI"
             config["name"] = config["name"] + "#select@reduce"
             config["intercepts"] = []
+            config["pipelines"] = []
         tasker = CoreTasker(config, manager)
         arguments["@primary_order"] = False
         arguments["@batch"] = 0

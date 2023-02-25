@@ -195,7 +195,8 @@ class Compiler(object):
         arguments["@limit"] = 0
 
     def compile_select(self, expression, config, arguments):
-        primary_table = {"db": None, "name": None, "table_name": None, "table_alias": None, "primary_keys": None, "columns": {}}
+        primary_table = {"db": None, "name": None, "table_name": None, "table_alias": None, "seted_primary_keys": False,
+                         "loader_primary_keys": [], "outputer_primary_keys": [], "columns": {}}
 
         from_expression = expression.args.get("from")
         if not from_expression:
@@ -300,6 +301,9 @@ class Compiler(object):
                 config["schema"][column_alias] = self.compile_join_column(primary_table, calculate_column, column_join_tables)
             else:
                 config["schema"][column_alias] = self.compile_calculate(primary_table, calculate_expression, [])
+                if not primary_table["outputer_primary_keys"]:
+                    primary_table["loader_primary_keys"] = [calculate_field["column_name"] for calculate_field in calculate_fields]
+                    primary_table["outputer_primary_keys"] = [column_alias]
 
         where_expression = expression.args.get("where")
         if where_expression and isinstance(where_expression, sqlglot_expressions.Where):
@@ -318,15 +322,14 @@ class Compiler(object):
         if limit_expression:
             arguments["@limit"] = int(limit_expression.args["expression"].args["this"])
 
-        if isinstance(primary_table["primary_keys"], tuple):
-            primary_table["primary_keys"] = [primary_table["primary_keys"]]
         if group_expression and ("aggregate" not in config or not config["aggregate"] or not config["aggregate"]["reduces"]):
             self.compile_group_column(primary_table, config, group_expression, group_fields, join_tables)
         config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
-                                   "+".join([primary_key[0] for primary_key in primary_table["primary_keys"]]) if primary_table["primary_keys"] else "id"])
+                                   "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id"])
         config["output"] = "".join([config["output"].split("::")[0], "::",
-                                    "+".join([primary_key[1] for primary_key in primary_table["primary_keys"]]) if primary_table["primary_keys"] else "id",
-                                    " use I" if not primary_table["primary_keys"] else ((" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else "")])
+                                    "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "id",
+                                    " use I" if not primary_table["outputer_primary_keys"] else ((" use " + config["output"].split(" use ")[-1])
+                                                                                                 if " use " in config["output"] else "")])
 
     def compile_pipleline_select(self, expression, config, arguments, primary_table):
         select_expressions = expression.args.get("expressions")
@@ -346,13 +349,12 @@ class Compiler(object):
             pipeline[0] = ">>" + pipeline[0]
             pipeline = pipeline[:1] + ["$.*|array"] + pipeline[1:]
         config["pipelines"].append(pipeline)
-        if isinstance(primary_table["primary_keys"], tuple):
-            primary_table["primary_keys"] = [primary_table["primary_keys"]]
         config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
-                                   "+".join([primary_key[0] for primary_key in primary_table["primary_keys"]]) if primary_table["primary_keys"] else "id"])
+                                   "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id"])
         config["output"] = "".join([config["output"].split("::")[0], "::",
-                                    "+".join([primary_key[1] for primary_key in primary_table["primary_keys"]]) if primary_table["primary_keys"] else "id",
-                                    " use I" if not primary_table["primary_keys"] else ((" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else "")])
+                                    "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "id",
+                                    " use I" if not primary_table["outputer_primary_keys"] else ((" use " + config["output"].split(" use ")[-1])
+                                                                                                 if " use " in config["output"] else "")])
         arguments["@primary_order"] = False
         return config
 
@@ -371,13 +373,13 @@ class Compiler(object):
         if not column_info["table_name"] or column_info["table_name"] == primary_table["table_name"]:
             primary_table["columns"][column_info["column_name"]] = column_info
         if "pk" in column_info["typing_options"]:
-            if not isinstance(primary_table["primary_keys"], list):
-                primary_table["primary_keys"] = []
-            primary_table["primary_keys"].append((column_info["column_name"], column_alias))
-        elif primary_table["primary_keys"] is None or (isinstance(primary_table["primary_keys"], tuple) and column_alias
-                                                       and column_alias == "id"):
+            if not primary_table["seted_primary_keys"]:
+                primary_table["loader_primary_keys"], primary_table["outputer_primary_keys"], primary_table["seted_primary_keys"] = [], [], True
+            primary_table["loader_primary_keys"].append(column_info["column_name"])
+            primary_table["outputer_primary_keys"].append(column_alias)
+        elif not primary_table["seted_primary_keys"] and (not primary_table["outputer_primary_keys"] or (column_alias and column_alias == "id")):
             if not column_info["table_name"] or column_info["table_name"] == primary_table["table_name"]:
-                primary_table["primary_keys"] = (column_info["column_name"], column_alias)
+                primary_table["loader_primary_keys"], primary_table["outputer_primary_keys"] = [column_info["column_name"]], [column_alias]
 
     def compile_join_column_tables(self, primary_table, current_join_tables, join_tables, column_join_tables):
         if not current_join_tables:
@@ -523,22 +525,11 @@ class Compiler(object):
         return [db_table, self.compile_column(column_info)]
 
     def compile_group_column(self, primary_table, config, group_expression, group_fields, join_tables):
-        if not primary_table["primary_keys"]:
-            raise SyncanySqlCompileException("unkonw group by: " + self.to_sql(group_expression))
-        column, column_expression, column_alias = None, None, None
-        for cn, ca in primary_table["primary_keys"]:
-            if ca not in config["schema"]:
-                continue
-            if isinstance(config["schema"][ca], str):
-                if cn in primary_table["columns"]:
-                    column_expression, column_alias = primary_table["columns"][cn]["expression"], ca
-                break
-            if isinstance(config["schema"][ca], list) and config["schema"][ca] and config["schema"][ca][0] == "#const":
-                column, column_alias = config["schema"][ca], ca
-                break
-        if column is None and not column_expression:
-            raise SyncanySqlCompileException("group by must be master table primary_key: " + self.to_sql(group_expression))
-
+        if not group_expression or not isinstance(config["schema"], dict) or not primary_table["outputer_primary_keys"]:
+            raise SyncanySqlCompileException("group unkonw primary_key: " + self.to_sql(group_expression))
+        column_alias = primary_table["outputer_primary_keys"][0]
+        if column_alias not in config["schema"]:
+            raise SyncanySqlCompileException("group unkonw primary_key: " + self.to_sql(group_expression))
         calculate_fields = [group_field for group_field in group_fields if group_field["table_name"]
                             and group_field["table_name"] != primary_table["table_name"]]
         column_join_tables = []
@@ -547,28 +538,23 @@ class Compiler(object):
             self.compile_join_column_tables(primary_table, [join_tables[calculate_table_name] for calculate_table_name in calculate_table_names],
                                             join_tables, column_join_tables)
         group_column = ["@add", ["#const", "k_"]]
-        if not group_expression:
-            group_column = ["@add", ["#const", "k_g"]]
-        elif len(group_expression.args["expressions"]) > 1:
+        if len(group_expression.args["expressions"]) > 1:
             for i in range(len(group_expression.args["expressions"]) - 1):
                 group_column.append(self.compile_calculate(primary_table, group_expression.args["expressions"][i], column_join_tables, -1))
                 group_column.append(["#const", "-"])
             group_column.append(self.compile_calculate(primary_table, group_expression.args["expressions"][-1], column_join_tables, -1))
         else:
             group_column.append(self.compile_calculate(primary_table, group_expression.args["expressions"][0], column_join_tables, -1))
-        if column is None:
-            column = self.compile_calculate(primary_table, column_expression, column_join_tables, -2)
         if "aggregate" not in config:
             config["aggregate"] = {"key": None, "reduces": {}, "having_columns": set([])}
         if calculate_fields:
-            config["schema"][column_alias] = self.compile_join_column(primary_table, ["#aggregate", group_column, column],
-                                                                      column_join_tables)
-            config["aggregate"]["key"] = self.compile_join_column(primary_table, copy.deepcopy(group_column), column_join_tables)
-            config["aggregate"]["reduces"][column_alias] = "$$." + column_alias
-        else:
-            config["schema"][column_alias] = ["#aggregate", group_column, column]
-            config["aggregate"]["key"] = copy.deepcopy(group_column)
-            config["aggregate"]["reduces"][column_alias] = "$$." + column_alias
+            group_column = self.compile_join_column(primary_table, group_column, column_join_tables)
+        config["schema"][column_alias] = ["#make", {
+            "key": group_column,
+            "value": config["schema"][column_alias]
+        }, [":#aggregate", "$.key", "$$.value"]]
+        config["aggregate"]["key"] = copy.deepcopy(group_column)
+        config["aggregate"]["reduces"][column_alias] = "$$." + column_alias
 
     def compile_aggregate_column(self, primary_table, column_alias, config, group_expression, aggregate_expression, group_fields, join_tables):
         calculate_fields = [group_field for group_field in group_fields]
