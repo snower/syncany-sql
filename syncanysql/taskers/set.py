@@ -13,14 +13,14 @@ class SetCommandTasker(object):
         key, is_global = self.config["key"], False
         if key[:6].lower() == "global":
             key, is_global = key[6:].strip(), True
-        keys = key.split(".")[0]
+        keys = key.split(".")[0][1:]
         seted_config = session_config.global_config if is_global else session_config
         if key in CONST_CONFIG_KEYS:
             self.set_config(seted_config, key)
         elif keys in ("databases", "imports", "sources", "defines", "variables", "options", "caches"):
-            self.set_config(seted_config, key)
+            self.set_config(seted_config, key[1:])
         elif keys == "virtual_views":
-            self.set_config(seted_config, "databases." + key)
+            self.set_config(seted_config, "databases." + key[1:])
         elif key[:7] == "@config":
             self.set_config(seted_config, key[8:].strip())
         if is_global:

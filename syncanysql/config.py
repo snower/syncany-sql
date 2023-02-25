@@ -93,7 +93,7 @@ class GlobalConfig(object):
             if value is None:
                 self.config[key[0]].pop(key[1], None)
             else:
-                self.config[key[0]][key[1]] = json.loads(value)
+                self.config[key[0]][key[1]] = value
         elif key[0] in ("defines", "variables", "options", "caches"):
             if key[0] not in self.config:
                 self.config[key[0]] = {}

@@ -17,6 +17,7 @@ from .taskers.query import QueryTasker
 from .taskers.explain import ExplainTasker
 from .taskers.set import SetCommandTasker
 from .taskers.execute import ExecuteTasker
+from .taskers.use import UseCommandTasker
 
 
 class CompilerDialect(Dialect):
@@ -55,6 +56,11 @@ class Compiler(object):
                 if filename in self.mapping:
                     filename = self.mapping[filename]
                 return ExecuteTasker({"filename": filename})
+        elif isinstance(expression, sqlglot_expressions.Use):
+            use_info = expression.args["this"].args["this"].name
+            if use_info in self.mapping:
+                use_info = self.mapping[use_info]
+            return UseCommandTasker({"use": use_info})
         raise SyncanySqlCompileException("unkonw sql: " + self.to_sql(expression))
 
     def compile_delete(self, expression, arguments):
@@ -626,7 +632,7 @@ class Compiler(object):
         
     def compile_calculate(self, primary_table, expression, column_join_tables, join_index=-1):
         if isinstance(expression, sqlglot_expressions.Anonymous):
-            calculater_name = expression.args["this"]
+            calculater_name = expression.args["this"].lower()
             if calculater_name == "get_value":
                 get_value_expressions = expression.args.get("expressions")
                 if not get_value_expressions or len(get_value_expressions) < 2:
