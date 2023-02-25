@@ -326,10 +326,17 @@ class Compiler(object):
             self.compile_group_column(primary_table, config, group_expression, group_fields, join_tables)
         config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
                                    "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id"])
+        outputer_type = ""
+        if not isinstance(config["schema"], dict) or [key for key in primary_table["outputer_primary_keys"] if
+                                                      key not in config["schema"]] or not config.get("querys"):
+            outputer_type = " use I"
+        elif [key for key in config["querys"] if key not in config["schema"]]:
+            outputer_type = " use UI"
+        elif " use " in config["output"]:
+            outputer_type = " use " + config["output"].split(" use ")[-1]
         config["output"] = "".join([config["output"].split("::")[0], "::",
                                     "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "id",
-                                    " use I" if not primary_table["outputer_primary_keys"] else ((" use " + config["output"].split(" use ")[-1])
-                                                                                                 if " use " in config["output"] else "")])
+                                    outputer_type])
 
     def compile_pipleline_select(self, expression, config, arguments, primary_table):
         select_expressions = expression.args.get("expressions")
@@ -351,10 +358,17 @@ class Compiler(object):
         config["pipelines"].append(pipeline)
         config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
                                    "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id"])
+        outputer_type = ""
+        if not isinstance(config["schema"], dict) or [key for key in primary_table["outputer_primary_keys"] if
+                                                      key not in config["schema"]] or not config.get("querys"):
+            outputer_type = " use I"
+        elif [key for key in config["querys"] if key not in config["schema"]]:
+            outputer_type = " use UI"
+        elif " use " in config["output"]:
+            outputer_type = " use " + config["output"].split(" use ")[-1]
         config["output"] = "".join([config["output"].split("::")[0], "::",
                                     "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "id",
-                                    " use I" if not primary_table["outputer_primary_keys"] else ((" use " + config["output"].split(" use ")[-1])
-                                                                                                 if " use " in config["output"] else "")])
+                                    outputer_type])
         arguments["@primary_order"] = False
         return config
 

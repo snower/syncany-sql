@@ -12,6 +12,11 @@ class ExplainTasker(object):
         self.tasker = tasker
 
     def start(self, executor, session_config, manager, arguments):
+        self.config = copy.deepcopy(self.tasker.config)
+        beautify_print("%s tasker %s compiled config:" % (datetime.datetime.now(), self.config["name"]))
+        beautify_print(self.config)
+        print()
+
         for key in list(arguments.keys()):
             if key.endswith("@limit"):
                 arguments[key] = 1
@@ -19,15 +24,11 @@ class ExplainTasker(object):
                 arguments[key] = True
         self.tasker.config["output"] = "&.-.&1::" + self.tasker.config["output"].split("::")[-1].split(" ")[0]
         self.tasker.config["name"] = self.tasker.config["name"] + "#explain"
-        self.config = copy.deepcopy(self.tasker.config)
         self.tasker.start(executor, session_config, manager, arguments)
         return [self]
 
     def run(self, executor, session_config, manager):
         try:
-            beautify_print("%s tasker %s compiled config:" % (datetime.datetime.now(), self.config["name"]))
-            beautify_print(self.config)
-            print()
             return self.tasker.run(executor, session_config, manager)
         finally:
             self.config, self.tasker = None, None
