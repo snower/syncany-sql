@@ -670,7 +670,7 @@ class Compiler(object):
                         column.append(self.compile_calculate(primary_table, arg_expression, column_join_tables, join_index))
                 return column
 
-            column = ["@" + "::".join(calculater_name.split("__"))]
+            column = ["@" + "::".join(calculater_name.split("$"))]
             for arg_expression in expression.args.get("expressions", []):
                 if self.is_const(arg_expression):
                     column.append(self.parse_const(arg_expression)["value"])
