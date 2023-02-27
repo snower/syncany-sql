@@ -3,6 +3,7 @@
 # create by: snower
 
 import os
+import sys
 from pygments.lexers import SqlLexer
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
@@ -10,7 +11,9 @@ from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.lexers import PygmentsLexer
 from prompt_toolkit.styles import Style
 from prompt_toolkit.filters import Condition
+from prompt_toolkit.cursor_shapes import CursorShape
 from syncanysql.executor import Executor
+from .version import version
 from .parser import SqlParser, SqlSegment
 
 sql_completer = WordCompleter(
@@ -166,10 +169,13 @@ class CliPrompt(object):
             lexer=PygmentsLexer(SqlLexer), completer=sql_completer, style=style, history=history
         )
         executor = Executor(self.manager, self.session_config)
+        print("Python %s" % sys.version)
+        print("Syncany-SQL %s -- Simple and easy-to-use sql execution engine" % version)
         lineno = 1
         while True:
             try:
-                text = session.prompt("> ", multiline=Condition(lambda: self.check_complete(session.app.current_buffer.text)))
+                text = session.prompt("> ", multiline=Condition(lambda: self.check_complete(session.app.current_buffer.text)),
+                                      cursor=CursorShape.BEAM)
                 text = text.strip()
                 if not text:
                     continue

@@ -18,6 +18,7 @@ from .taskers.explain import ExplainTasker
 from .taskers.set import SetCommandTasker
 from .taskers.execute import ExecuteTasker
 from .taskers.use import UseCommandTasker
+from .taskers.show import ShowCommandTasker
 
 
 class CompilerDialect(Dialect):
@@ -56,6 +57,8 @@ class Compiler(object):
                 if filename in self.mapping:
                     filename = self.mapping[filename]
                 return ExecuteTasker({"filename": filename})
+            if expression.args["this"].lower() == "show" and self.is_const(expression.args["expression"]):
+                return ShowCommandTasker({"key": self.parse_const(expression.args["expression"])["value"]})
         elif isinstance(expression, sqlglot_expressions.Use):
             use_info = expression.args["this"].args["this"].name
             if use_info in self.mapping:

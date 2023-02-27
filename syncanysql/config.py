@@ -223,6 +223,8 @@ class GlobalConfig(object):
 
     def config_logging(self):
         logfile = self.config.pop("logfile", None)
+        if not logfile or logfile == "-":
+            logfile = None
         logformat = self.config.pop("logformat", "%(asctime)s %(process)d %(levelname)s %(message)s")
         loglevel = {"CRITICAL": logging.CRITICAL, "FATAL": logging.FATAL, "ERROR": logging.ERROR,
                     "WARN": logging.CRITICAL, "WARNING": logging.WARNING, "INFO": logging.INFO,

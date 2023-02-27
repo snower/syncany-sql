@@ -65,7 +65,7 @@ setup(
             'syncany-sql = syncanysql.main:main',
         ],
     },
-    description='简单易用的数据同步转换导出框架',
+    description='Simple and easy-to-use sql execution engine',
     long_description=long_description,
     long_description_content_type='text/markdown'
 )
