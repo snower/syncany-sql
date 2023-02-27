@@ -264,6 +264,8 @@ class Compiler(object):
                 column_expression = select_expression
             elif isinstance(select_expression, sqlglot_expressions.Alias):
                 column_alias = select_expression.args["alias"].name if "alias" in select_expression.args else None
+                if column_alias and column_alias in self.mapping:
+                    column_alias = self.mapping[column_alias]
                 if self.is_const(select_expression.args["this"]):
                     const_info = self.parse_const(select_expression.args["this"])
                     config["schema"][column_alias] = self.compile_const(const_info)
