@@ -87,7 +87,6 @@ GROUP BY a.site_id;
 
 默认不安装数据库驱动，需要查询读写对应类型数据库或文件时需要自行安装。
 
-- pyyaml>=5.1.2
 - pymongo>=3.6.1
 - PyMySQL>=0.8.1
 - openpyxl>=2.5.0
@@ -96,7 +95,6 @@ GROUP BY a.site_id;
 - influxdb>=5.3.1
 - clickhouse_driver>=0.1.5
 - redis>=3.5.3
-- requests>=2.22.0
 - pymssql>=2.2.7
 
 # License
