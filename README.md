@@ -1,5 +1,6 @@
 # syncany-sql
-Simple and easy-to-use sql execution engine
+
+简单易用的SQL执行引擎
 
 # 安装
 
