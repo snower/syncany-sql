@@ -139,11 +139,11 @@ class Compiler(object):
             raise SyncanySqlCompileException("unkonw insert expression: " + self.to_sql(expression))
 
         if table_info["db"] == "-" and table_info["name"] == "_":
-            config["output"] = "&.-.&1::id"
+            config["output"] = "&.-.&1::id use I"
         else:
-            update_types = [u for u in ("I", "UI", "UDI", "DI")]
+            update_types = [o for o in table_info["typing_options"] if o.upper() in ("I", "UI", "UDI", "DI")] if table_info["typing_options"] else []
             config["output"] = "".join(["&.", table_info["db"], ".", table_info["name"], "::",
-                                        "id", (" use " + update_types[0]) if update_types else ""])
+                                        "id", (" use " + update_types[0].upper()) if update_types else ""])
 
         if isinstance(expression.args["expression"], (sqlglot_expressions.Select, sqlglot_expressions.Union)):
             select_expression = expression.args["expression"]
@@ -333,13 +333,13 @@ class Compiler(object):
         config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
                                    "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id"])
         outputer_type = ""
-        if not isinstance(config["schema"], dict) or [key for key in primary_table["outputer_primary_keys"] if
+        if " use " in config["output"]:
+            outputer_type = " use " + config["output"].split(" use ")[-1]
+        elif not isinstance(config["schema"], dict) or [key for key in primary_table["outputer_primary_keys"] if
                                                       key not in config["schema"]] or not config.get("querys"):
             outputer_type = " use I"
         elif [key for key in config["querys"] if key not in config["schema"]]:
             outputer_type = " use UI"
-        elif " use " in config["output"]:
-            outputer_type = " use " + config["output"].split(" use ")[-1]
         config["output"] = "".join([config["output"].split("::")[0], "::",
                                     "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "id",
                                     outputer_type])
@@ -365,13 +365,13 @@ class Compiler(object):
         config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
                                    "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id"])
         outputer_type = ""
-        if not isinstance(config["schema"], dict) or [key for key in primary_table["outputer_primary_keys"] if
+        if " use " in config["output"]:
+            outputer_type = " use " + config["output"].split(" use ")[-1]
+        elif not isinstance(config["schema"], dict) or [key for key in primary_table["outputer_primary_keys"] if
                                                       key not in config["schema"]] or not config.get("querys"):
             outputer_type = " use I"
         elif [key for key in config["querys"] if key not in config["schema"]]:
             outputer_type = " use UI"
-        elif " use " in config["output"]:
-            outputer_type = " use " + config["output"].split(" use ")[-1]
         config["output"] = "".join([config["output"].split("::")[0], "::",
                                     "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "id",
                                     outputer_type])
