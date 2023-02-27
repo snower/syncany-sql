@@ -1,9 +1,0 @@
-{
-  "databases": [
-    {
-      "name": "data",
-      "driver": "json",
-      "path": "./data"
-    }
-  ]
-}
