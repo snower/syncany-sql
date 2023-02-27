@@ -11,11 +11,11 @@ from syncany.taskers.manager import TaskerManager
 from syncany.database.database import DatabaseManager
 from .config import GlobalConfig
 from syncanysql.executor import Executor
-from .parser import FileParser
+from .parser import SqlParser, FileParser
 from .prompt import CliPrompt
 
 def main():
-    if len(sys.argv) >= 2 and not sys.argv[1].endswith("sqlx") and not sys.argv[1].endswith("sql"):
+    if sys.stdin.isatty() and len(sys.argv) >= 2 and not sys.argv[1].endswith("sqlx") and not sys.argv[1].endswith("sql"):
         print("usage: syncany [-h] sqlx|sql")
         print("syncany error: require sqlx or sql file")
         exit(2)
@@ -31,7 +31,19 @@ def main():
         manager = TaskerManager(DatabaseManager())
 
         try:
-            if len(sys.argv) >= 2:
+            if not sys.stdin.isatty():
+                start_time = time.time()
+                content = sys.stdin.read().strip()
+                if not content:
+                    exit(0)
+                sql_parser = SqlParser(content[1:-1] if content[0] in ('"', "'") and content[-1] in ('"', "'") else content)
+                sqls = sql_parser.split()
+                executor = Executor(manager, global_config.session())
+                executor.run("pipe", sqls)
+                exit_code = executor.execute()
+                get_logger().info("execute pipe sql finish with code %d %.2fms", exit_code, (time.time() - start_time) * 1000)
+                exit(exit_code)
+            elif len(sys.argv) >= 2:
                 start_time = time.time()
                 file_parser = FileParser(sys.argv[1])
                 sqls = file_parser.load()
