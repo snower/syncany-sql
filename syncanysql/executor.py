@@ -99,13 +99,15 @@ class Executor(object):
                     return exit_code
             finally:
                 self.tasker = None
-                for factory in self.manager.database_manager.factorys.values():
+                for config_key, factory in self.manager.database_manager.factorys.items():
                     if not isinstance(factory, MemoryDBFactory):
                         continue
                     for driver in factory.drivers:
                         if not isinstance(driver.instance, MemoryDBCollection):
                             continue
                         for key in list(driver.instance.keys()):
+                            if self.runners and self.manager.database_manager.get_state(config_key + "::" + key, "is_streaming"):
+                                continue
                             if "__subquery_" in key or "__unionquery_" in key:
                                 driver.instance.remove(key)
         return 0

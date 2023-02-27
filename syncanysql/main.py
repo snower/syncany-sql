@@ -15,7 +15,8 @@ from .parser import SqlParser, FileParser
 from .prompt import CliPrompt
 
 def main():
-    if sys.stdin.isatty() and len(sys.argv) >= 2 and not sys.argv[1].endswith("sqlx") and not sys.argv[1].endswith("sql"):
+    if sys.stdin.isatty() and len(sys.argv) >= 2 and not sys.argv[1].endswith(".sqlx") \
+            and not sys.argv[1].endswith(".sql"):
         print("usage: syncany [-h] sqlx|sql")
         print("syncany error: require sqlx or sql file")
         exit(2)
@@ -31,7 +32,8 @@ def main():
         manager = TaskerManager(DatabaseManager())
 
         try:
-            if not sys.stdin.isatty():
+            if not sys.stdin.isatty() and (len(sys.argv) == 1 or
+                                           (len(sys.argv) >= 2 and (sys.argv[1].endswith(".sqlx") or sys.argv[1].endswith(".sqlx")))):
                 start_time = time.time()
                 content = sys.stdin.read().strip()
                 if not content:
