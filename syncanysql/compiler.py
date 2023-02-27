@@ -823,6 +823,12 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.In):
             left_calculater, right_calculater = parse(expression)
             return ["@in", left_calculater, right_calculater]
+        elif isinstance(expression, sqlglot_expressions.Like):
+            left_calculater, right_calculater = parse(expression)
+            if not isinstance(right_calculater, list) or len(right_calculater) != 2 or right_calculater[0] != "#const":
+                raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
+            return ["#if", ["@re::match", left_calculater, right_calculater[1].replace("%", ".*").replace(".*.*", "%")],
+                    left_calculater, ["#const", False]]
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_having_condition(primary_table, expression.args.get("this"), config)
         else:
