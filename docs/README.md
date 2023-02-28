@@ -18,7 +18,7 @@
 - [特性与限制](feature-restrictions.md)
 - [配置详解](configure.md)
 - [驱动依赖](driver-dependency.md)
-- [示例详解](../examples/README.md)
+- [示例详解](../examples)
 
 ## 安装
 
