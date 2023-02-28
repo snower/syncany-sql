@@ -232,7 +232,7 @@ class GlobalConfig(object):
         if "logger" in self.config and isinstance(self.config["logger"], dict):
             logging.config.dictConfig(self.config["logger"])
         else:
-            logging.basicConfig(filename=logfile, level=loglevel, format=logformat,
+            logging.basicConfig(filename=logfile, level=loglevel, format=logformat if logformat else None,
                                 datefmt='%Y-%m-%d %H:%M:%S', filemode='a+')
 
     def session(self):
