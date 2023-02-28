@@ -1,4 +1,4 @@
-# syncany-sql
+# Syncany-SQL
 
 简单易用的SQL执行引擎。
 
@@ -12,15 +12,21 @@
 - 大数据量支持批次执行，有Group By或Having条件过滤自动执行Reduce合并结果
 - 支持流式执行
 
-# 安装
+-----
+
+- [安装](#安装)
+- [特性与限制](docs/feature-restrictions.md)
+- [配置详解](docs/configure.md)
+- [驱动依赖](docs/driver-dependency.md)
+- [示例详解](examples/README.md)
+
+## 安装
 
 ```
 pip3 install syncanysql
 ```
 
-# 示例
-
-## 统计Nginx的access.log中访问最多IP数
+## 查询Nginx日志
 
 ```sql
 SELECT
@@ -35,7 +41,7 @@ ORDER BY cnt DESC
 LIMIT 3;
 ```
 
-## 订单统计demo
+## 查询JSON文件
 
 ```sql
 SELECT
@@ -67,36 +73,6 @@ FROM
 GROUP BY a.site_id;
 ```
 
-# 支持的特性
-
-- Join关联查询
-- Having支持复杂条件过滤
-- Group By分组聚合计算
-- Order By排序
-- 子查询
-- Where或Having条件支持简单子查询
-- Insert Into除支持正常写入数据库表外可直接写入到execl、json和csv中
-
-# 使用限制
-
-- Where条件仅可使用==、>、>=、<、<=、!=、in简单条件且仅可用and
-- Join仅支持Left Join模式且关联条件仅被关联表能添加常量条件及主表可添加计算条件值
-- Join查询及子查询各表必须有别名
-
-# 依赖驱动
-
-默认不安装数据库驱动，需要查询读写对应类型数据库或文件时需要自行安装。
-
-- pymongo>=3.6.1
-- PyMySQL>=0.8.1
-- openpyxl>=2.5.0
-- psycopg2>=2.8.6
-- elasticsearch>=6.3.1
-- influxdb>=5.3.1
-- clickhouse_driver>=0.1.5
-- redis>=3.5.3
-- pymssql>=2.2.7
-
 # License
 
-syncany-sql uses the MIT license, see LICENSE file for the details.
+Syncany-SQL uses the MIT license, see LICENSE file for the details.
