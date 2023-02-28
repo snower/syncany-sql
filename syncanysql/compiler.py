@@ -39,6 +39,9 @@ class Compiler(object):
     def compile(self, sql, arguments):
         sql = self.parse_mapping(sql)
         expression = maybe_parse(sql, dialect=CompilerDialect)
+        return self.compile_expression(expression, arguments)
+
+    def compile_expression(self, expression, arguments):
         if isinstance(expression, sqlglot_expressions.Delete):
             return DeleteTasker(self.compile_delete(expression, arguments))
         elif isinstance(expression, (sqlglot_expressions.Union, sqlglot_expressions.Insert, sqlglot_expressions.Select)):
