@@ -15,7 +15,7 @@ class SqlSegment(object):
 
 
 class SqlParser(object):
-    ESCAPE_CHARS = ['\a', '\b', '\f', '\n', '\r', '\t', '\v', '\\', '\'', '"', '\0']
+    ESCAPE_CHARS = {'\a', '\b', '\f', '\n', '\r', '\t', '\v', '\\', '\'', '"', '\0'}
 
     def __init__(self, sql):
         self.sql = sql

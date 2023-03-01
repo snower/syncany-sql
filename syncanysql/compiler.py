@@ -32,11 +32,16 @@ class CompilerDialect(Dialect):
 
 
 class Compiler(object):
+    ESCAPE_CHARS = ['\\\\a', '\\\\b', '\\\\f', '\\\\n', '\\\\r', '\\\\t', '\\\\v', '\\\\0']
+
     def __init__(self, config):
         self.config = config
         self.mapping = {}
 
     def compile(self, sql, arguments):
+        if "\\\\" in sql:
+            for escape_char in self.ESCAPE_CHARS:
+                sql = sql.replace(escape_char, "\\\\\\" + escape_char)
         sql = self.parse_mapping(sql)
         expression = maybe_parse(sql, dialect=CompilerDialect)
         return self.compile_expression(expression, arguments)
@@ -1224,9 +1229,16 @@ class Compiler(object):
                 if is_neg:
                     value = -value
                 typing_filter = "int" if expression.is_int else "float"
+            elif isinstance(value, str):
+                try:
+                    value = value.encode(os.environ.get("SYNCANYENCODING", "utf-8")).decode("unicode_escape")
+                except:
+                    pass
         elif isinstance(expression, sqlglot_expressions.Boolean):
             value = expression.args["this"]
             typing_filter = "bool"
+        elif isinstance(expression, (sqlglot_expressions.HexString, sqlglot_expressions.HexString)):
+            value, typing_filter = int(expression.args["this"]), "int"
         else:
             value = None
         return {
@@ -1319,7 +1331,8 @@ class Compiler(object):
 
     def is_const(self, expression):
         return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Literal, sqlglot_expressions.Boolean,
-                                       sqlglot_expressions.Null))
+                                       sqlglot_expressions.Null, sqlglot_expressions.HexString, sqlglot_expressions.BitString,
+                                       sqlglot_expressions.ByteString))
 
     def to_sql(self, expression_sql):
         if not isinstance(expression_sql, str):
