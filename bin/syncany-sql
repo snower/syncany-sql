@@ -7,9 +7,8 @@
 import os
 import sys
 
-workdir = os.getcwd()
-if workdir not in sys.path:
-    sys.path.append(workdir)
+sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
+
 from syncanysql.main import main
 
 if __name__ == "__main__":

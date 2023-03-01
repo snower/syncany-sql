@@ -1231,7 +1231,18 @@ class Compiler(object):
                 typing_filter = "int" if expression.is_int else "float"
             elif isinstance(value, str):
                 try:
-                    value = value.encode(os.environ.get("SYNCANYENCODING", "utf-8")).decode("unicode_escape")
+                    escape_values, escape_chars, encoding = [], [], os.environ.get("SYNCANYENCODING", "utf-8")
+                    for c in value:
+                        if ord(c) <= 256:
+                            escape_chars.append(c)
+                            continue
+                        if escape_chars:
+                            escape_values.append("".join(escape_chars).encode(encoding).decode("unicode_escape"))
+                            escape_chars = []
+                        escape_values.append(c)
+                    if escape_chars:
+                        escape_values.append("".join(escape_chars).encode(encoding).decode("unicode_escape"))
+                    value = "".join(escape_values)
                 except:
                     pass
         elif isinstance(expression, sqlglot_expressions.Boolean):
