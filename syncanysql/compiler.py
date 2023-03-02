@@ -577,7 +577,12 @@ class Compiler(object):
                             and group_field["table_name"] != primary_table["table_name"]]
         column_join_tables = []
         if calculate_fields:
-            calculate_table_names = {calculate_field["table_name"] for calculate_field in calculate_fields}
+            calculate_table_names = set([])
+            for calculate_field in calculate_fields:
+                if calculate_field["table_name"] not in join_tables:
+                    raise SyncanySqlCompileException("table select field join table %s unknown: %s" %
+                                                     (calculate_field["table_name"], self.to_sql(group_expression)))
+                calculate_table_names.add(calculate_field["table_name"])
             self.compile_join_column_tables(primary_table, [join_tables[calculate_table_name] for calculate_table_name in calculate_table_names],
                                             join_tables, column_join_tables)
         group_column = ["@add", ["#const", "k_"]]
@@ -606,7 +611,12 @@ class Compiler(object):
                             and calculate_field["table_name"] != primary_table["table_name"]]
         column_join_tables = []
         if calculate_fields:
-            calculate_table_names = {calculate_field["table_name"] for calculate_field in calculate_fields}
+            calculate_table_names = set([])
+            for calculate_field in calculate_fields:
+                if calculate_field["table_name"] not in join_tables:
+                    raise SyncanySqlCompileException("table select field join table %s unknown: %s" %
+                                                     (calculate_field["table_name"], self.to_sql(aggregate_expression)))
+                calculate_table_names.add(calculate_field["table_name"])
             self.compile_join_column_tables(primary_table, [join_tables[calculate_table_name] for calculate_table_name in calculate_table_names],
                                             join_tables, column_join_tables)
         group_column = ["@add", ["#const", "k_"]]
