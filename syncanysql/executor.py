@@ -18,18 +18,20 @@ ENV_VARIABLE_RE = re.compile("(\$\{\w+?(:.*?){0,1}\})", re.DOTALL | re.M)
 RAW_SQL_RE = re.compile("(\(\s*?\/\*\s*?raw\(([\w\.]+?)\)\s*?\*\/(.*?)\/\*\s*?endraw\s*?\*\/\s*\))", re.DOTALL | re.M)
 FUNC_RE = re.compile("^(\w+?)\(((.+),{0,1})*\)$", re.DOTALL)
 
-class Executor(object):
-    def __init__(self, manager, session_config, parent_executor=None):
-        self.manager = manager
-        self.session_config = session_config
-        self.parent_executor = parent_executor
-        self.runners = deque()
-        self.tasker = None
-        self.env_variables = None
 
-    def parse_env_variables(self):
-        self.env_variables = {}
-        self.env_variables.update(os.environ)
+class EnvVariables(dict):
+    def __init__(self, parent=None, *args, **kwargs):
+        super(EnvVariables, self).__init__(*args, **kwargs)
+
+        self.parent = parent
+
+    @classmethod
+    def build_global(cls):
+        env_variables = cls()
+        env_variables.update({key.lower(): value for key, value in os.environ.items()})
+        env_variables["syncany_home"] = os.path.join(os.path.expanduser('~'), ".syncany")
+        env_variables["cwd"] = os.getcwd()
+        env_variables["platform"] = sys.platform
         for arg in sys.argv:
             if arg[:2] != "--":
                 continue
@@ -37,17 +39,44 @@ class Executor(object):
             arg_value = arg_info[1] if len(arg_info) >= 2 else True
             if isinstance(arg_value, str) and arg_value and arg_value[0] in ('"', "'"):
                 arg_value = arg_value[1:-1]
-            self.env_variables[arg_info[0]] = arg_value
+            env_variables[arg_info[0]] = arg_value
+        return env_variables
 
-    def compile_env_variable(self, sql):
-        if self.env_variables is None:
-            self.parse_env_variables()
+    def get_value(self, key):
+        if key in self:
+            return self[key]
+        if self.parent is None:
+            raise KeyError("%s unknown" % key)
+        return self.parent.get_value(key)
+
+    def get(self, key, default=None):
+        if key in self:
+            return self[key]
+        if self.parent is None:
+            return default
+        return self.parent.get(key, default)
+
+
+class Executor(object):
+    global_env_variables = None
+
+    def __init__(self, manager, session_config, parent_executor=None):
+        self.manager = manager
+        self.session_config = session_config
+        self.parent_executor = parent_executor
+        self.runners = deque()
+        self.tasker = None
+        if self.global_env_variables is None:
+            self.__class__.global_env_variables = EnvVariables.build_global()
+        self.env_variables = parent_executor.env_variables if parent_executor else EnvVariables(self.global_env_variables)
+
+    def compile_variable(self, sql):
         variables = ENV_VARIABLE_RE.findall(sql)
         for variable, default_value in variables:
             variable_name = variable[2:-1].split(":")[0]
-            if variable_name in self.env_variables:
-                variable_value = self.env_variables[variable_name]
-            else:
+            try:
+                variable_value = self.env_variables.get_value(variable_name.lower())
+            except KeyError:
                 try:
                     groups = FUNC_RE.match(default_value[1:].strip()).groups()
                     calculater_args = []
@@ -68,7 +97,7 @@ class Executor(object):
     def run(self, name, sqls):
         for sql in sqls:
             lineno = sql.lineno
-            sql = self.compile_env_variable(str(sql))
+            sql = self.compile_variable(str(sql))
             raw_sqls = RAW_SQL_RE.findall(sql)
             for raw, raw_name, raw_sql in raw_sqls:
                 raw_name_info = raw_name.split(".")
@@ -82,11 +111,12 @@ class Executor(object):
     def compile(self, name, sql):
         config = copy.deepcopy(self.session_config.get())
         config["name"] = name
-        compiler = Compiler(config)
-        arguments = {"@verbose": config.get("@verbose", False), "@timeout": config.get("@timeout", 0),
-                     "@limit": config.get("@limit", 100 if name == "cli" else 0), "@batch": config.get("@batch", 0),
-                     "@streaming": config.get("@streaming", False), "@recovery": config.get("@recovery", False),
-                     "@join_batch": config.get("@join_batch", 1000), "@insert_batch": config.get("@insert_batch", 0)}
+        compiler = Compiler(config, self.env_variables)
+        arguments = {"@verbose": self.env_variables.get("@verbose", False), "@timeout": self.env_variables.get("@timeout", 0),
+                     "@limit": self.env_variables.get("@limit", 100 if name == "cli" else 0),
+                     "@batch": self.env_variables.get("@batch", 0), "@streaming": self.env_variables.get("@streaming", False),
+                     "@recovery": self.env_variables.get("@recovery", False), "@join_batch": self.env_variables.get("@join_batch", 1000),
+                     "@insert_batch": self.env_variables.get("@insert_batch", 0)}
         tasker = compiler.compile(sql, arguments)
         self.runners.extend(tasker.start(self, self.session_config, self.manager, arguments))
 

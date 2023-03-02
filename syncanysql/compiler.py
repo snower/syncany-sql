@@ -34,12 +34,13 @@ class CompilerDialect(Dialect):
 class Compiler(object):
     ESCAPE_CHARS = ['\\\\a', '\\\\b', '\\\\f', '\\\\n', '\\\\r', '\\\\t', '\\\\v', '\\\\0']
 
-    def __init__(self, config):
+    def __init__(self, config, env_variables):
         self.config = config
+        self.env_variables = env_variables
         self.mapping = {}
 
     def compile(self, sql, arguments):
-        if "\\\\" in sql:
+        if sql[:4].lower() not in ("set ", "use ") and "\\\\" in sql:
             for escape_char in self.ESCAPE_CHARS:
                 sql = sql.replace(escape_char, "\\\\\\" + escape_char)
         sql = self.parse_mapping(sql)
@@ -1222,7 +1223,7 @@ class Compiler(object):
         is_neg, typing_filter = False, None
         if isinstance(expression, sqlglot_expressions.Neg):
             is_neg, expression = True, expression.args["this"]
-        if isinstance(expression, sqlglot_expressions.Literal):
+        if isinstance(expression, (sqlglot_expressions.Literal, sqlglot_expressions.ByteString)):
             value = expression.args["this"]
             if expression.is_number:
                 value = int(value) if expression.is_int else float(value)
@@ -1250,6 +1251,16 @@ class Compiler(object):
             typing_filter = "bool"
         elif isinstance(expression, (sqlglot_expressions.HexString, sqlglot_expressions.HexString)):
             value, typing_filter = int(expression.args["this"]), "int"
+        elif isinstance(expression, sqlglot_expressions.Parameter):
+            name = expression.args["this"].args["this"]
+            if name in self.mapping:
+                name = self.mapping[name]
+            try:
+                value = self.env_variables.get_value("@" + name)
+                if isinstance(value, (int, float, bool)):
+                    typing_filter = str(type(value).__name__)
+            except KeyError:
+                raise SyncanySqlCompileException("unkonw parameter: " + self.to_sql(expression))
         else:
             value = None
         return {
@@ -1343,7 +1354,7 @@ class Compiler(object):
     def is_const(self, expression):
         return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Literal, sqlglot_expressions.Boolean,
                                        sqlglot_expressions.Null, sqlglot_expressions.HexString, sqlglot_expressions.BitString,
-                                       sqlglot_expressions.ByteString))
+                                       sqlglot_expressions.ByteString, sqlglot_expressions.Parameter))
 
     def to_sql(self, expression_sql):
         if not isinstance(expression_sql, str):
