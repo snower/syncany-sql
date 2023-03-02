@@ -298,9 +298,7 @@ class Compiler(object):
             elif isinstance(select_expression, (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Min, sqlglot_expressions.Max)):
                 column_alias = str(select_expression)
                 aggregate_expression = select_expression
-            elif isinstance(select_expression, (sqlglot_expressions.Anonymous, sqlglot_expressions.Binary, sqlglot_expressions.If,
-                                                sqlglot_expressions.IfNull, sqlglot_expressions.Coalesce, sqlglot_expressions.Case,
-                                                sqlglot_expressions.Func)):
+            elif self.is_calculate(select_expression):
                 column_alias = str(select_expression)
                 calculate_expression = select_expression
             else:
@@ -723,6 +721,24 @@ class Compiler(object):
                 else:
                     column.append(self.compile_calculate(primary_table, arg_expression, column_join_tables, join_index))
             return column
+        elif isinstance(expression, sqlglot_expressions.Cast):
+            to_type = expression.args["to"].args["this"]
+            if to_type in sqlglot_expressions.DataType.FLOAT_TYPES:
+                typing_filter = "float"
+            elif to_type in sqlglot_expressions.DataType.INTEGER_TYPES:
+                typing_filter = "int"
+            elif to_type == sqlglot_expressions.DataType.Type.DATE:
+                typing_filter = "date"
+            elif to_type in sqlglot_expressions.DataType.TEMPORAL_TYPES:
+                typing_filter = "datetime"
+            elif to_type == sqlglot_expressions.DataType.TEXT_TYPES:
+                typing_filter = "str"
+            else:
+                typing_filter = None
+            value_column = self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index)
+            if typing_filter:
+                return ["#if", ["#const", True], value_column, None, ":$.*|" + typing_filter]
+            return value_column
         elif isinstance(expression, sqlglot_expressions.Binary):
             return [
                 "@" + expression.key.lower(),
@@ -1111,6 +1127,8 @@ class Compiler(object):
         if isinstance(expression, sqlglot_expressions.Anonymous):
             for arg_expression in expression.args.get("expressions", []):
                 self.parse_calculate(primary_table, arg_expression, calculate_fields)
+        elif isinstance(expression, sqlglot_expressions.Cast):
+            self.parse_calculate(primary_table, expression.args["this"], calculate_fields)
         elif isinstance(expression, sqlglot_expressions.If):
             self.parse_calculate(primary_table, expression.args["this"], calculate_fields)
             if expression.args.get("true"):
@@ -1147,7 +1165,7 @@ class Compiler(object):
             for arg_type in expression.arg_types:
                 if arg_type in ("this", "expression", "expressions"):
                     continue
-                if arg_type not in expression.args or not expression.args["arg_type"]:
+                if arg_type not in expression.args or not expression.args[arg_type]:
                     continue
                 if isinstance(expression.args[arg_type], list):
                     for arg_expression in expression.args.get(arg_type, []):
@@ -1414,6 +1432,11 @@ class Compiler(object):
         return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Literal, sqlglot_expressions.Boolean,
                                        sqlglot_expressions.Null, sqlglot_expressions.HexString, sqlglot_expressions.BitString,
                                        sqlglot_expressions.ByteString, sqlglot_expressions.Parameter))
+
+    def is_calculate(self, expression):
+        return isinstance(expression, (sqlglot_expressions.Anonymous, sqlglot_expressions.Binary, sqlglot_expressions.If,
+                                       sqlglot_expressions.IfNull, sqlglot_expressions.Coalesce, sqlglot_expressions.Case,
+                                       sqlglot_expressions.Func, sqlglot_expressions.Cast))
 
     def to_sql(self, expression_sql):
         if not isinstance(expression_sql, str):

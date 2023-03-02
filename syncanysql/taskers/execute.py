@@ -29,7 +29,7 @@ class ExecuteTasker(object):
                 get_logger().info("execute file %s finish %.2fms", self.config["filename"], (time.time() - start_time) * 1000)
         else:
             os.system(self.config["filename"])
-        return []
+        return [self]
 
     def run(self, executor, session_config, manager):
         return self.executor.execute()
