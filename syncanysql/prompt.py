@@ -4,6 +4,7 @@
 
 import os
 import sys
+import datetime
 from pygments.lexers import SqlLexer
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
@@ -154,6 +155,29 @@ style = Style.from_dict(
     }
 )
 
+
+class CliFileHistory(FileHistory):
+    def load_history_strings(self):
+        strings = list(super(CliFileHistory, self).load_history_strings())
+        if len(strings) <= 200:
+            return strings
+        strings = strings[200:]
+        with open(self.filename, "wb") as f:
+            def write(t: str) -> None:
+                f.write(t.encode("utf-8"))
+
+            for string in strings:
+                write("\n# %s\n" % datetime.datetime.now())
+                for line in string.split("\n"):
+                    write("+%s\n" % line)
+        return strings
+    
+    def store_string(self, string):
+        if string.lower()[:4] == "exit":
+            return 
+        super(CliFileHistory, self).store_string(string)
+
+
 class CliPrompt(object):
     def __init__(self, manager, session_config, executor):
         self.manager = manager
@@ -164,7 +188,7 @@ class CliPrompt(object):
         home_config_path = os.path.join(os.path.expanduser('~'), ".syncany")
         if not os.path.exists(home_config_path):
             os.mkdir(home_config_path)
-        history = FileHistory(os.path.join(home_config_path, "history"))
+        history = CliFileHistory(os.path.join(home_config_path, "history"))
         session = PromptSession(
             lexer=PygmentsLexer(SqlLexer), completer=sql_completer, style=style, history=history
         )
