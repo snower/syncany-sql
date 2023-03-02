@@ -311,8 +311,14 @@ class Compiler(object):
 
             calculate_fields = []
             self.parse_calculate(primary_table, calculate_expression, calculate_fields)
-            calculate_table_names = {calculate_field["table_name"] for calculate_field in calculate_fields
-                                     if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]}
+            calculate_table_names = set([])
+            for calculate_field in calculate_fields:
+                if not calculate_field["table_name"] or calculate_field["table_name"] == primary_table["table_name"]:
+                    continue
+                if calculate_field["table_name"] not in join_tables:
+                    raise SyncanySqlCompileException("table select field join table %s unknown: %s" %
+                                                     (calculate_field["table_name"], self.to_sql(expression)))
+                calculate_table_names.add(calculate_field["table_name"])
             if calculate_table_names:
                 column_join_tables = []
                 self.compile_join_column_tables(primary_table, [join_tables[calculate_table_name] for calculate_table_name in calculate_table_names],
@@ -396,7 +402,10 @@ class Compiler(object):
         column_info = self.parse_column(column_expression)
         if not column_alias:
             column_alias = column_info["column_name"].replace(".", "_")
-        if column_info["table_name"] and column_info["table_name"] != primary_table["table_name"] and column_info["table_name"] in join_tables:
+        if column_info["table_name"] and column_info["table_name"] != primary_table["table_name"]:
+            if column_info["table_name"] not in join_tables:
+                raise SyncanySqlCompileException("table select field join table %s unknown: %s" %
+                                                 (column_info["table_name"], self.to_sql(column_expression)))
             column_join_tables = []
             self.compile_join_column_tables(primary_table, [join_tables[column_info["table_name"]]], join_tables,
                                             column_join_tables)
