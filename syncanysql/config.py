@@ -162,6 +162,7 @@ class GlobalConfig(object):
                 database["date_format"] = date_format
             if time_format:
                 database["time_format"] = time_format
+        return self.config.pop("executes", [])
 
     def load_config(self, filename=None):
         if filename is None:
@@ -213,8 +214,8 @@ class GlobalConfig(object):
                     for pipeline in (v if isinstance(v, list) and not isinstance(v[0], str) else [v]):
                         pipelines.append(pipeline)
                 self.config[k] = pipelines
-            elif k == "states":
-                if self.config[k]:
+            elif k in ("states", "executes"):
+                if k in self.config and self.config[k] and isinstance(self.config[k], list):
                     self.config[k].extend(v if isinstance(v, list) else [v])
                 else:
                     self.config[k] = v if isinstance(v, list) else [v]

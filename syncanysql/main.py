@@ -12,7 +12,7 @@ from syncany.taskers.manager import TaskerManager
 from syncany.database.database import DatabaseManager
 from .config import GlobalConfig
 from syncanysql.executor import Executor
-from .parser import SqlParser, FileParser
+from .parser import SqlParser, FileParser, SqlSegment
 from .prompt import CliPrompt
 
 def main():
@@ -30,11 +30,18 @@ def main():
             signal.signal(signal.SIGTERM, lambda signum, frame: executor.terminate())
 
         global_config = GlobalConfig()
-        global_config.load()
+        init_execute_files = global_config.load()
         global_config.config_logging()
         manager = TaskerManager(DatabaseManager())
 
         try:
+            executor = Executor(manager, global_config.session())
+            if init_execute_files:
+                executor.run("init", [SqlSegment("execute `%s`" % init_execute_files[i], i + 1) for i in range(len(init_execute_files))])
+                exit_code = executor.execute()
+                if exit_code is not None and exit_code != 0:
+                    return exit_code
+
             if not sys.stdin.isatty() and (len(sys.argv) == 1 or
                                            (len(sys.argv) >= 2 and (sys.argv[1].endswith(".sqlx") or sys.argv[1].endswith(".sqlx")))):
                 start_time = time.time()
@@ -43,7 +50,6 @@ def main():
                     exit(0)
                 sql_parser = SqlParser(content[1:-1] if content[0] in ('"', "'") and content[-1] in ('"', "'") else content)
                 sqls = sql_parser.split()
-                executor = Executor(manager, global_config.session())
                 executor.run("pipe", sqls)
                 exit_code = executor.execute()
                 get_logger().info("execute pipe sql finish with code %d %.2fms", exit_code, (time.time() - start_time) * 1000)
@@ -52,13 +58,12 @@ def main():
                 start_time = time.time()
                 file_parser = FileParser(sys.argv[1])
                 sqls = file_parser.load()
-                executor = Executor(manager, global_config.session())
                 executor.run(sys.argv[1], sqls)
                 exit_code = executor.execute()
                 get_logger().info("execute file %s finish with code %d %.2fms", sys.argv[1], exit_code, (time.time() - start_time) * 1000)
                 exit(exit_code)
             else:
-                cli_prompt = CliPrompt(manager, global_config.session())
+                cli_prompt = CliPrompt(manager, global_config.session(), executor)
                 exit(cli_prompt.run())
         finally:
             manager.close()

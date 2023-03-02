@@ -29,6 +29,7 @@ class EnvVariables(dict):
     def build_global(cls):
         env_variables = cls()
         env_variables.update({key.lower(): value for key, value in os.environ.items()})
+        env_variables["home"] = os.path.expanduser('~')
         env_variables["syncany_home"] = os.path.join(os.path.expanduser('~'), ".syncany")
         env_variables["cwd"] = os.getcwd()
         env_variables["platform"] = sys.platform

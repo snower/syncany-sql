@@ -79,3 +79,7 @@ databases:
 # 配置全局导入包，也可在SQL中用"use"指令导入
 #imports:
 #  np: numpy # 导入numpy到别名numpy，可在SQL中"np$array()"使用
+
+# 执行初始化SQL脚本
+#executes:
+#  - init.sql # 执行当前目录下init.sql初始化脚本，如果该脚本在用户目录下则可用“${HOME}/init.sql”，如在syncany配置目录下则可为“${SYNCANY_HOME}/init.sql”

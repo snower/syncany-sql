@@ -12,7 +12,6 @@ from prompt_toolkit.lexers import PygmentsLexer
 from prompt_toolkit.styles import Style
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.cursor_shapes import CursorShape
-from syncanysql.executor import Executor
 from .version import version
 from .parser import SqlParser, SqlSegment
 
@@ -156,9 +155,10 @@ style = Style.from_dict(
 )
 
 class CliPrompt(object):
-    def __init__(self, manager, session_config):
+    def __init__(self, manager, session_config, executor):
         self.manager = manager
         self.session_config = session_config
+        self.executor = executor
 
     def run(self):
         home_config_path = os.path.join(os.path.expanduser('~'), ".syncany")
@@ -168,7 +168,6 @@ class CliPrompt(object):
         session = PromptSession(
             lexer=PygmentsLexer(SqlLexer), completer=sql_completer, style=style, history=history
         )
-        executor = Executor(self.manager, self.session_config)
         print("Python %s" % sys.version)
         print("Syncany-SQL %s -- Simple and easy-to-use sql execution engine" % version)
         lineno = 1
@@ -181,12 +180,12 @@ class CliPrompt(object):
                     continue
                 if text.lower()[:4] == "exit":
                     return 0
-                executor.run("cli", [SqlSegment(text, lineno)])
+                self.executor.run("cli", [SqlSegment(text, lineno)])
                 try:
-                    executor.execute()
+                    self.executor.execute()
                 finally:
                     lineno += 1
-                    executor.runners.clear()
+                    self.executor.runners.clear()
             except KeyboardInterrupt:
                 continue  # Control-C pressed. Try again.
             except EOFError:
