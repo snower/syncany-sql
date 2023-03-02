@@ -714,7 +714,10 @@ class Compiler(object):
             if is_mysql_func(calculater_name):
                 column = ["@mysql::" + calculater_name]
             else:
-                column = ["@" + "::".join(calculater_name.split("$"))]
+                if calculater_name[:8] == "convert_":
+                    column = ["@" + "::".join(calculater_name.split("$")) + "|" + calculater_name[8:]]
+                else:
+                    column = ["@" + "::".join(calculater_name.split("$"))]
             for arg_expression in expression.args.get("expressions", []):
                 if self.is_const(arg_expression):
                     column.append(self.parse_const(arg_expression)["value"])
