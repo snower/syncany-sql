@@ -12,6 +12,7 @@ from syncany.taskers.manager import TaskerManager
 from syncany.database.database import DatabaseManager
 from .config import GlobalConfig
 from syncanysql.executor import Executor
+from .calculaters import register_sql_calculaters
 from .parser import SqlParser, FileParser, SqlSegment
 from .prompt import CliPrompt
 
@@ -29,6 +30,7 @@ def main():
             signal.signal(signal.SIGHUP, lambda signum, frame: executor.terminate())
             signal.signal(signal.SIGTERM, lambda signum, frame: executor.terminate())
 
+        register_sql_calculaters()
         global_config = GlobalConfig()
         init_execute_files = global_config.load()
         global_config.config_logging()

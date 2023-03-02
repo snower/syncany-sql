@@ -10,6 +10,7 @@ from sqlglot import expressions as sqlglot_expressions
 from sqlglot.dialects import Dialect
 from sqlglot import tokens
 from .errors import SyncanySqlCompileException
+from .calculaters import is_mysql_func
 from .config import CONST_CONFIG_KEYS
 from .parser import SqlParser
 from .taskers.delete import DeleteTasker
@@ -284,7 +285,8 @@ class Compiler(object):
                     continue
                 elif self.is_column(select_expression.args["this"]):
                     column_expression = select_expression.args["this"]
-                elif isinstance(select_expression.args["this"], (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Min, sqlglot_expressions.Max)):
+                elif isinstance(select_expression.args["this"], (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Min,
+                                                                 sqlglot_expressions.Max)):
                     aggregate_expression = select_expression.args["this"]
                 else:
                     calculate_expression = select_expression.args["this"]
@@ -293,12 +295,14 @@ class Compiler(object):
                 column_alias = str(select_expression)
                 config["schema"][column_alias] = self.compile_const(const_info)
                 continue
-            elif isinstance(select_expression, (sqlglot_expressions.Anonymous, sqlglot_expressions.Binary, sqlglot_expressions.If, sqlglot_expressions.Case)):
-                column_alias = str(select_expression)
-                calculate_expression = select_expression
             elif isinstance(select_expression, (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Min, sqlglot_expressions.Max)):
                 column_alias = str(select_expression)
                 aggregate_expression = select_expression
+            elif isinstance(select_expression, (sqlglot_expressions.Anonymous, sqlglot_expressions.Binary, sqlglot_expressions.If,
+                                                sqlglot_expressions.IfNull, sqlglot_expressions.Coalesce, sqlglot_expressions.Case,
+                                                sqlglot_expressions.Func)):
+                column_alias = str(select_expression)
+                calculate_expression = select_expression
             else:
                 raise SyncanySqlCompileException("table select field must be alias: " + self.to_sql(expression))
             if column_expression:
@@ -709,7 +713,10 @@ class Compiler(object):
                         column.append(self.compile_calculate(primary_table, arg_expression, column_join_tables, join_index))
                 return column
 
-            column = ["@" + "::".join(calculater_name.split("$"))]
+            if is_mysql_func(calculater_name):
+                column = ["@mysql::" + calculater_name]
+            else:
+                column = ["@" + "::".join(calculater_name.split("$"))]
             for arg_expression in expression.args.get("expressions", []):
                 if self.is_const(arg_expression):
                     column.append(self.parse_const(arg_expression)["value"])
@@ -729,6 +736,24 @@ class Compiler(object):
                 self.compile_calculate(primary_table, expression.args["true"], column_join_tables, join_index) if expression.args.get("true") else False,
                 self.compile_calculate(primary_table, expression.args["false"], column_join_tables, join_index) if expression.args.get("false") else False,
             ]
+        elif isinstance(expression, (sqlglot_expressions.IfNull, sqlglot_expressions.Coalesce)):
+            condition_column = self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index)
+            if isinstance(expression, sqlglot_expressions.Coalesce):
+                def parse_coalesce(coalesce_expressions):
+                    if not coalesce_expressions:
+                        return None
+                    coalesce_column = self.compile_calculate(primary_table, coalesce_expressions[0], column_join_tables, join_index)
+                    if len(coalesce_expressions) == 1:
+                        return coalesce_column
+                    if len(coalesce_expressions) > 2:
+                        coalesce_value_column = parse_coalesce(coalesce_expressions[1:])
+                    else:
+                        coalesce_value_column = self.compile_calculate(primary_table, coalesce_expressions[1], column_join_tables, join_index)
+                    return ["#if", ["@is_null", coalesce_column], coalesce_value_column, coalesce_column]
+                value_column = parse_coalesce(expression.args.get("expressions"))
+            else:
+                value_column = self.compile_calculate(primary_table, expression.args["expression"], column_join_tables, join_index)
+            return ["#if", ["@is_null", condition_column], value_column, condition_column]
         elif isinstance(expression, sqlglot_expressions.Case):
             cases = {}
             cases["#case"] = self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index) \
@@ -748,11 +773,16 @@ class Compiler(object):
                 "substring": ["this", "start", "length"],
             }
             func_name = expression.key.lower()
-            column, arg_names = ["@" + func_name], (func_args.get(func_name) or ["this", "expression", "expressions"])
+            column = ["@mysql::" + func_name] if is_mysql_func(func_name) else ["@" + func_name]
+            arg_names = func_args.get(func_name) or [key for key in expression.arg_types] or ["this", "expression", "expressions"]
             for arg_name in arg_names:
                 if not expression.args.get(arg_name):
                     continue
-                column.append(self.compile_calculate(primary_table, expression.args[arg_name], column_join_tables, join_index))
+                if isinstance(expression.args[arg_name], list):
+                    for item_expression in expression.args[arg_name]:
+                        column.append(self.compile_calculate(primary_table, item_expression, column_join_tables, join_index))
+                else:
+                    column.append(self.compile_calculate(primary_table, expression.args[arg_name], column_join_tables, join_index))
             return column
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index)
@@ -1114,6 +1144,16 @@ class Compiler(object):
             if "expressions" in expression.args and expression.args["expressions"] and isinstance(expression.args["expressions"], list):
                 for arg_expression in expression.args.get("expressions", []):
                     self.parse_calculate(primary_table, arg_expression, calculate_fields)
+            for arg_type in expression.arg_types:
+                if arg_type in ("this", "expression", "expressions"):
+                    continue
+                if arg_type not in expression.args or not expression.args["arg_type"]:
+                    continue
+                if isinstance(expression.args[arg_type], list):
+                    for arg_expression in expression.args.get(arg_type, []):
+                        self.parse_calculate(primary_table, arg_expression, calculate_fields)
+                else:
+                    self.parse_calculate(primary_table, expression.args[arg_type], calculate_fields)
 
     def parse_table(self, expression, config):
         db_name = expression.args["db"].name if "db" in expression.args and expression.args["db"] else None
