@@ -4,7 +4,7 @@
 
 import os
 import sys
-import datetime
+from collections import defaultdict
 from pygments.lexers import SqlLexer
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
@@ -158,19 +158,35 @@ style = Style.from_dict(
 
 class CliFileHistory(FileHistory):
     def load_history_strings(self):
-        strings = list(super(CliFileHistory, self).load_history_strings())
-        if len(strings) <= 200:
-            return strings
-        strings = strings[200:]
-        with open(self.filename, "wb") as f:
-            def write(t: str) -> None:
-                f.write(t.encode("utf-8"))
+        strings, time_strings, lines, time_line = [], [], [], ''
+        if os.path.exists(self.filename):
+            with open(self.filename, "rb") as f:
+                for line_bytes in f:
+                    line = line_bytes.decode("utf-8", errors="replace")
+                    if line.startswith("#"):
+                        time_line = line
+                    elif line.startswith("+"):
+                        lines.append(line[1:])
+                        continue
+                    if not lines:
+                        continue
+                    string, lines = "".join(lines)[:-1], []
+                    strings.append(string)
+                    time_strings.append(time_line)
 
-            for string in strings:
-                write("\n# %s\n" % datetime.datetime.now())
-                for line in string.split("\n"):
-                    write("+%s\n" % line)
-        return strings
+                if lines:
+                    string, lines = "".join(lines)[:-1], []
+                    strings.append(string)
+                    time_strings.append(time_line)
+
+        if len(strings) <= 50:
+            return reversed(strings)
+        with open(self.filename, "wb") as f:
+            for i in range(50):
+                f.write(("\n%s" % time_strings[i - 50]).encode("utf-8"))
+                for line in strings[i - 50].split("\n"):
+                    f.write(("+%s\n" % line).encode("utf-8"))
+        return reversed(strings)
     
     def store_string(self, string):
         if string.lower()[:4] == "exit":
