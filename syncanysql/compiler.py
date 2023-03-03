@@ -813,6 +813,8 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Tuple):
             return ["#const", [self.parse_const(tuple_expression)["value"] for tuple_expression in expression.args["expressions"]
                                if self.is_const(tuple_expression)]]
+        elif isinstance(expression, sqlglot_expressions.Interval):
+            return ["#const", {"value": expression.args["this"].args["this"], "unit": expression.args["unit"].args["this"]}]
         elif self.is_const(expression):
             return self.compile_const(self.parse_const(expression))
         else:
@@ -1153,7 +1155,7 @@ class Compiler(object):
             if not column["table_name"] or primary_table["table_name"] == column["table_name"]:
                 primary_table["columns"][column["column_name"]] = column
             calculate_fields.append(column)
-        elif isinstance(expression, sqlglot_expressions.Star):
+        elif isinstance(expression, (sqlglot_expressions.Star, sqlglot_expressions.Interval, sqlglot_expressions.DataType)):
             pass
         elif self.is_const(expression):
             pass
