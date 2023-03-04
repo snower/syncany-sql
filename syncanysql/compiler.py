@@ -354,17 +354,9 @@ class Compiler(object):
             self.compile_group_column(primary_table, config, group_expression, group_fields, join_tables)
         config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
                                    "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id"])
-        outputer_type = ""
-        if " use " in config["output"]:
-            outputer_type = " use " + config["output"].split(" use ")[-1]
-        elif not isinstance(config["schema"], dict) or [key for key in primary_table["outputer_primary_keys"] if
-                                                      key not in config["schema"]] or not config.get("querys"):
-            outputer_type = " use I"
-        elif [key for key in config["querys"] if key not in config["schema"]]:
-            outputer_type = " use UI"
         config["output"] = "".join([config["output"].split("::")[0], "::",
                                     "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "id",
-                                    outputer_type])
+                                    (" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else " use I"])
 
     def compile_pipleline_select(self, expression, config, arguments, primary_table):
         select_expressions = expression.args.get("expressions")
@@ -386,17 +378,9 @@ class Compiler(object):
         config["pipelines"].append(pipeline)
         config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
                                    "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id"])
-        outputer_type = ""
-        if " use " in config["output"]:
-            outputer_type = " use " + config["output"].split(" use ")[-1]
-        elif not isinstance(config["schema"], dict) or [key for key in primary_table["outputer_primary_keys"] if
-                                                      key not in config["schema"]] or not config.get("querys"):
-            outputer_type = " use I"
-        elif [key for key in config["querys"] if key not in config["schema"]]:
-            outputer_type = " use UI"
         config["output"] = "".join([config["output"].split("::")[0], "::",
                                     "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "id",
-                                    outputer_type])
+                                    (" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else " use I"])
         arguments["@primary_order"] = False
         return config
 
@@ -666,7 +650,9 @@ class Compiler(object):
             raise SyncanySqlCompileException("unkonw calculate: " + self.to_sql(expression))
         
     def compile_calculate(self, primary_table, expression, column_join_tables, join_index=-1):
-        if isinstance(expression, sqlglot_expressions.Anonymous):
+        if isinstance(expression, sqlglot_expressions.Neg):
+            return ["@neg", self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index)]
+        elif isinstance(expression, sqlglot_expressions.Anonymous):
             calculater_name = expression.args["this"].lower()
             if calculater_name == "get_value":
                 get_value_expressions = expression.args.get("expressions")
@@ -1434,12 +1420,14 @@ class Compiler(object):
         return parse_dot(expression)
 
     def is_const(self, expression):
-        return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Literal, sqlglot_expressions.Boolean,
+        if isinstance(expression, sqlglot_expressions.Neg):
+            return not isinstance(expression.args["this"], sqlglot_expressions.Neg) and self.is_const(expression.args["this"])
+        return isinstance(expression, (sqlglot_expressions.Literal, sqlglot_expressions.Boolean,
                                        sqlglot_expressions.Null, sqlglot_expressions.HexString, sqlglot_expressions.BitString,
                                        sqlglot_expressions.ByteString, sqlglot_expressions.Parameter))
 
     def is_calculate(self, expression):
-        return isinstance(expression, (sqlglot_expressions.Anonymous, sqlglot_expressions.Binary, sqlglot_expressions.If,
+        return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Anonymous, sqlglot_expressions.Binary, sqlglot_expressions.If,
                                        sqlglot_expressions.IfNull, sqlglot_expressions.Coalesce, sqlglot_expressions.Case,
                                        sqlglot_expressions.Func, sqlglot_expressions.Cast))
 
