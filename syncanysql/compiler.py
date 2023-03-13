@@ -1209,7 +1209,7 @@ class Compiler(object):
                          ".xlsx": "execl"}.get(os.path.splitext(path_info[-1])[-1], db_driver)
             if db_driver:
                 path, table_name = (os.path.abspath(path_info[0]) if path_info[0] else os.getcwd()), path_info[1]
-                path_db_name = "dir__" + "".join([c for c in path if c.isalpha() or c.isdigit() or c == os.path.sep]).replace(os.path.sep, "_")
+                path_db_name = "dir__" + "".join([c if c.isalpha() or c.isdigit() else '_' for c in path])
                 if db_params:
                     path_db_name = path_db_name + "_" + str(uuid.uuid1().int)
                 database = None

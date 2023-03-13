@@ -220,6 +220,12 @@ class CliPrompt(object):
                     continue
                 if text.lower()[:4] == "exit":
                     return 0
+                if text[0] == "!":
+                    self.run_system_cmd(text[1:])
+                    continue
+                if text[0] == "%":
+                    self.run_magic_cmd(text[1:])
+                    continue
                 self.executor.run("cli", [SqlSegment(text, lineno)])
                 try:
                     self.executor.execute()
@@ -235,9 +241,8 @@ class CliPrompt(object):
         return 0
 
     def check_complete(self, content):
-        if not content.strip():
-            return False
-        if content[:4] == "exit":
+        content = content.strip()
+        if not content or content[:4] == "exit" or content[0] in ("!", "%"):
             return False
         sql_parser = SqlParser(content)
         try:
@@ -245,3 +250,11 @@ class CliPrompt(object):
         except EOFError:
             return True
         return False
+
+    def run_system_cmd(self, cmd):
+        os.system(cmd)
+
+    def run_magic_cmd(self, cmd):
+        if cmd[:3].lower() == "cd ":
+            os.chdir(cmd[3:])
+            self.executor.global_env_variables["cwd"] = os.getcwd()
