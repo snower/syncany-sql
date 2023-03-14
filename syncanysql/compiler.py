@@ -683,7 +683,7 @@ class Compiler(object):
                 column = ["#call"]
                 for arg_expression in expression.args.get("expressions", []):
                     if self.is_const(arg_expression):
-                        column.append(self.parse_const(arg_expression)["value"])
+                        column.append(["#const", self.parse_const(arg_expression)["value"]])
                     else:
                         column.append(self.compile_calculate(primary_table, arg_expression, column_join_tables, join_index))
                 return column
@@ -692,7 +692,7 @@ class Compiler(object):
                 column = ["#yield"]
                 for arg_expression in expression.args.get("expressions", []):
                     if self.is_const(arg_expression):
-                        column.append(self.parse_const(arg_expression)["value"])
+                        column.append(["#const", self.parse_const(arg_expression)["value"]])
                     else:
                         column.append(self.compile_calculate(primary_table, arg_expression, column_join_tables, join_index))
                 return column
@@ -706,10 +706,16 @@ class Compiler(object):
                     column = ["@" + "::".join(calculater_name.split("$"))]
             for arg_expression in expression.args.get("expressions", []):
                 if self.is_const(arg_expression):
-                    column.append(self.parse_const(arg_expression)["value"])
+                    column.append(["#const", self.parse_const(arg_expression)["value"]])
                 else:
                     column.append(self.compile_calculate(primary_table, arg_expression, column_join_tables, join_index))
             return column
+        elif isinstance(expression, sqlglot_expressions.JSONExtract):
+            return [
+                "@mysql::json_extract" if is_mysql_func("json_extract") else "@json_extract",
+                self.compile_calculate(primary_table, expression.args["this"], column_join_tables, join_index),
+                self.compile_calculate(primary_table, expression.args["expression"], column_join_tables, join_index),
+            ]
         elif isinstance(expression, sqlglot_expressions.Cast):
             to_type = expression.args["to"].args["this"]
             if to_type in sqlglot_expressions.DataType.FLOAT_TYPES:
