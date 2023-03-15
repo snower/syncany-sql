@@ -3,6 +3,7 @@
 # create by: snower
 
 import os
+import sys
 import copy
 import re
 import uuid
@@ -227,12 +228,17 @@ class GlobalConfig(object):
         if not logfile or logfile == "-":
             logfile = None
         logformat = self.config.pop("logformat", "%(asctime)s %(process)d %(levelname)s %(message)s")
-        loglevel = {"CRITICAL": logging.CRITICAL, "FATAL": logging.FATAL, "ERROR": logging.ERROR,
-                    "WARN": logging.CRITICAL, "WARNING": logging.WARNING, "INFO": logging.INFO,
-                    "DEBUG": logging.DEBUG}.get(self.config.pop("loglevel", "INFO"))
+        loglevel = self.config.pop("loglevel", None)
         if "logger" in self.config and isinstance(self.config["logger"], dict):
             logging.config.dictConfig(self.config["logger"])
         else:
+            if not logfile and not loglevel and not sys.stdin.isatty() and (len(sys.argv) == 1 or (
+                    len(sys.argv) >= 2 and not sys.argv[1].endswith(".sqlx") and not sys.argv[1].endswith(".sql"))):
+                loglevel = logging.CRITICAL
+            else:
+                loglevel = {"CRITICAL": logging.CRITICAL, "FATAL": logging.FATAL, "ERROR": logging.ERROR,
+                            "WARN": logging.CRITICAL, "WARNING": logging.WARNING, "INFO": logging.INFO,
+                            "DEBUG": logging.DEBUG}.get(loglevel or "INFO")
             logging.basicConfig(filename=logfile, level=loglevel, format=logformat if logformat else None,
                                 datefmt='%Y-%m-%d %H:%M:%S', filemode='a+')
 
