@@ -1195,6 +1195,19 @@ class Compiler(object):
 
         if table_name == "_":
             db_name = "-"
+        elif table_name in (".txt", ".csv", ".json"):
+            format_type = table_name[1:]
+            database = None
+            if "databases" not in config:
+                config["databases"] = []
+            for d in config["databases"]:
+                if d.get("driver") == "textline" and d.get("format") == format_type:
+                    database = d
+                    break
+            if not database:
+                database = {"name": "stdio-" + format_type, "driver": "textline", "format": format_type}
+                config["databases"].append(database)
+            db_name, table_name = database["name"], "&1"
         elif not db_name:
             if table_name.lower().startswith("file://"):
                 from urllib.parse import unquote_plus, urlparse
@@ -1226,7 +1239,7 @@ class Compiler(object):
                         d.update({"name": path_db_name, "driver": db_driver, "path": path})
                         database = d
                         break
-                    if d.get("driver") == database and d.get("path") == path and not db_params:
+                    if d.get("driver") == db_driver and d.get("path") == path and not db_params:
                         database = d
                         break
                 if not database:
