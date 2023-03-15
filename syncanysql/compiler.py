@@ -1193,8 +1193,8 @@ class Compiler(object):
             db_name, table_name = expression.args["catalog"].name, ((db_name + ".") if db_name else "") + table_name
         table_alias = expression.args["alias"].args["this"].name if "alias" in expression.args else None
 
-        if table_name == "_":
-            db_name = "-"
+        if table_name in ("_", "."):
+            db_name, table_name = "-", "&1"
         elif table_name in (".txt", ".csv", ".json"):
             format_type = table_name[1:]
             database = None
