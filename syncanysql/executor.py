@@ -15,7 +15,7 @@ from .utils import parse_value
 from .compiler import Compiler
 
 ENV_VARIABLE_RE = re.compile("(\$\{\w+?(:.*?){0,1}\})", re.DOTALL | re.M)
-RAW_SQL_RE = re.compile("(\(\s*?\/\*\s*?raw\(([\w\.]+?)\)\s*?\*\/(.*?)\/\*\s*?endraw\s*?\*\/\s*\))", re.DOTALL | re.M)
+RAW_SQL_RE = re.compile("(\/\*\s*raw\(([\w\.]+?)\)\s*(\*\/\s*\()?\s*(.*?)\s*(\)\s*\/\*)?\s*endraw\s*\*\/)", re.DOTALL | re.M)
 FUNC_RE = re.compile("^(\w+?)\(((.+),{0,1})*\)$", re.DOTALL)
 
 
@@ -100,7 +100,7 @@ class Executor(object):
             lineno = sql.lineno
             sql = self.compile_variable(str(sql))
             raw_sqls = RAW_SQL_RE.findall(sql)
-            for raw, raw_name, raw_sql in raw_sqls:
+            for raw, raw_name, _, raw_sql, _ in raw_sqls:
                 raw_name_info = raw_name.split(".")
                 if len(raw_name_info) != 2:
                     raise SyncanySqlCompileException("raw sql name error: %s", raw)
