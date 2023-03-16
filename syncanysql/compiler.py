@@ -656,8 +656,10 @@ class Compiler(object):
             calculater_name = expression.args["this"].lower()
             if calculater_name == "get_value":
                 get_value_expressions = expression.args.get("expressions")
-                if not get_value_expressions or len(get_value_expressions) < 2:
+                if not get_value_expressions:
                     raise SyncanySqlCompileException("get_value args error: " + self.to_sql(expression))
+                if len(get_value_expressions) == 1:
+                    return self.compile_calculate(primary_table, get_value_expressions[0], column_join_tables, join_index)
                 column = [self.compile_calculate(primary_table, get_value_expressions[0], column_join_tables, join_index)]
 
                 def get_value_parse(get_value_expressions):

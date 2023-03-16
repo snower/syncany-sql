@@ -15,3 +15,11 @@
 ## [memory_temporary_storage](memory_temporary_storage)
 
 使用内存保存临时结果
+
+## [get_value](get_value)
+
+读取复杂数据结构值
+
+## [json](json)
+
+JSON函数
