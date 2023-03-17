@@ -15,6 +15,7 @@ from .config import CONST_CONFIG_KEYS
 from .parser import SqlParser
 from .taskers.delete import DeleteTasker
 from .taskers.query import QueryTasker
+from .taskers.into import IntoTasker
 from .taskers.explain import ExplainTasker
 from .taskers.set import SetCommandTasker
 from .taskers.execute import ExecuteTasker
@@ -29,6 +30,12 @@ class EnvVariableGetter(object):
 
     def get(self):
         return self.env_variables.get_value(self.key)
+
+    def __deepcopy__(self, memodict=None):
+        return self
+
+    def __copy__(self):
+        return self
 
 
 class CompilerDialect(Dialect):
@@ -61,7 +68,12 @@ class Compiler(object):
         if isinstance(expression, sqlglot_expressions.Delete):
             return DeleteTasker(self.compile_delete(expression, arguments))
         elif isinstance(expression, (sqlglot_expressions.Union, sqlglot_expressions.Insert, sqlglot_expressions.Select)):
-            return QueryTasker(self.compile_query(expression, arguments))
+            query_tasker = QueryTasker(self.compile_query(expression, arguments))
+            if not expression.args.get("into"):
+                return query_tasker
+            if not isinstance(expression, sqlglot_expressions.Select):
+                raise SyncanySqlCompileException("unkonw into sql: " + self.to_sql(expression))
+            return IntoTasker(query_tasker, self.compile_select_into(expression.args.get("into")))
         elif isinstance(expression, sqlglot_expressions.Command):
             if expression.args["this"].lower() == "explain" and self.is_const(expression.args["expression"]):
                 return ExplainTasker(self.compile(self.parse_const(expression.args["expression"])["value"], arguments))
@@ -391,6 +403,17 @@ class Compiler(object):
                                     "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "id",
                                     (" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else " use I"])
         arguments["@primary_order"] = False
+        return config
+
+    def compile_select_into(self, expression):
+        config = {"variables": []}
+        if not isinstance(expression.args["this"], sqlglot_expressions.Table):
+            raise SyncanySqlCompileException("unknown select into variable: %s", self.to_sql(expression))
+        if not isinstance(expression.args["this"].args["this"], sqlglot_expressions.Parameter):
+            raise SyncanySqlCompileException("unknown select into variable: %s", self.to_sql(expression))
+        if not isinstance(expression.args["this"].args["this"].args["this"], sqlglot_expressions.Var):
+            raise SyncanySqlCompileException("unknown select into variable: %s", self.to_sql(expression))
+        config["variables"].append("@" + expression.args["this"].args["this"].args["this"].args["this"])
         return config
 
     def compile_select_column(self, primary_table, column_expression, column_alias, config, join_tables):
