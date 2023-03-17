@@ -221,9 +221,34 @@ class QueryTasker(object):
         tasker.compile(compile_arguments)
         if "@verbose" in compile_arguments and compile_arguments["@verbose"]:
             warp_database_logging(tasker)
+
+        env_variable_setters, loader_or_outputers = [], ([tasker.loader, tasker.outputer] + list(tasker.join_loaders.values()))
+        for loader_or_outputer in loader_or_outputers:
+            if not hasattr(loader_or_outputer, "name"):
+                continue
+            info = loader_or_outputer.name.split(".")
+            if len(info) <= 1:
+                continue
+            db, table_name = info[0], info[1]
+            if not table_name.startswith("#{env_variable__@") or table_name[-1] != "}":
+                continue
+            if not loader_or_outputer.name.startswith(db + "."):
+                continue
+
+            def env_variable_setter(loader_or_outputer, db, key):
+                def _(env_variables):
+                    loader_or_outputer.name = db + "." + str(env_variables.get_value(key))
+                return _
+            env_variable_setters.append(env_variable_setter(loader_or_outputer, db, table_name[16:-1]))
+        if env_variable_setters:
+            setattr(tasker, "env_variable_setters", env_variable_setters)
         return compile_arguments
 
     def run_tasker(self, executor, session_config, manager, tasker, dependency_taskers):
+        if hasattr(tasker, "env_variable_setters"):
+            for env_variable_setter in tasker.env_variable_setters:
+                env_variable_setter(executor.env_variables)
+
         try:
             tasker_generator = self.run_yield(executor, session_config, manager, tasker, dependency_taskers)
             while True:

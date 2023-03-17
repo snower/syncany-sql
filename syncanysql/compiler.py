@@ -420,6 +420,8 @@ class Compiler(object):
         column_info = self.parse_column(column_expression)
         if not column_alias:
             column_alias = column_info["column_name"].replace(".", "_")
+            if column_info["table_name"] and column_alias in config["schema"]:
+                column_alias = column_info["table_name"] + "." + column_info["column_name"].replace(".", "_")
         if column_info["table_name"] and column_info["table_name"] != primary_table["table_name"]:
             if column_info["table_name"] not in join_tables:
                 raise SyncanySqlCompileException("table select field join table %s unknown: %s" %
@@ -1218,6 +1220,15 @@ class Compiler(object):
                        + "." + (parse(expression.args["expression"]) if isinstance(expression.args["expression"],
                                                                                    sqlglot_expressions.Dot) else expression.args["expression"].name)
             table_name = parse(expression.args["this"])
+        elif isinstance(expression.args["this"], sqlglot_expressions.Parameter):
+            try:
+                table_name = self.env_variables.get_value("@" + expression.args["this"].name)
+            except KeyError:
+                raise SyncanySqlCompileException("undefine table name variable: " + self.to_sql(expression))
+            if table_name is None:
+                table_name = "#{env_variable__@" + expression.args["this"].name + "}"
+            elif not isinstance(table_name, str):
+                raise SyncanySqlCompileException("table name variable value must be str: " + self.to_sql(expression))
         else:
             table_name = expression.args["this"].name
         origin_name = self.mapping[table_name] if table_name in self.mapping else table_name
