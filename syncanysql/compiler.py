@@ -233,6 +233,7 @@ class Compiler(object):
         config["output"] = config["output"].split("::")[0] + "::" + config["input"].split("::")[-1].split(" ")[0]
         arguments["@primary_order"] = False
         arguments["@limit"] = 0
+        arguments["@batch"] = 0
 
     def compile_select(self, expression, config, arguments):
         primary_table = {"db": None, "name": None, "table_name": None, "table_alias": None, "seted_primary_keys": False,
@@ -363,13 +364,13 @@ class Compiler(object):
         if having_expression:
             config["intercepts"].append(self.compile_having_condition(primary_table, having_expression.args["this"], config))
 
-        order_expression = expression.args.get("order")
-        if order_expression:
-            self.compile_order(primary_table, order_expression.args["expressions"], config)
-
         limit_expression = expression.args.get("limit")
         if limit_expression:
             arguments["@limit"] = int(limit_expression.args["expression"].args["this"])
+
+        order_expression = expression.args.get("order")
+        if order_expression:
+            self.compile_order(primary_table, order_expression.args["expressions"], config, arguments)
 
         if group_expression and ("aggregate" not in config or not config["aggregate"] or not config["aggregate"]["reduces"]):
             self.compile_group_column(primary_table, config, group_expression, group_fields, join_tables)
@@ -403,6 +404,8 @@ class Compiler(object):
                                     "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "id",
                                     (" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else " use I"])
         arguments["@primary_order"] = False
+        arguments["@limit"] = 0
+        arguments["@batch"] = 0
         return config
 
     def compile_select_into(self, expression):
@@ -941,7 +944,7 @@ class Compiler(object):
         else:
             raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
 
-    def compile_order(self, primary_table, expressions, config):
+    def compile_order(self, primary_table, expressions, config, arguments):
         primary_sort_keys, sort_keys = [], []
         for expression in expressions:
             column = self.parse_column(expression.args["this"])
@@ -955,6 +958,9 @@ class Compiler(object):
                     if sort_key not in config["schema"]:
                         raise SyncanySqlCompileException("unkonw order by key: " + str(sort_key))
             config["pipelines"].append([">>@sort", "$.*|array", False, sort_keys])
+            if "@limit" in arguments and arguments["@limit"] > 0:
+                config["pipelines"].append([">>@array::slice", "$.*|array", 0, arguments["@limit"]])
+                arguments["@limit"] = 0
         elif primary_sort_keys:
             config["orders"].extend(primary_sort_keys)
         
