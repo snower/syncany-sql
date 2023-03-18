@@ -31,6 +31,11 @@ class ReduceHooker(Hooker):
         if self.count >= self.batch:
             self.count = 0
             self.tasker.run_reduce(self.executor, self.session_config, self.manager, self.arguments, False)
+        else:
+            limit = tasker.arguments["@limit"] if "@limit" in tasker.arguments and tasker.arguments["@limit"] > 0 else 0
+            if 0 < limit <= tasker.status["store_count"]:
+                self.count = 0
+                self.tasker.run_reduce(self.executor, self.session_config, self.manager, self.arguments, False)
 
     def finaled(self, tasker, e=None):
         if e is not None:
@@ -201,6 +206,8 @@ class QueryTasker(object):
                 if exit_code is not None and exit_code != 0:
                     return exit_code
                 break
+        if not final_reduce:
+            self.tasker.status["store_count"] = tasker.status["store_count"]
         return 0
 
     def compile_tasker(self, arguments, tasker):
