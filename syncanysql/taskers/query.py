@@ -46,6 +46,7 @@ class QueryTasker(object):
         self.dependency_taskers = []
         self.arguments = None
         self.tasker_generator = None
+        self.updaters = []
 
     def start(self, executor, session_config, manager, arguments):
         dependency_taskers = []
@@ -94,6 +95,7 @@ class QueryTasker(object):
         return [self]
 
     def run(self, executor, session_config, manager):
+        self.execute_updater(executor, session_config, manager)
         if not self.tasker_generator:
             self.tasker_generator = self.run_tasker(executor, session_config, manager, self.tasker, self.dependency_taskers)
         else:
@@ -222,7 +224,7 @@ class QueryTasker(object):
         if "@verbose" in compile_arguments and compile_arguments["@verbose"]:
             warp_database_logging(tasker)
 
-        env_variable_setters, loader_or_outputers = [], ([tasker.loader, tasker.outputer] + list(tasker.join_loaders.values()))
+        loader_or_outputers = [tasker.loader, tasker.outputer] + list(tasker.join_loaders.values())
         for loader_or_outputer in loader_or_outputers:
             if not hasattr(loader_or_outputer, "name"):
                 continue
@@ -235,20 +237,14 @@ class QueryTasker(object):
             if not loader_or_outputer.name.startswith(db + "."):
                 continue
 
-            def env_variable_setter(loader_or_outputer, db, key):
-                def _(env_variables):
-                    loader_or_outputer.name = db + "." + str(env_variables.get_value(key))
+            def env_variable_setter(obj, prefix, key):
+                def _(executor, session_config, manager):
+                    obj.name = prefix + str(executor.env_variables.get_value(key))
                 return _
-            env_variable_setters.append(env_variable_setter(loader_or_outputer, db, table_name[16:-1]))
-        if env_variable_setters:
-            setattr(tasker, "env_variable_setters", env_variable_setters)
+            self.updaters.append(env_variable_setter(loader_or_outputer, db + ".", table_name[16:-1]))
         return compile_arguments
 
     def run_tasker(self, executor, session_config, manager, tasker, dependency_taskers):
-        if hasattr(tasker, "env_variable_setters"):
-            for env_variable_setter in tasker.env_variable_setters:
-                env_variable_setter(executor.env_variables)
-
         try:
             tasker_generator = self.run_yield(executor, session_config, manager, tasker, dependency_taskers)
             while True:
@@ -276,3 +272,10 @@ class QueryTasker(object):
         else:
             tasker.close()
         return 0
+
+    def execute_updater(self, executor, session_config, manager):
+        for updater in self.updaters:
+            updater(executor, session_config, manager)
+
+        for dependency_tasker in self.dependency_taskers:
+            dependency_tasker.execute_updater(executor, session_config, manager)
