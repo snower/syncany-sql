@@ -78,7 +78,7 @@ class QueryTasker(object):
         if (aggregate and aggregate.get("reduces")) and (batch > 0 or limit > 0 or self.config.get("pipelines")):
             require_reduce = True
         if require_reduce and not arguments.get("@streaming"):
-            if (limit > 0 or self.config.get("pipelines")) and batch <= 0:
+            if limit > 0 and batch <= 0:
                 batch = max(*(int(arguments.get(key, 0)) for key in ("@limit", "@batch", "@join_batch", "@insert_batch")))
                 arguments["@batch"] = batch
             if not aggregate:
