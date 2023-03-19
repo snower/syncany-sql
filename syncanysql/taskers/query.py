@@ -68,14 +68,14 @@ class QueryTasker(object):
             dependency_taskers.append(dependency_tasker)
 
         limit, batch, aggregate = int(arguments.get("@limit", 0)), int(arguments.get("@batch", 0)), self.config.pop("aggregate", None)
-        require_reduce, reduce_intercept = False, False
+        require_reduce, reduce_intercept, sorted_limit = False, False, len(self.config.get("pipelines", [])) == 2
         if self.config.get("intercepts"):
             if aggregate and aggregate.get("reduces") and aggregate.get("having_columns"):
                 if [having_column for having_column in aggregate["having_columns"] if having_column in aggregate["reduces"]]:
                     require_reduce, reduce_intercept = True, True
-            if (batch > 0 or limit > 0 or self.config.get("pipelines")):
+            if (batch > 0 or limit > 0 or sorted_limit):
                 require_reduce = True
-        if (aggregate and aggregate.get("reduces")) and (batch > 0 or limit > 0 or self.config.get("pipelines")):
+        if (aggregate and aggregate.get("reduces")) and (batch > 0 or limit > 0 or sorted_limit):
             require_reduce = True
         if require_reduce and not arguments.get("@streaming"):
             if limit > 0 and batch <= 0:

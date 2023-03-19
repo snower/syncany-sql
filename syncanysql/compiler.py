@@ -961,7 +961,7 @@ class Compiler(object):
             if "@limit" in arguments and arguments["@limit"] > 0:
                 config["pipelines"].append([">>@array::slice", "$.*|array", 0, arguments["@limit"]])
                 arguments["@limit"] = 0
-        elif primary_sort_keys:
+        if primary_sort_keys:
             config["orders"].extend(primary_sort_keys)
         
     def compile_column(self, column, config, scope_depth=1):
