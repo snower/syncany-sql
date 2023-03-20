@@ -12,6 +12,8 @@ class IntoTasker(object):
 
     def start(self, executor, session_config, manager, arguments):
         for variable in self.config["variables"]:
+            if variable in executor.env_variables:
+                continue
             executor.env_variables[variable] = None
         self.tasker.config["output"] = "&.--.__into_" + str(id(self)) + "::" + self.tasker.config["output"].split("::")[-1].split(" ")[0]
         self.tasker.config["name"] = self.tasker.config["name"] + "#into"
@@ -59,5 +61,7 @@ class IntoTasker(object):
             self.tasker = None
 
     def terminate(self):
-        if self.tasker:
-            return self.tasker.terminate()
+        if not self.tasker:
+            return
+        self.tasker.terminate()
+        self.tasker = None

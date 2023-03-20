@@ -38,5 +38,7 @@ class DeleteTasker(object):
             self.tasker = None
 
     def terminate(self):
-        if self.tasker:
-            self.tasker.terminate()
+        if not self.tasker:
+            return
+        self.tasker.terminate()
+        self.tasker = None

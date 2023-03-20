@@ -13,11 +13,11 @@ class ExecuteTasker(object):
         self.executor = None
 
     def start(self, executor, session_config, manager, arguments):
-        if self.executor != executor:
-            from ..executor import Executor
-            self.executor = Executor(manager, session_config.session(), executor)
-
         if self.config["filename"].endswith("sql") or self.config["filename"].endswith("sqlx"):
+            if self.executor != executor:
+                from ..executor import Executor
+                self.executor = Executor(manager, session_config.session(), executor)
+
             start_time = time.time()
             get_logger().info("execute file %s", self.config["filename"])
             try:
@@ -32,8 +32,12 @@ class ExecuteTasker(object):
         return [self]
 
     def run(self, executor, session_config, manager):
+        if not self.executor:
+            return 0
         return self.executor.execute()
 
     def terminate(self):
         if not self.executor:
-            self.executor.terminate()
+            return
+        self.executor.terminate()
+        self.executor = None

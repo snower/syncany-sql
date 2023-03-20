@@ -46,6 +46,8 @@ class EnvVariables(dict):
     def get_value(self, key):
         if key in self:
             return self[key]
+        if key and key[0] == "@" and key[1:] in self:
+            return self[key[1:]]
         if self.parent is None:
             raise KeyError("%s unknown" % key)
         return self.parent.get_value(key)
@@ -53,6 +55,8 @@ class EnvVariables(dict):
     def get(self, key, default=None):
         if key in self:
             return self[key]
+        if key and key[0] == "@" and key[1:] in self:
+            return self[key[1:]]
         if self.parent is None:
             return default
         return self.parent.get(key, default)

@@ -34,5 +34,7 @@ class ExplainTasker(object):
             self.config, self.tasker = None, None
 
     def terminate(self):
-        if self.tasker:
-            return self.tasker.terminate()
+        if not self.tasker:
+            return
+        self.tasker.terminate()
+        self.tasker = None

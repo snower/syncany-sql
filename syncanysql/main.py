@@ -33,7 +33,11 @@ def main():
         register_sql_calculaters()
         global_config = GlobalConfig()
         init_execute_files = global_config.load()
-        global_config.config_logging()
+        if not sys.stdin.isatty() and (len(sys.argv) == 1 or (
+                len(sys.argv) >= 2 and not sys.argv[1].endswith(".sqlx") and not sys.argv[1].endswith(".sql"))):
+            global_config.config_logging(False)
+        else:
+            global_config.config_logging(True)
         manager = TaskerManager(DatabaseManager())
 
         try:

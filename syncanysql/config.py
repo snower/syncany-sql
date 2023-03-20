@@ -119,7 +119,7 @@ class GlobalConfig(object):
             query = query.replace(arg, '%s')
         return query, args
 
-    def load(self):
+    def load(self, custom_config=None):
         home_config_path = os.path.join(os.path.expanduser('~'), ".syncany")
         for filename in (os.path.join(home_config_path, "config.json"), os.path.join(home_config_path, "config.yaml"),
                          "config.json", "config.yaml"):
@@ -130,6 +130,8 @@ class GlobalConfig(object):
             if filename not in self.config["extends"]:
                 self.config["extends"].append(filename)
         self.load_config()
+        if custom_config and isinstance(custom_config):
+            self.merge_config(custom_config)
 
         if "timezone" in self.config:
             timezone = self.config.pop("timezone")
@@ -223,7 +225,7 @@ class GlobalConfig(object):
             else:
                 self.config[k] = v
 
-    def config_logging(self):
+    def config_logging(self, isatty=True):
         logfile = self.config.pop("logfile", None)
         if not logfile or logfile == "-":
             logfile = None
@@ -232,8 +234,7 @@ class GlobalConfig(object):
         if "logger" in self.config and isinstance(self.config["logger"], dict):
             logging.config.dictConfig(self.config["logger"])
         else:
-            if not logfile and not loglevel and not sys.stdin.isatty() and (len(sys.argv) == 1 or (
-                    len(sys.argv) >= 2 and not sys.argv[1].endswith(".sqlx") and not sys.argv[1].endswith(".sql"))):
+            if not logfile and not loglevel and not isatty:
                 loglevel = logging.CRITICAL
             else:
                 loglevel = {"CRITICAL": logging.CRITICAL, "FATAL": logging.FATAL, "ERROR": logging.ERROR,

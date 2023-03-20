@@ -146,8 +146,10 @@ class QueryTasker(object):
             yield TaskerYieldNext()
 
     def terminate(self):
-        if self.tasker:
-            self.tasker.terminate()
+        if not self.tasker:
+            return
+        self.tasker.terminate()
+        self.tasker = None
 
     def compile_reduce_config(self, aggregate):
         subquery_name = "__subquery_" + str(uuid.uuid1().int) + "_reduce"
