@@ -73,6 +73,27 @@ FROM
 GROUP BY a.site_id;
 ```
 
+# Python API
+
+```python
+from syncanysql import ScriptEngine
+
+with ScriptEngine() as engine:
+    engine.execute('''
+        INSERT INTO `top_ips` SELECT
+            ip, cnt
+        FROM
+            (SELECT
+                seg0 AS ip, COUNT(*) AS cnt
+            FROM
+                `file:///var/log/nginx/access.log?sep= `
+            GROUP BY seg0) a
+        ORDER BY cnt DESC
+        LIMIT 3;
+    ''')
+    print(engine.pop_memory_datas("top_ips"))
+```
+
 # License
 
 Syncany-SQL uses the MIT license, see LICENSE file for the details.
