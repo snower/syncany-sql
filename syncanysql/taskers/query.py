@@ -28,7 +28,7 @@ class ReduceHooker(Hooker):
 
     def outputed(self, tasker, datas):
         self.count += len(datas)
-        if self.count >= self.batch:
+        if self.batch > 0 and self.count >= self.batch:
             self.count = 0
             self.tasker.run_reduce(self.executor, self.session_config, self.manager, self.arguments, False)
         else:
