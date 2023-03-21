@@ -82,7 +82,7 @@ class QueryTasker(object):
                 batch = max(*(int(arguments.get(key, 0)) for key in ("@limit", "@batch", "@join_batch", "@insert_batch")))
                 arguments["@batch"] = batch
             if not aggregate:
-                aggregate = {"key": "", "reduces": [], "having_columns": set([])}
+                aggregate = {"reduce_key": "", "reduces": [], "having_columns": set([])}
             self.compile_reduce_config(aggregate)
             if reduce_intercept:
                 self.reduce_config["intercepts"] = self.config.pop("intercepts", [])
@@ -176,9 +176,9 @@ class QueryTasker(object):
                 config["schema"][key] = ["#aggregate", "$._aggregate_key_", aggregate["reduces"][key]]
             else:
                 config["schema"][key] = "$." + key
-        if aggregate["key"]:
+        if aggregate["reduce_key"]:
             config["schema"]["_aggregate_key_"] = "$._aggregate_key_"
-            self.config["schema"]["_aggregate_key_"] = aggregate["key"]
+            self.config["schema"]["_aggregate_key_"] = aggregate["reduce_key"]
         self.config["output"] = "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0] + " use I"
         self.reduce_config = config
 

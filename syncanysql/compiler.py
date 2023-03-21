@@ -363,6 +363,11 @@ class Compiler(object):
         having_expression = expression.args.get("having")
         if having_expression:
             config["intercepts"].append(self.compile_having_condition(primary_table, having_expression.args["this"], config))
+            if config.get("aggregate") and config["aggregate"].get("reduces") and config["aggregate"].get("having_columns"):
+                if len({True if having_column in config["aggregate"]["reduces"] else False
+                        for having_column in config["aggregate"]["having_columns"]}) != 1:
+                    raise SyncanySqlCompileException("having cannot contain the values before and after the aggregate calculation at the same time: "
+                                                     + self.to_sql(expression))
 
         limit_expression = expression.args.get("limit")
         if limit_expression:
@@ -617,14 +622,14 @@ class Compiler(object):
         else:
             group_column.append(self.compile_calculate(primary_table, config, group_expression.args["expressions"][0], column_join_tables, -1))
         if "aggregate" not in config:
-            config["aggregate"] = {"key": None, "reduces": {}, "having_columns": set([])}
+            config["aggregate"] = {"reduce_key": None, "reduces": {}, "having_columns": set([])}
         if calculate_fields:
             group_column = self.compile_join_column(primary_table, group_column, config, column_join_tables)
         config["schema"][column_alias] = ["#make", {
-            "key": group_column,
+            "reduce_key": group_column,
             "value": config["schema"][column_alias]
         }, [":#aggregate", "$.key", "$$.value"]]
-        config["aggregate"]["key"] = copy.deepcopy(group_column)
+        config["aggregate"]["reduce_key"] = copy.deepcopy(group_column)
         config["aggregate"]["reduces"][column_alias] = "$$." + column_alias
 
     def compile_aggregate_column(self, primary_table, column_alias, config, group_expression, aggregate_expression, group_fields, join_tables):
@@ -654,15 +659,15 @@ class Compiler(object):
             group_column.append(self.compile_calculate(primary_table, config, group_expression.args["expressions"][0], column_join_tables, -1))
         calculate_column = self.compile_aggregate(primary_table, column_alias, config, aggregate_expression, column_join_tables)
         if "aggregate" not in config:
-            config["aggregate"] = {"key": None, "reduces": {}, "having_columns": set([])}
+            config["aggregate"] = {"reduce_key": None, "reduces": {}, "having_columns": set([])}
         if calculate_fields:
             config["schema"][column_alias] = self.compile_join_column(primary_table, ["#aggregate", group_column, calculate_column],
                                                                       config, column_join_tables)
-            config["aggregate"]["key"] = self.compile_join_column(primary_table, copy.deepcopy(group_column), config, column_join_tables)
+            config["aggregate"]["reduce_key"] = self.compile_join_column(primary_table, copy.deepcopy(group_column), config, column_join_tables)
             config["aggregate"]["reduces"][column_alias] = [calculate_column[0], calculate_column[1], "$" + calculate_column[1]]
         else:
             config["schema"][column_alias] = ["#aggregate", group_column, calculate_column]
-            config["aggregate"]["key"] = copy.deepcopy(group_column)
+            config["aggregate"]["reduce_key"] = copy.deepcopy(group_column)
             config["aggregate"]["reduces"][column_alias] = [calculate_column[0], calculate_column[1], "$" + calculate_column[1]]
 
     def compile_aggregate(self, primary_table, column_alias, config, expression, column_join_tables, join_index=-1):
@@ -867,7 +872,7 @@ class Compiler(object):
 
         def parse(expression):
             if "aggregate" not in config:
-                config["aggregate"] = {"key": None, "reduces": {}, "having_columns": set([])}
+                config["aggregate"] = {"reduce_key": None, "reduces": {}, "having_columns": set([])}
             if expression.args.get("expressions"):
                 left_expression, right_expression = expression.args["this"], expression.args["expressions"]
             else:
