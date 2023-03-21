@@ -214,6 +214,7 @@ class QueryTasker(object):
         distinct_aggregate["reduces"]["_aggregate_distinct_aggregate_key_"] = ["#const", 0]
         distinct_aggregate["calculates"]["_aggregate_distinct_aggregate_key_"] = ["#const", 0]
         distinct_aggregate["key"] = group_column
+        self.config["aggregate"] = distinct_aggregate
         if [having_column for having_column in aggregate["having_columns"] if having_column in aggregate["reduces"]]:
             config["intercepts"] = self.config.pop("intercepts")
         else:
