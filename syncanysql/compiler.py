@@ -608,7 +608,7 @@ class Compiler(object):
                 calculate_table_names.add(calculate_field["table_name"])
             self.compile_join_column_tables(primary_table, [join_tables[calculate_table_name] for calculate_table_name in calculate_table_names],
                                             join_tables, column_join_tables)
-        group_column = ["@add", ["#const", "k_"]]
+        group_column = ["@aggregate_key", ["#const", "k_"]]
         if len(group_expression.args["expressions"]) > 1:
             for i in range(len(group_expression.args["expressions"]) - 1):
                 group_column.append(self.compile_calculate(primary_table, config, group_expression.args["expressions"][i], column_join_tables, -1))
@@ -642,9 +642,9 @@ class Compiler(object):
                 calculate_table_names.add(calculate_field["table_name"])
             self.compile_join_column_tables(primary_table, [join_tables[calculate_table_name] for calculate_table_name in calculate_table_names],
                                             join_tables, column_join_tables)
-        group_column = ["@add", ["#const", "k_"]]
+        group_column = ["@aggregate_key", ["#const", "k_"]]
         if not group_expression:
-            group_column = ["@add", ["#const", "k_g"]]
+            group_column = ["@aggregate_key", ["#const", "k_g"]]
         elif len(group_expression.args["expressions"]) > 1:
             for i in range(len(group_expression.args["expressions"]) - 1):
                 group_column.append(self.compile_calculate(primary_table, config, group_expression.args["expressions"][i], column_join_tables, -1))

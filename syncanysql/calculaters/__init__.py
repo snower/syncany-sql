@@ -4,9 +4,11 @@
 
 from syncany.calculaters import register_calculater
 from .mysql_calculater import MysqlCalculater
+from .aggregate_calculater import AggregateKeyCalculater
 
 def is_mysql_func(name):
     return name in MysqlCalculater.funcs
 
 def register_sql_calculaters():
     register_calculater("mysql", MysqlCalculater)
+    register_calculater("aggregate_key", AggregateKeyCalculater)
