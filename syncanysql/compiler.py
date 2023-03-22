@@ -624,7 +624,7 @@ class Compiler(object):
                 calculate_table_names.add(calculate_field["table_name"])
             self.compile_join_column_tables(primary_table, [join_tables[calculate_table_name] for calculate_table_name in calculate_table_names],
                                             join_tables, column_join_tables)
-        group_column = ["@aggregate_key", ["#const", "k_"]]
+        group_column = ["@aggregate_key"]
         if len(group_expression.args["expressions"]) > 1:
             for i in range(len(group_expression.args["expressions"]) - 1):
                 group_column.append(self.compile_calculate(primary_table, config, group_expression.args["expressions"][i], column_join_tables, -1))
@@ -636,17 +636,17 @@ class Compiler(object):
         if calculate_fields:
             group_column = self.compile_join_column(primary_table, group_column, config, column_join_tables)
 
+        config["aggregate"]["key"] = copy.deepcopy(group_column)
         config["aggregate"]["values"][column_alias] = ["#make", {
             "key": group_column,
             "value": config["schema"][column_alias]
         }]
         config["aggregate"]["calculates"][column_alias] = [":#aggregate", "$.key", "$$.value"]
+        config["aggregate"]["reduces"][column_alias] = "$$." + column_alias
         config["schema"][column_alias] = ["#make", {
             "key": group_column,
             "value": config["schema"][column_alias]
         }, [":#aggregate", "$.key", "$$.value"]]
-        config["aggregate"]["key"] = copy.deepcopy(group_column)
-        config["aggregate"]["reduces"][column_alias] = "$$." + column_alias
 
     def compile_aggregate_column(self, primary_table, column_alias, config, group_expression, aggregate_expression, group_fields, join_tables):
         calculate_fields = [group_field for group_field in group_fields]
@@ -663,9 +663,9 @@ class Compiler(object):
                 calculate_table_names.add(calculate_field["table_name"])
             self.compile_join_column_tables(primary_table, [join_tables[calculate_table_name] for calculate_table_name in calculate_table_names],
                                             join_tables, column_join_tables)
-        group_column = ["@aggregate_key", ["#const", "k_"]]
+        group_column = ["@aggregate_key"]
         if not group_expression:
-            group_column = ["@aggregate_key", ["#const", "k_g"]]
+            group_column = ["@aggregate_key", ["#const", "__k_g__"]]
         elif len(group_expression.args["expressions"]) > 1:
             for i in range(len(group_expression.args["expressions"]) - 1):
                 group_column.append(self.compile_calculate(primary_table, config, group_expression.args["expressions"][i], column_join_tables, -1))
@@ -697,9 +697,9 @@ class Compiler(object):
         calculate_column = self.compile_aggregate(column_alias, aggregate_expression)
         config["aggregate"]["values"][column_alias] = copy.deepcopy(aggregate_column)
         config["aggregate"]["calculates"][column_alias] = [":#aggregate", "$.key", copy.deepcopy(calculate_column)]
+        config["aggregate"]["reduces"][column_alias] = [calculate_column[0], calculate_column[1], "$" + calculate_column[1]]
         aggregate_column.append([":#aggregate", "$.key", calculate_column])
         config["schema"][column_alias] = aggregate_column
-        config["aggregate"]["reduces"][column_alias] = [calculate_column[0], calculate_column[1], "$" + calculate_column[1]]
 
     def compile_aggregate(self, column_alias, expression):
         if isinstance(expression, sqlglot_expressions.Count):

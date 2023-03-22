@@ -56,6 +56,7 @@ class QueryTasker(object):
         self.arguments = None
         self.tasker_generator = None
         self.updaters = []
+        self.temporary_memory_collections = set([])
 
     def start(self, executor, session_config, manager, arguments):
         dependency_taskers, aggregate = [], self.config.pop("aggregate", None)
@@ -65,6 +66,7 @@ class QueryTasker(object):
             distinct_tasker.start(executor, session_config, manager, copy.deepcopy(arguments))
             dependency_taskers.append(distinct_tasker)
             arguments["@limit"], arguments["@batch"] = 0, 0
+            arguments["@primary_order"] = False
 
         for dependency_config in self.config.get("dependencys", []):
             kn, knl = (dependency_config["name"] + "@"), len(dependency_config["name"] + "@")
@@ -111,25 +113,30 @@ class QueryTasker(object):
         return [self]
 
     def run(self, executor, session_config, manager):
-        self.execute_updater(executor, session_config, manager)
-        if not self.tasker_generator:
-            self.tasker_generator = self.run_tasker(executor, session_config, manager, self.tasker, self.dependency_taskers)
-        else:
-            _thread_local.current_tasker = self.tasker
-        while True:
-            try:
-                value = self.tasker_generator.send(None)
-                if isinstance(value, TaskerYieldNext):
-                    executor.add_runner(self)
-                    return 0
-            except StopIteration as e:
-                exit_code = e.value
-                if exit_code is not None and exit_code != 0:
-                    return exit_code
-                break
-        if self.reduce_config:
-            return self.run_reduce(executor, session_config, manager, self.arguments, True)
-        return exit_code
+        try:
+            self.execute_updater(executor, session_config, manager)
+            if not self.tasker_generator:
+                self.tasker_generator = self.run_tasker(executor, session_config, manager, self.tasker, self.dependency_taskers)
+            else:
+                _thread_local.current_tasker = self.tasker
+            while True:
+                try:
+                    value = self.tasker_generator.send(None)
+                    if isinstance(value, TaskerYieldNext):
+                        executor.add_runner(self)
+                        return 0
+                except StopIteration as e:
+                    exit_code = e.value
+                    if exit_code is not None and exit_code != 0:
+                        return exit_code
+                    break
+            if self.reduce_config:
+                return self.run_reduce(executor, session_config, manager, self.arguments, True)
+            return exit_code
+        finally:
+            names = self.get_temporary_memory_collections()
+            if names:
+                executor.clear_temporary_memory_collection(names)
 
     def run_yield(self, executor, session_config, manager, tasker, dependency_taskers):
         tasker_generator = tasker.run_yield()
@@ -183,7 +190,7 @@ class QueryTasker(object):
             "states": [],
         })
 
-        group_column = ["@aggregate_key", ["#const", "k_"]] if not aggregate["key"] else list(aggregate["key"])
+        group_column = ["@aggregate_key"] if not aggregate["key"] else aggregate["key"][:]
         group_column.extend(aggregate["distincts"])
 
         distinct_aggregate = copy.deepcopy(DEAULT_AGGREGATE)
@@ -201,8 +208,8 @@ class QueryTasker(object):
                     "key": group_column,
                     "value": aggregate["values"][key][1]["value"]
                 }]
-                distinct_aggregate["reduces"][key] = aggregate["reduces"][key]
                 distinct_aggregate["calculates"][key] = aggregate["calculates"][key]
+                distinct_aggregate["reduces"][key] = aggregate["reduces"][key]
                 config["schema"][key] = ["#aggregate", "$._aggregate_distinct_key_", aggregate["reduces"][key]]
             else:
                 config["schema"][key] = "$." + key
@@ -211,12 +218,12 @@ class QueryTasker(object):
             self.config["schema"]["_aggregate_distinct_key_"] = aggregate["key"]
         self.config["schema"]["_aggregate_distinct_aggregate_key_"] = ["#aggregate", group_column, ["#const", 0]]
         distinct_aggregate["values"]["_aggregate_distinct_aggregate_key_"] = ["#const", 0]
-        distinct_aggregate["reduces"]["_aggregate_distinct_aggregate_key_"] = ["#const", 0]
         distinct_aggregate["calculates"]["_aggregate_distinct_aggregate_key_"] = ["#const", 0]
+        distinct_aggregate["reduces"]["_aggregate_distinct_aggregate_key_"] = ["#const", 0]
         distinct_aggregate["key"] = group_column
         self.config["aggregate"] = distinct_aggregate
         if [having_column for having_column in aggregate["having_columns"] if having_column in aggregate["reduces"]]:
-            config["intercepts"] = self.config.pop("intercepts")
+            config["intercepts"] = self.config.pop("intercepts", [])
         else:
             distinct_aggregate["having_columns"] = aggregate["having_columns"]
         config["pipelines"] = self.config.pop("pipelines", [])
@@ -305,6 +312,10 @@ class QueryTasker(object):
         if "@verbose" in compile_arguments and compile_arguments["@verbose"]:
             warp_database_logging(tasker)
 
+        if hasattr(tasker.outputer, "name"):
+            if tasker.outputer.name.startswith("--.__subquery_") or tasker.outputer.name.startswith("--.__unionquery_"):
+                self.temporary_memory_collections.add(tasker.outputer.name)
+
         loader_or_outputers = [tasker.loader, tasker.outputer] + list(tasker.join_loaders.values())
         for loader_or_outputer in loader_or_outputers:
             if not hasattr(loader_or_outputer, "name"):
@@ -360,3 +371,9 @@ class QueryTasker(object):
 
         for dependency_tasker in self.dependency_taskers:
             dependency_tasker.execute_updater(executor, session_config, manager)
+
+    def get_temporary_memory_collections(self):
+        names = list(self.temporary_memory_collections)
+        for dependency_tasker in self.dependency_taskers:
+            names.extend(dependency_tasker.get_temporary_memory_collections())
+        return names
