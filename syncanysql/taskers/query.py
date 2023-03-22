@@ -62,6 +62,7 @@ class QueryTasker(object):
         dependency_taskers, aggregate = [], self.config.pop("aggregate", None)
         if aggregate and aggregate.get("distincts"):
             self.config, distinct_config = self.compile_distinct_config(aggregate), self.config
+            distinct_config["name"] = distinct_config["name"] + "#select@distinct"
             distinct_tasker = QueryTasker(distinct_config)
             distinct_tasker.start(executor, session_config, manager, copy.deepcopy(arguments))
             dependency_taskers.append(distinct_tasker)
