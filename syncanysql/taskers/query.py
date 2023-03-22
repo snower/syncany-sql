@@ -193,22 +193,20 @@ class QueryTasker(object):
 
         group_column = ["@aggregate_key"] if not aggregate["key"] else aggregate["key"][:]
         group_column.extend(aggregate["distincts"])
-
         distinct_aggregate = copy.deepcopy(DEAULT_AGGREGATE)
         for key, column in tuple(self.config["schema"].items()):
             if key in aggregate["distinct_aggregates"]:
-                config["schema"][key] = ["$._aggregate_distinct_key_%s_" % key, aggregate["calculates"][key]]
-                self.config["schema"]["_aggregate_distinct_key_%s_" % key] = aggregate["values"][key]
-                self.config["schema"][key] = aggregate["key"]
+                config["schema"][key] = ["#make", {
+                    "key": "$._aggregate_distinct_key_",
+                    "value": "$." + key
+                }, aggregate["calculates"][key]]
+                self.config["schema"][key] = aggregate["values"][key]
             elif key in aggregate["values"]:
                 self.config["schema"][key] = ["#make", {
                     "key": group_column,
-                    "value": aggregate["values"][key][1]["value"]
+                    "value": aggregate["values"][key]
                 }, aggregate["calculates"][key]]
-                distinct_aggregate["values"][key] = ["#make", {
-                    "key": group_column,
-                    "value": aggregate["values"][key][1]["value"]
-                }]
+                distinct_aggregate["values"][key] = aggregate["values"][key]
                 distinct_aggregate["calculates"][key] = aggregate["calculates"][key]
                 distinct_aggregate["reduces"][key] = aggregate["reduces"][key]
                 config["schema"][key] = ["#aggregate", "$._aggregate_distinct_key_", aggregate["reduces"][key]]
@@ -218,10 +216,10 @@ class QueryTasker(object):
         if aggregate["key"]:
             self.config["schema"]["_aggregate_distinct_key_"] = aggregate["key"]
         self.config["schema"]["_aggregate_distinct_aggregate_key_"] = ["#aggregate", group_column, ["#const", 0]]
+        distinct_aggregate["key"] = group_column
         distinct_aggregate["values"]["_aggregate_distinct_aggregate_key_"] = ["#const", 0]
         distinct_aggregate["calculates"]["_aggregate_distinct_aggregate_key_"] = ["#const", 0]
         distinct_aggregate["reduces"]["_aggregate_distinct_aggregate_key_"] = ["#const", 0]
-        distinct_aggregate["key"] = group_column
         self.config["aggregate"] = distinct_aggregate
         if [having_column for having_column in aggregate["having_columns"] if having_column in aggregate["reduces"]]:
             config["intercepts"] = self.config.pop("intercepts", [])

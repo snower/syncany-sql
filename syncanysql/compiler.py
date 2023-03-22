@@ -237,7 +237,7 @@ class Compiler(object):
 
     def compile_select(self, expression, config, arguments):
         primary_table = {"db": None, "name": None, "table_name": None, "table_alias": None, "seted_primary_keys": False,
-                         "loader_primary_keys": [], "outputer_primary_keys": [], "columns": {}}
+                         "loader_primary_keys": [], "outputer_primary_keys": [], "columns": {}, "subquery": None}
 
         from_expression = expression.args.get("from")
         if not from_expression:
@@ -268,6 +268,7 @@ class Compiler(object):
                 subquery_name, subquery_config = self.compile_subquery(from_expression, arguments)
                 primary_table["db"] = "--"
                 primary_table["name"] = subquery_name
+                primary_table["subquery"] = subquery_config
                 config["dependencys"].append(subquery_config)
                 if self.compile_pipleline_select(expression, config, arguments, primary_table):
                     return config
@@ -289,10 +290,16 @@ class Compiler(object):
         config["schema"] = {}
         for select_expression in select_expressions:
             if isinstance(select_expression, sqlglot_expressions.Star):
-                if len(select_expressions) != 1:
+                if not self.compile_select_star_column(primary_table, select_expression, config, join_tables):
+                    config["schema"] = "$.*"
+                continue
+            elif isinstance(select_expression, sqlglot_expressions.Column) \
+                    and isinstance(select_expression.args.get("this"), sqlglot_expressions.Star):
+                if not self.compile_select_star_column(primary_table, select_expression, config, join_tables):
                     raise SyncanySqlCompileException("* query can only query the master table: " + self.to_sql(expression))
-                config["schema"] = "$.*"
-                break
+                continue
+            if not isinstance(config["schema"], dict):
+                raise SyncanySqlCompileException("* query can only query the master table: " + self.to_sql(expression))
 
             column_expression, aggregate_expression, calculate_expression, column_alias = None, None, None, None
             if self.is_column(select_expression):
@@ -326,7 +333,8 @@ class Compiler(object):
             else:
                 raise SyncanySqlCompileException("table select field must be alias: " + self.to_sql(expression))
             if column_expression:
-                self.compile_select_column(primary_table, column_expression, column_alias, config, join_tables)
+                self.compile_select_column(primary_table, column_expression, column_alias, self.parse_column(column_expression),
+                                           config, join_tables)
                 continue
             if aggregate_expression:
                 self.compile_aggregate_column(primary_table, column_alias, config, group_expression, aggregate_expression,
@@ -435,8 +443,34 @@ class Compiler(object):
         config["variables"].append("@" + expression.args["this"].args["this"].args["this"].args["this"])
         return config
 
-    def compile_select_column(self, primary_table, column_expression, column_alias, config, join_tables):
-        column_info = self.parse_column(column_expression)
+    def compile_select_star_column(self, primary_table, select_expression, config, join_tables):
+        if isinstance(select_expression, sqlglot_expressions.Star):
+            subquery_config = primary_table["subquery"]
+            table_name = primary_table["table_alias"] or primary_table["table_name"]
+        else:
+            table_name = select_expression.args["table"].name
+            if table_name == primary_table["table_alias"]:
+                subquery_config = primary_table["subquery"]
+            else:
+                subquery_config = join_tables[table_name]["subquery"] if table_name in join_tables else None
+        if not subquery_config or not isinstance(subquery_config["schema"], dict):
+            return False
+
+        for name, column in subquery_config["schema"].items():
+            column_info = {
+                "table_name": table_name,
+                "column_name": name,
+                "origin_name": name,
+                "typing_name": "",
+                "dot_keys": [],
+                "typing_filters": [],
+                "typing_options": [],
+                "expression": select_expression
+            }
+            self.compile_select_column(primary_table, select_expression, name, column_info, config, join_tables)
+        return True
+
+    def compile_select_column(self, primary_table, column_expression, column_alias, column_info, config, join_tables):
         if not column_alias:
             column_alias = column_info["column_name"].replace(".", "_")
             if column_info["table_name"] and column_alias in config["schema"]:
@@ -637,16 +671,13 @@ class Compiler(object):
             group_column = self.compile_join_column(primary_table, group_column, config, column_join_tables)
 
         config["aggregate"]["key"] = copy.deepcopy(group_column)
-        config["aggregate"]["values"][column_alias] = ["#make", {
-            "key": group_column,
-            "value": config["schema"][column_alias]
-        }]
-        config["aggregate"]["calculates"][column_alias] = [":#aggregate", "$.key", "$$.value"]
-        config["aggregate"]["reduces"][column_alias] = "$$." + column_alias
+        config["aggregate"]["values"][column_alias] = copy.deepcopy(config["schema"][column_alias])
         config["schema"][column_alias] = ["#make", {
             "key": group_column,
             "value": config["schema"][column_alias]
         }, [":#aggregate", "$.key", "$$.value"]]
+        config["aggregate"]["calculates"][column_alias] = [":#aggregate", "$.key", "$$.value"]
+        config["aggregate"]["reduces"][column_alias] = "$$." + column_alias
 
     def compile_aggregate_column(self, primary_table, column_alias, config, group_expression, aggregate_expression, group_fields, join_tables):
         calculate_fields = [group_field for group_field in group_fields]
@@ -679,27 +710,26 @@ class Compiler(object):
             config["aggregate"]["distincts"] = self.compile_calculate(primary_table, config, aggregate_expression.args["this"], column_join_tables)
             config["aggregate"]["distinct_aggregates"].add(column_alias)
 
-        calculate_column = self.compile_calculate(primary_table, config, aggregate_expression.args["this"], column_join_tables)
+        value_column = self.compile_calculate(primary_table, config, aggregate_expression.args["this"], column_join_tables)
+        calculate_column = self.compile_aggregate(column_alias, aggregate_expression)
         if calculate_fields:
-            aggregate_column = self.compile_join_column(primary_table, ["#make", {
-                "key": group_column,
-                "value": calculate_column
-            }], config, column_join_tables)
             config["aggregate"]["key"] = self.compile_join_column(primary_table, copy.deepcopy(group_column), config,
                                                                   column_join_tables)
-        else:
-            aggregate_column = ["#make", {
+            config["aggregate"]["values"][column_alias] = self.compile_join_column(primary_table, copy.deepcopy(value_column),
+                                                                                   config, column_join_tables)
+            config["schema"][column_alias] = self.compile_join_column(primary_table, ["#make", {
                 "key": group_column,
-                "value": calculate_column
-            }]
+                "value": value_column
+            }, [":#aggregate", "$.key", calculate_column]], config, column_join_tables)
+        else:
             config["aggregate"]["key"] = copy.deepcopy(group_column)
-
-        calculate_column = self.compile_aggregate(column_alias, aggregate_expression)
-        config["aggregate"]["values"][column_alias] = copy.deepcopy(aggregate_column)
+            config["aggregate"]["values"][column_alias] = copy.deepcopy(value_column)
+            config["schema"][column_alias] = ["#make", {
+                "key": group_column,
+                "value": value_column
+            }, [":#aggregate", "$.key", calculate_column]]
         config["aggregate"]["calculates"][column_alias] = [":#aggregate", "$.key", copy.deepcopy(calculate_column)]
         config["aggregate"]["reduces"][column_alias] = [calculate_column[0], calculate_column[1], "$" + calculate_column[1]]
-        aggregate_column.append([":#aggregate", "$.key", calculate_column])
-        config["schema"][column_alias] = aggregate_column
 
     def compile_aggregate(self, column_alias, expression):
         if isinstance(expression, sqlglot_expressions.Count):
@@ -1024,7 +1054,7 @@ class Compiler(object):
             name = join_expression.args["this"].args["alias"].args["this"].name
             if isinstance(join_expression.args["this"], sqlglot_expressions.Table):
                 table_info = self.parse_table(join_expression.args["this"], config)
-                db, table = table_info["db"], table_info["name"]
+                db, table, subquery_config = table_info["db"], table_info["name"], None
             elif isinstance(join_expression.args["this"], sqlglot_expressions.Subquery):
                 subquery_name, subquery_config = self.compile_subquery(join_expression.args["this"], arguments)
                 db, table = "--", subquery_name
@@ -1035,7 +1065,8 @@ class Compiler(object):
                 raise SyncanySqlCompileException("unkonw join on: " + self.to_sql(join_expression))
             join_table = {
                 "db": db, "table": table, "name": name, "primary_keys": [],
-                "join_columns": [], "calculate_expressions": [], "querys": {}, "ref_count": 0
+                "join_columns": [], "calculate_expressions": [], "querys": {}, "ref_count": 0,
+                "subquery": subquery_config
             }
             self.parse_on_condition(primary_table, config, join_expression.args["on"], join_table)
             self.parse_condition_typing_filter(join_table)
