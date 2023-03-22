@@ -133,17 +133,6 @@ class Executor(object):
                     return exit_code
             finally:
                 self.tasker = None
-                for config_key, factory in self.manager.database_manager.factorys.items():
-                    if not isinstance(factory, MemoryDBFactory):
-                        continue
-                    for driver in factory.drivers:
-                        if not isinstance(driver.instance, MemoryDBCollection):
-                            continue
-                        for key in list(driver.instance.keys()):
-                            if self.runners and self.manager.database_manager.get_state(config_key + "::" + key, "is_streaming"):
-                                continue
-                            if "__subquery_" in key or "__unionquery_" in key:
-                                driver.instance.remove(key)
         return 0
 
     def terminate(self):
@@ -153,3 +142,17 @@ class Executor(object):
 
     def add_runner(self, tasker):
         self.runners.append(tasker)
+
+    def clear_temporary_memory_collection(self, names):
+        for config_key, factory in self.manager.database_manager.factorys.items():
+            if not isinstance(factory, MemoryDBFactory):
+                continue
+            for driver in factory.drivers:
+                if not isinstance(driver.instance, MemoryDBCollection):
+                    continue
+                for key in list(driver.instance.keys()):
+                    if key not in names or (self.runners and
+                                            self.manager.database_manager.get_state(
+                                                config_key + "::" + key, "is_streaming")):
+                        continue
+                    driver.instance.remove(key)
