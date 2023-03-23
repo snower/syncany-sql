@@ -14,6 +14,8 @@ class AggregateKeyCalculater(Calculater):
 
 class AggregateAddCalculater(Calculater):
     def calculate(self, left_value, right_value):
+        if right_value is None:
+            return left_value
         if left_value is None:
             return right_value
         return left_value + right_value
@@ -21,6 +23,8 @@ class AggregateAddCalculater(Calculater):
 
 class AggregateMaxCalculater(Calculater):
     def calculate(self, left_value, right_value):
+        if right_value is None:
+            return left_value
         if left_value is None:
             return right_value
         return max(left_value, right_value)
@@ -28,6 +32,8 @@ class AggregateMaxCalculater(Calculater):
 
 class AggregateMinCalculater(Calculater):
     def calculate(self, left_value, right_value):
+        if right_value is None:
+            return left_value
         if left_value is None:
             return right_value
         return min(left_value, right_value)
