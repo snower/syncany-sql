@@ -88,8 +88,8 @@ class Executor(object):
                     if groups[1]:
                         for arg in groups[1].split(","):
                             calculater_args.append(parse_value(arg))
-                    variable_value = find_calculater(groups[0].split("__")[0])(groups[0].replace("__", "::"),
-                                                                               *tuple(calculater_args)).calculate()
+                    calculater = find_calculater(groups[0].split("__")[0])(groups[0].replace("__", "::"))
+                    variable_value = calculater.calculate(*tuple(calculater_args))
                     variable_value = StringFilter().filter(variable_value)
                 except Exception as e:
                     variable_value = default_value[1:]
