@@ -733,13 +733,13 @@ class Compiler(object):
 
     def compile_aggregate(self, column_alias, expression):
         if isinstance(expression, sqlglot_expressions.Count):
-            return ["@add", "$." + column_alias, 1]
+            return ["@aggregate_add", "$." + column_alias, 1]
         elif isinstance(expression, sqlglot_expressions.Sum):
-            return ["@add", "$." + column_alias, "$$.value"]
+            return ["@aggregate_add", "$." + column_alias, "$$.value"]
         elif isinstance(expression, sqlglot_expressions.Min):
-            return ["@min", "$." + column_alias, "$$.value"]
+            return ["@aggregate_min", "$." + column_alias, "$$.value"]
         elif isinstance(expression, sqlglot_expressions.Max):
-            return ["@max", "$." + column_alias, "$$.value"]
+            return ["@aggregate_max", "$." + column_alias, "$$.value"]
         else:
             raise SyncanySqlCompileException("unkonw calculate: " + self.to_sql(expression))
         
