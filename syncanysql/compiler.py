@@ -733,7 +733,7 @@ class Compiler(object):
 
     def compile_aggregate(self, column_alias, expression):
         if isinstance(expression, sqlglot_expressions.Count):
-            return ["@aggregate_add", "$." + column_alias, 1]
+            return ["@aggregate_add", "$." + column_alias, ["#const", 1]]
         elif isinstance(expression, sqlglot_expressions.Sum):
             return ["@aggregate_add", "$." + column_alias, "$$.value"]
         elif isinstance(expression, sqlglot_expressions.Min):
