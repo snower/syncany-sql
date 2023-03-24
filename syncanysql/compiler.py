@@ -28,8 +28,8 @@ class EnvVariableGetter(object):
         self.env_variables = env_variables
         self.key = key
 
-    def get(self):
-        return self.env_variables.get_value(self.key)
+    def get(self, key):
+        return self.env_variables.get_value(key)
 
     def __deepcopy__(self, memodict=None):
         return self
@@ -1043,7 +1043,7 @@ class Compiler(object):
             if "imports" not in config:
                 config["imports"] = {}
             config["imports"]["getter_" + str(id(literal["value_getter"]))] = literal["value_getter"]
-            return ["@getter_" + str(id(literal["value_getter"])) + "::get"]
+            return ["@getter_" + str(id(literal["value_getter"])) + "::get", ["#const", literal["value_getter"].key]]
         return ["#const", literal["value"]]
 
     def parse_joins(self, primary_table, config, join_expressions, arguments):

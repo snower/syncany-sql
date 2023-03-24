@@ -291,19 +291,8 @@ class QueryTasker(object):
         return 0
 
     def compile_tasker(self, arguments, tasker):
-        tasker_arguments = tasker.load()
-
+        tasker.load()
         compile_arguments = {}
-        for argument in tasker_arguments:
-            if "default" not in argument:
-                continue
-            if "type" not in argument or not isinstance(argument["type"], Filter):
-                compile_arguments[argument["name"]] = argument["default"]
-                continue
-            if "nargs" in argument and "action" in argument and isinstance(argument["default"], list):
-                compile_arguments[argument["name"]] = [argument["type"].filter(v) for v in argument["default"]]
-            else:
-                compile_arguments[argument["name"]] = argument["type"].filter(argument["default"])
         compile_arguments.update({key.lower(): value for key, value in os.environ.items()})
         compile_arguments.update(arguments)
 
