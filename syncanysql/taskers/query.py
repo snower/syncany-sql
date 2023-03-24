@@ -7,7 +7,6 @@ import copy
 import traceback
 import uuid
 from syncany.logger import get_logger
-from syncany.filters.filter import Filter
 from syncany.taskers.core import CoreTasker
 from syncany.hook import Hooker
 from syncany.taskers.tasker import _thread_local
