@@ -90,7 +90,7 @@ class QueryTasker(object):
                 require_reduce = True
         if (aggregate and aggregate.get("reduces")) and (batch > 0 or limit > 0 or sorted_limit):
             require_reduce = True
-        if require_reduce and not arguments.get("@streaming"):
+        if require_reduce and isinstance(self.config["schema"], dict) and not arguments.get("@streaming"):
             if limit > 0 and batch <= 0:
                 batch = max(*(int(arguments.get(key, 0)) for key in ("@limit", "@batch", "@join_batch", "@insert_batch")))
                 arguments["@batch"] = batch
