@@ -120,7 +120,8 @@ class Executor(object):
         arguments = {"@verbose": self.env_variables.get("@verbose", False), "@timeout": self.env_variables.get("@timeout", 0),
                      "@limit": self.env_variables.get("@limit", 0), "@batch": self.env_variables.get("@batch", 0),
                      "@streaming": self.env_variables.get("@streaming", False), "@recovery": self.env_variables.get("@recovery", False),
-                     "@join_batch": self.env_variables.get("@join_batch", 1000), "@insert_batch": self.env_variables.get("@insert_batch", 0)}
+                     "@join_batch": self.env_variables.get("@join_batch", 1000), "@insert_batch": self.env_variables.get("@insert_batch", 0),
+                     "@primary_order": False}
         tasker = compiler.compile(sql, arguments)
         self.runners.extend(tasker.start(self, self.session_config, self.manager, arguments))
 

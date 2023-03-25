@@ -7,7 +7,6 @@ from syncany.taskers.manager import TaskerManager
 from syncany.database.database import DatabaseManager
 from syncany.database.memory import MemoryDBFactory, MemoryDBCollection
 from .version import version, version_info
-from .calculaters import register_sql_calculaters
 from .parser import SqlParser, SqlSegment
 from .config import GlobalConfig
 from .executor import Executor
@@ -97,7 +96,6 @@ class ScriptEngine(object):
     def setup(self):
         if self.manager is not None:
             return
-        register_sql_calculaters()
         init_execute_files = self.config.load()
         self.config.config_logging()
         self.manager = TaskerManager(DatabaseManager())

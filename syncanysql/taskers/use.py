@@ -11,6 +11,10 @@ class UseCommandTasker(object):
 
     def start(self, executor, session_config, manager, arguments):
         use_info = [s.strip() for s in self.config["use"].split(" as ")]
+        if not use_info[0] or isinstance(use_info[0], (bool, int, float, list, tuple, set, dict)):
+            return []
+        if isinstance(use_info[0], str):
+            __import__(use_info[0], {}, {})
         if len(use_info) >= 2:
             if os.path.exists(use_info[0]):
                 session_config.set("sources." + use_info[1], use_info[0])

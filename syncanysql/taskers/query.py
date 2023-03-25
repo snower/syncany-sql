@@ -13,8 +13,8 @@ from syncany.taskers.tasker import _thread_local
 from syncany.main import TaskerYieldNext, warp_database_logging
 
 
-DEAULT_AGGREGATE = {"key": None, "values": {}, "calculates": {}, "reduces": {}, "having_columns": set([]),
-                    "distincts": [], "distinct_aggregates": set([])}
+DEAULT_AGGREGATE = {"key": None, "schema": {}, "having_columns": set([]),
+                    "distinct_keys": [], "distinct_aggregates": set([])}
 
 
 class ReduceHooker(Hooker):
@@ -28,20 +28,22 @@ class ReduceHooker(Hooker):
         self.batch = batch
         self.aggregate = aggregate
         self.count = 0
+        self.batch_count = 0
 
     def outputed(self, tasker, datas):
         self.count += len(datas)
+        self.batch_count += 1
         if self.batch > 0 and self.count >= self.batch:
-            self.count = 0
+            self.count, self.batch_count = 0, 1
             self.tasker.run_reduce(self.executor, self.session_config, self.manager, self.arguments, False)
         else:
             limit = tasker.arguments["@limit"] if "@limit" in tasker.arguments and tasker.arguments["@limit"] > 0 else 0
             if 0 < limit <= tasker.status["store_count"]:
-                self.count = 0
+                self.count, self.batch_count = 0, 1
                 self.tasker.run_reduce(self.executor, self.session_config, self.manager, self.arguments, False)
 
     def finaled(self, tasker, e=None):
-        if e is not None:
+        if e is not None or self.batch_count <= 1:
             return
         self.tasker.run_reduce(self.executor, self.session_config, self.manager, self.arguments, False)
 
@@ -59,7 +61,7 @@ class QueryTasker(object):
 
     def start(self, executor, session_config, manager, arguments):
         dependency_taskers, aggregate = [], self.config.pop("aggregate", None)
-        if aggregate and aggregate.get("distincts"):
+        if aggregate and aggregate.get("distinct_keys"):
             self.config, distinct_config = self.compile_distinct_config(aggregate), self.config
             distinct_config["name"] = distinct_config["name"] + "#select@distinct"
             distinct_tasker = QueryTasker(distinct_config)
@@ -83,13 +85,17 @@ class QueryTasker(object):
         limit, batch = int(arguments.get("@limit", 0)), int(arguments.get("@batch", 0))
         require_reduce, reduce_intercept, sorted_limit = False, False, len(self.config.get("pipelines", [])) == 2
         if self.config.get("intercepts"):
-            if aggregate and aggregate.get("reduces") and aggregate.get("having_columns"):
-                if [having_column for having_column in aggregate["having_columns"] if having_column in aggregate["reduces"]]:
+            if aggregate and aggregate.get("schema") and aggregate.get("having_columns"):
+                if [having_column for having_column in aggregate["having_columns"] if having_column in aggregate["schema"]]:
                     require_reduce, reduce_intercept = True, True
             if (batch > 0 or limit > 0 or sorted_limit):
                 require_reduce = True
-        if (aggregate and aggregate.get("reduces")) and (batch > 0 or limit > 0 or sorted_limit):
-            require_reduce = True
+        if aggregate and aggregate.get("schema"):
+            if batch > 0 or limit > 0 or sorted_limit:
+                require_reduce = True
+            elif [aggregate_column["final_value"] for aggregate_column in aggregate["schema"].values()
+                  if aggregate_column["final_value"]]:
+                require_reduce = True
         if require_reduce and isinstance(self.config["schema"], dict) and not arguments.get("@streaming"):
             if limit > 0 and batch <= 0:
                 batch = max(*(int(arguments.get(key, 0)) for key in ("@limit", "@batch", "@join_batch", "@insert_batch")))
@@ -191,24 +197,23 @@ class QueryTasker(object):
         })
 
         group_column = ["@aggregate_key"] if not aggregate["key"] else aggregate["key"][:]
-        group_column.extend(aggregate["distincts"])
+        group_column.extend(aggregate["distinct_keys"])
         distinct_aggregate = copy.deepcopy(DEAULT_AGGREGATE)
         for key, column in tuple(self.config["schema"].items()):
             if key in aggregate["distinct_aggregates"]:
                 config["schema"][key] = ["#make", {
                     "key": "$._aggregate_distinct_key_",
                     "value": "$." + key
-                }, aggregate["calculates"][key]]
-                self.config["schema"][key] = aggregate["values"][key]
-            elif key in aggregate["values"]:
+                }, aggregate["schema"][key]["aggregate"]]
+                self.config["schema"][key] = aggregate["schema"][key]["value"]
+            elif key in aggregate["schema"]:
                 self.config["schema"][key] = ["#make", {
                     "key": group_column,
-                    "value": aggregate["values"][key]
-                }, aggregate["calculates"][key]]
-                distinct_aggregate["values"][key] = aggregate["values"][key]
-                distinct_aggregate["calculates"][key] = aggregate["calculates"][key]
-                distinct_aggregate["reduces"][key] = aggregate["reduces"][key]
-                config["schema"][key] = ["#aggregate", "$._aggregate_distinct_key_", aggregate["reduces"][key]]
+                    "value": aggregate["schema"][key]["value"]
+                }, aggregate["schema"][key]["aggregate"]]
+                distinct_aggregate["schema"][key] = copy.deepcopy(aggregate["schema"][key])
+                distinct_aggregate["schema"][key]["final_value"] = None
+                config["schema"][key] = ["#aggregate", "$._aggregate_distinct_key_", aggregate["schema"][key]["reduce"]]
             else:
                 config["schema"][key] = "$." + key
 
@@ -216,11 +221,16 @@ class QueryTasker(object):
             self.config["schema"]["_aggregate_distinct_key_"] = aggregate["key"]
         self.config["schema"]["_aggregate_distinct_aggregate_key_"] = ["#aggregate", group_column, ["#const", 0]]
         distinct_aggregate["key"] = group_column
-        distinct_aggregate["values"]["_aggregate_distinct_aggregate_key_"] = ["#const", 0]
-        distinct_aggregate["calculates"]["_aggregate_distinct_aggregate_key_"] = ["#const", 0]
-        distinct_aggregate["reduces"]["_aggregate_distinct_aggregate_key_"] = ["#const", 0]
+        distinct_aggregate["schema"]["_aggregate_distinct_aggregate_key_"] = {
+            "key": group_column,
+            "value": ["#const", 0],
+            "calculate": ["#const", 0],
+            "aggregate": [":#aggregate", "$.key", ["#const", 0]],
+            "reduce": ["#const", 0],
+            "final_value": None
+        }
         self.config["aggregate"] = distinct_aggregate
-        if [having_column for having_column in aggregate["having_columns"] if having_column in aggregate["reduces"]]:
+        if [having_column for having_column in aggregate["having_columns"] if having_column in aggregate["schema"]]:
             config["intercepts"] = self.config.pop("intercepts", [])
         else:
             distinct_aggregate["having_columns"] = aggregate["having_columns"]
@@ -249,13 +259,14 @@ class QueryTasker(object):
             "states": [],
         })
         for key, column in self.config["schema"].items():
-            if key in aggregate["reduces"]:
-                config["schema"][key] = ["#aggregate", "$._aggregate_key_", aggregate["reduces"][key]]
+            if key in aggregate["schema"]:
+                config["schema"][key] = ["#aggregate", "$._aggregate_key_", aggregate["schema"][key]["reduce"]]
             else:
                 config["schema"][key] = "$." + key
         if aggregate["key"]:
             config["schema"]["_aggregate_key_"] = "$._aggregate_key_"
             self.config["schema"]["_aggregate_key_"] = aggregate["key"]
+        config["aggregate"] = aggregate
         self.config["output"] = "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0] + " use I"
         self.reduce_config = config
 
@@ -264,7 +275,10 @@ class QueryTasker(object):
         if final_reduce:
             config["schema"].pop("_aggregate_key_", None)
             for key, column in config["schema"].items():
-                config["schema"][key] = "$." + key
+                if key in config["aggregate"]["schema"] and config["aggregate"]["schema"][key]["final_value"]:
+                    config["schema"][key] = config["aggregate"]["schema"][key]["final_value"]
+                else:
+                    config["schema"][key] = "$." + key
             config["name"] = config["name"] + "#select@final_reduce"
         else:
             config["output"] = config["input"] + " use DI"
