@@ -61,20 +61,15 @@ class StateAggregateCalculater(AggregateCalculater):
 
 class AggregateCountCalculater(AggregateCalculater):
     def aggregate(self, state_value, data_value):
+        if data_value is None:
+            return state_value
         try:
-            return state_value + data_value
+            return state_value + 1
         except:
-            if data_value is None:
-                return state_value
             if state_value is None:
-                return data_value
+                return 1
             try:
-                if isinstance(state_value, (int, float)):
-                    return state_value + type(state_value)(data_value)
-                try:
-                    return int(state_value) + int(data_value)
-                except:
-                    return float(state_value) + float(data_value)
+                return int(state_value) + 1
             except:
                 return state_value
 

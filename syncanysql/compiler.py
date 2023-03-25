@@ -777,7 +777,7 @@ class Compiler(object):
 
         if isinstance(expression, sqlglot_expressions.Count) and isinstance(expression.args["this"],
                                                                             sqlglot_expressions.Star):
-            value_column = ["#const", None]
+            value_column = ["#const", 0]
         elif not value_expression:
             value_column = ["#const", None]
         elif len(value_expression) == 1:
@@ -812,7 +812,7 @@ class Compiler(object):
 
     def compile_aggregate(self, expression, config, arguments, column_alias, key_column, value_column):
         if isinstance(expression, sqlglot_expressions.Count):
-            calculate = ["@aggregate_count::aggregate", "$." + column_alias, ["#const", 1]]
+            calculate = ["@aggregate_count::aggregate", "$." + column_alias, "$$.value"]
             return {
                 "key": key_column,
                 "value": value_column,
