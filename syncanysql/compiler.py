@@ -233,6 +233,11 @@ class Compiler(object):
             subquery_config["output"] = "&.--." + query_name + "::" + subquery_config["output"].split("::")[-1].split(" use ")[0] + " use I"
             subquery_config["name"] = subquery_config["name"] + "#" + subquery_name[2:]
             arguments.update({subquery_config["name"] + "@" + key: value for key, value in subquery_arguments.items()})
+            if isinstance(subquery_config["schema"], dict):
+                if not isinstance(config["schema"], dict):
+                    config["schema"] = {}
+                for name in subquery_config["schema"]:
+                    config["schema"][name] = "$." + name
             config["dependencys"].append(subquery_config)
         config["input"] = "&.--." + query_name + "::" + config["dependencys"][0]["output"].split("::")[-1].split(" ")[0]
         config["output"] = config["output"].split("::")[0] + "::" + config["input"].split("::")[-1].split(" ")[0]
@@ -770,7 +775,10 @@ class Compiler(object):
             else:
                 value_expression = [expression.args.get("this")]
 
-        if not value_expression:
+        if isinstance(expression, sqlglot_expressions.Count) and isinstance(expression.args["this"],
+                                                                            sqlglot_expressions.Star):
+            value_column = ["#const", None]
+        elif not value_expression:
             value_column = ["#const", None]
         elif len(value_expression) == 1:
             value_column = self.compile_calculate(value_expression[0], config, arguments, primary_table,
