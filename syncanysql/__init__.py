@@ -2,8 +2,17 @@
 # 23/02/07
 # create by: snower
 
+from .version import version, version_info
+
 import threading
-from syncany import *
+from syncany.loaders import Loader, register_loader
+from syncany.outputers import Outputer, register_outputer
+from syncany.valuers import Valuer, register_valuer
+from syncany.filters import Filter, register_filter
+from syncany.database import DataBase, register_database
+from syncany.calculaters import Calculater, register_calculater
+from syncany.taskers.config import Parser, ConfigReader, register_parser, register_reader
+from syncany.taskers.tasker import current_tasker
 from syncany.taskers.manager import TaskerManager
 from syncany.database.database import DatabaseManager
 from syncany.database.memory import MemoryDBFactory, MemoryDBCollection
