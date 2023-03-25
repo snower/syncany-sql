@@ -146,8 +146,9 @@ class AggregateMinCalculater(AggregateCalculater):
 class AggregateAvgCalculater(StateAggregateCalculater):
     def aggregate(self, state_value, data_value):
         try:
-            return {"count_value": state_value["count_value"] + 1,
-                    "sum_value": state_value["sum_value"] + data_value}
+            state_value["count_value"] += 1
+            state_value["sum_value"] += data_value
+            return state_value
         except:
             if data_value is None:
                 return state_value
@@ -157,8 +158,9 @@ class AggregateAvgCalculater(StateAggregateCalculater):
                 return {"count_value": 1, "sum_value": data_value}
             try:
                 if isinstance(state_value["sum_value"], (int, float)):
-                    return {"count_value": state_value["count_value"] + 1,
-                            "sum_value": state_value["sum_value"] + type(state_value["sum_value"])(data_value)}
+                    state_value["count_value"] += 1
+                    state_value["sum_value"] += type(state_value["sum_value"])(data_value)
+                    return state_value
                 try:
                     return {"count_value": state_value["count_value"] + 1,
                             "sum_value": int(state_value["sum_value"]) + int(data_value)}

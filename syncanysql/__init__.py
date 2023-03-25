@@ -3,6 +3,7 @@
 # create by: snower
 
 import threading
+from syncany import *
 from syncany.taskers.manager import TaskerManager
 from syncany.database.database import DatabaseManager
 from syncany.database.memory import MemoryDBFactory, MemoryDBCollection
