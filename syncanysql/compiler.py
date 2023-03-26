@@ -725,11 +725,13 @@ class Compiler(object):
         if "aggregate" not in config:
             config["aggregate"] = copy.deepcopy(DEAULT_AGGREGATE)
         if is_distinct and value_column:
-            if value_column and value_column[0] == "@make":
-                config["aggregate"]["distinct_keys"].extend(copy.deepcopy(value_column[1:]))
+            if len(value_column) == 2:
+                config["aggregate"]["distinct_keys"].append(copy.deepcopy(value_column[1]))
             else:
-                config["aggregate"]["distinct_keys"].append(copy.deepcopy(value_column))
+                config["aggregate"]["distinct_keys"].extend(copy.deepcopy(value_column[1:]))
             config["aggregate"]["distinct_aggregates"].add(column_alias)
+        if value_column and len(value_column) == 2:
+            value_column = value_column[1]
 
         aggregate_column = self.compile_aggregate(expression, config, arguments, column_alias, group_column, value_column)
         config["schema"][column_alias] = ["#make", {
@@ -772,9 +774,9 @@ class Compiler(object):
     def compile_aggregate_value(self, expression, config, arguments, primary_table, join_tables, value_expressions):
         if isinstance(expression, sqlglot_expressions.Count) and isinstance(expression.args["this"],
                                                                             sqlglot_expressions.Star):
-            return ["#const", 0]
+            return ["@make", ["#const", 0]]
         if not value_expressions:
-            return ["#const", None]
+            return ["@make", ["#const", None]]
 
         value_column = ["@make"]
         for value_expression in value_expressions:
@@ -800,8 +802,6 @@ class Compiler(object):
                                                       column_join_tables)
             value_column.append(self.compile_join_column(value_expression, config, arguments, primary_table,
                                                          calculate_column, column_join_tables))
-        if len(value_column) == 2:
-            return value_column[1]
         return value_column
 
     def compile_aggregate(self, expression, config, arguments, column_alias, key_column, value_column):
