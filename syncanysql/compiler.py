@@ -380,7 +380,7 @@ class Compiler(object):
             for name, column in config["schema"].items():
                 if name in config["aggregate"]["schema"]:
                     continue
-                config["aggregate"]["distinct_keys"].append(column)
+                config["aggregate"]["distinct_keys"].append(copy.deepcopy(column))
 
         where_expression = expression.args.get("where")
         if where_expression and isinstance(where_expression, sqlglot_expressions.Where):
@@ -724,9 +724,9 @@ class Compiler(object):
             config["aggregate"] = copy.deepcopy(DEAULT_AGGREGATE)
         if is_distinct and value_column:
             if value_column and value_column[0] == "@make":
-                config["aggregate"]["distinct_keys"] = copy.deepcopy(value_column[1:])
+                config["aggregate"]["distinct_keys"].extend(copy.deepcopy(value_column[1:]))
             else:
-                config["aggregate"]["distinct_keys"] = [value_column]
+                config["aggregate"]["distinct_keys"].append(copy.deepcopy(value_column))
             config["aggregate"]["distinct_aggregates"].add(column_alias)
 
         aggregate_column = self.compile_aggregate(expression, config, arguments, column_alias, group_column, value_column)
