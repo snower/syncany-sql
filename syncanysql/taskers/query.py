@@ -196,7 +196,7 @@ class QueryTasker(object):
             "states": [],
         })
 
-        group_column = ["@aggregate_key"] if not aggregate["key"] else aggregate["key"][:]
+        group_column = ["@aggregate_key"] if not aggregate["key"] else copy.deepcopy(aggregate["key"])
         group_column.extend(aggregate["distinct_keys"])
         distinct_aggregate = copy.deepcopy(DEAULT_AGGREGATE)
         for key, column in tuple(self.config["schema"].items()):
