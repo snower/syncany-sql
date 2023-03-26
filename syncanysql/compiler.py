@@ -466,6 +466,8 @@ class Compiler(object):
             return False
 
         for name, column in subquery_config["schema"].items():
+            if name in config["schema"]:
+                continue
             column_info = {
                 "table_name": table_name,
                 "column_name": name,
