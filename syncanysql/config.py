@@ -16,7 +16,8 @@ from syncany.utils import set_timezone
 
 
 VIRTUAL_VIEW_ARGS_RE = re.compile("(\#\{\w+?(:.*?){0,1}\})", re.DOTALL | re.M)
-CONST_CONFIG_KEYS = ("@verbose", "@limit", "@batch", "@streaming", "@recovery", "@join_batch", "@insert_batch")
+CONST_CONFIG_KEYS = ("@verbose", "@timeout", "@limit", "@batch", "@streaming", "@recovery", "@join_batch",
+                     "@insert_batch", "@primary_order")
 
 
 class GlobalConfig(object):

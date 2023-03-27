@@ -10,7 +10,8 @@ from syncany.outputers import Outputer, register_outputer
 from syncany.valuers import Valuer, register_valuer
 from syncany.filters import Filter, register_filter
 from syncany.database import DataBase, register_database
-from syncany.calculaters import Calculater, register_calculater
+from syncany.calculaters import Calculater, TypeFormatCalculater, TypingCalculater, MathematicalCalculater, \
+    TransformCalculater, register_calculater
 from syncany.taskers.config import Parser, ConfigReader, register_parser, register_reader
 from syncany.taskers.tasker import current_tasker
 from syncany.taskers.manager import TaskerManager
@@ -20,6 +21,7 @@ from .version import version, version_info
 from .parser import SqlParser, SqlSegment
 from .config import GlobalConfig
 from .executor import Executor
+from .calculaters import AggregateCalculater, StateAggregateCalculater
 
 
 class ExecuterError(Exception):
