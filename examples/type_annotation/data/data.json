@@ -1,0 +1,37 @@
+[
+  {
+    "userId": 123,
+    "order": {
+      "orderId": 3243243,
+      "orderAt": "2023-02-23 10:23:21",
+      "goodses": [
+        {
+          "goodsId": "6422a08fb4055348da72633b",
+          "goodsName": "商品1"
+        },
+        {
+          "goodsId": "6422a0a4b4055348da72633c",
+          "goodsName": "商品2"
+        }
+      ],
+      "payInfo": {
+        "payId": "da984ae6-cd3f-11ed-af1b-eb91b1b4fa12",
+        "payTypes": [1, 3, 4],
+        "amount": 12.9,
+        "payAt": "2023-02-23 10:23:59"
+      },
+      "channel.:0": "weixin",
+      "channel.:1": "ali",
+      "refundInfo": [
+        {
+          "refundId": "e10907bc-cd3f-11ed-af1b-eb91b1b4fa12",
+          "amount": 11.3,
+          "payAt": "2023-02-24 01:23:59"
+        }
+      ],
+      "address.mobile": "12345678911"
+    },
+    "user.username": "snower",
+    "user.nickname": "哈哈"
+  }
+]

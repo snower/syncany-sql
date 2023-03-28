@@ -27,3 +27,11 @@ JSON函数
 ## [transform](transform)
 
 transform数据转换（纵横表转换）
+
+## [type_annotation](type_annotation)
+
+类型注解，不同数据库join时需保证类型一致，如Mongo的主键_id保存到mysql时一般为varchar，join查询需做类型转换保证类型一致
+
+## [raw_query](raw_query)
+
+可在SQL中添加raw query查询，充分利用数据库功能及性能
