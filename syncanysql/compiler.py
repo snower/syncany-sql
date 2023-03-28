@@ -1160,6 +1160,8 @@ class Compiler(object):
                 raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
             return ["#if", ["@re::match", right_calculater[1].replace("%", ".*").replace(".*.*", "%"), left_calculater],
                     ["#const", True], ["#const", False]]
+        elif isinstance(expression, (sqlglot_expressions.Not, sqlglot_expressions.Is)):
+            return self.compile_calculate(expression, config, arguments, primary_table, [])
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_having_condition(expression.args.get("this"), config, arguments, primary_table)
         else:
