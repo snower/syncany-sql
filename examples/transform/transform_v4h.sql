@@ -12,7 +12,7 @@
 | 2  | wanzhi |  22  |
  --------------------
 
-经过transform::v4h('key', 'value', 'name')后变为：
+经过transform$v4h('key', 'value', 'name')后变为：
 
  -------------------------
 | key   | value  | name   |

@@ -1039,6 +1039,9 @@ class Compiler(object):
             return self.compile_query_condition(expression, config, arguments, primary_table, None)
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
+        elif isinstance(expression, sqlglot_expressions.Not):
+            return ["@not", self.compile_calculate(expression.args["this"], config, arguments, primary_table,
+                                                   column_join_tables, join_index)]
         elif self.is_column(expression, config, arguments):
             join_column = self.parse_column(expression, config, arguments)
             return self.compile_join_column_field(expression, config, arguments, primary_table, join_index, 
@@ -1046,9 +1049,11 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Star):
             return "$.*"
         elif isinstance(expression, sqlglot_expressions.Tuple):
-            return ["#const", [self.parse_const(tuple_expression, config, arguments)["value"]
-                               for tuple_expression in expression.args["expressions"]
-                               if self.is_const(tuple_expression, config, arguments)]]
+            tuple_column = ["@make"]
+            for tuple_expression in expression.args["expressions"]:
+                tuple_column.append(self.compile_calculate(tuple_expression, config, arguments, primary_table,
+                                                   column_join_tables, join_index))
+            return ["@convert_array", tuple_column]
         elif isinstance(expression, sqlglot_expressions.Interval):
             return ["#const", {"value": expression.args["this"].args["this"], "unit": expression.args["unit"].args["this"]}]
         elif self.is_const(expression, config, arguments):
@@ -1706,9 +1711,9 @@ class Compiler(object):
                                        sqlglot_expressions.ByteString, sqlglot_expressions.Parameter))
 
     def is_calculate(self, expression, config, arguments):
-        return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Anonymous, sqlglot_expressions.Binary, sqlglot_expressions.If,
-                                       sqlglot_expressions.IfNull, sqlglot_expressions.Coalesce, sqlglot_expressions.Case,
-                                       sqlglot_expressions.Func, sqlglot_expressions.Cast))
+        return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Anonymous, sqlglot_expressions.Binary, sqlglot_expressions.Func,
+                                       sqlglot_expressions.Select, sqlglot_expressions.Subquery, sqlglot_expressions.Union, sqlglot_expressions.Not,
+                                       sqlglot_expressions.Tuple))
 
     def is_aggregate(self, expression, config, arguments):
         if isinstance(expression, (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Max,
