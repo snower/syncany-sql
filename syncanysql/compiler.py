@@ -180,9 +180,15 @@ class Compiler(object):
         if table_info["db"] == "-" and table_info["name"] == "_":
             config["output"] = "&.-.&1::id use I"
         else:
-            update_types = [o for o in table_info["typing_options"] if o.upper() in ("I", "UI", "UDI", "DI")] if table_info["typing_options"] else []
+            update_type = "I"
+            if table_info["typing_options"]:
+                for typing_option in table_info["typing_options"]:
+                    if typing_option.upper() not in ("I", "UI", "UDI", "DI"):
+                        continue
+                    update_type = typing_option
+                    break
             config["output"] = "".join(["&.", table_info["db"], ".", table_info["name"], "::",
-                                        "id", (" use " + update_types[0].upper()) if update_types else ""])
+                                        "id", " use ", update_type])
 
         if isinstance(expression.args["expression"], (sqlglot_expressions.Select, sqlglot_expressions.Union)):
             select_expression = expression.args["expression"]
