@@ -3,7 +3,7 @@
 简单易用的SQL执行引擎。
 
 - 可在本地运行MySQL语法结构的SQL
-- 支持查询常用mysql、mongodb、postgresql、sqlserver、elasticsearch、influxdb、clickhouse数据库及execl、csv、json和普通文本文件
+- 支持查询常用mysql、mongodb、postgresql、sqlserver、elasticsearch、influxdb、clickhouse、sqlite数据库及execl、csv、json和普通文本文件
 - 支持本地临时数据表逻辑做中间结果保存
 - 数据库数据加载使用简单条件过滤及IN条件查询
 - 因由本地完成Join匹配所以支持不同库表、不同主机及不同类型数据库间Join关联查询
@@ -29,16 +29,8 @@ pip3 install syncanysql
 ## 查询Nginx日志
 
 ```sql
-SELECT
-    ip, cnt
-FROM
-    (SELECT
-        seg0 AS ip, COUNT(*) AS cnt
-    FROM
-        `file:///var/log/nginx/access.log?sep= `
-    GROUP BY seg0) a
-ORDER BY cnt DESC
-LIMIT 3;
+-- 查询访问量最高的三个IP
+SELECT seg0 AS ip, COUNT(*) AS cnt FROM `file://data/access.log?sep= ` GROUP BY seg0 ORDER BY cnt DESC LIMIT 3;
 ```
 
 ## 查询JSON文件

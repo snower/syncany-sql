@@ -78,6 +78,10 @@ databases:
   - name: elasticsearch_example # Elasticsearch 示例参数，除name和driver是专有参数，其余连接参数可参照 https://github.com/elastic/elasticsearch-py 配置
     driver: elasticsearch
     hosts: "http://localhost:9200"
+    
+  - name: sqlite_example # SQLite 示例参数，除name和driver是专有参数，其余连接参数可参照 https://docs.python.org/3/library/sqlite3.html 配置
+    driver: sqlite
+    database: ':memory:'
 
 # 配置全局导入包，也可在SQL中用"use"指令导入
 #imports:

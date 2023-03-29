@@ -45,7 +45,6 @@ setup(
         "rich>=9.11.1",
     ],
     extras_require={
-        "pyyaml": ['pyyaml>=5.1.2'],
         "pymongo": ['pymongo>=3.6.1'],
         "pymysql": ['PyMySQL>=0.8.1'],
         "openpyxl": ["openpyxl>=2.5.0"],

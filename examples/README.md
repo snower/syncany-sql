@@ -35,3 +35,7 @@ transform数据转换（纵横表转换）
 ## [raw_query](raw_query)
 
 可在SQL中添加raw query查询，充分利用数据库功能及性能
+
+## [insert_types](insert_types)
+
+insert into指定合并数据类型（插入 I，更新否则插入 UI，更新否则插入其余删除 UDI，先删除再插入 DI）
