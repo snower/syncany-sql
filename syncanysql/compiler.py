@@ -387,10 +387,12 @@ class Compiler(object):
                                                                           calculate_column, column_join_tables)
             else:
                 config["schema"][column_alias] = self.compile_calculate(calculate_expression, config, arguments, primary_table, [])
-                if not primary_table["outputer_primary_keys"] and column_alias.isidentifier():
-                    primary_table["loader_primary_keys"] = [calculate_field["column_name"] for calculate_field in calculate_fields
-                                                            if calculate_field["column_name"].isidentifier()]
-                    primary_table["outputer_primary_keys"] = [column_alias]
+            if not primary_table["seted_primary_keys"] and not primary_table["outputer_primary_keys"] and column_alias.isidentifier():
+                loader_primary_keys = [calculate_field["column_name"] for calculate_field in calculate_fields
+                                       if calculate_field["column_name"].isidentifier() and
+                                       (not calculate_field["table_name"] or calculate_field["table_name"] == primary_table["table_name"])]
+                if loader_primary_keys:
+                    primary_table["loader_primary_keys"], primary_table["outputer_primary_keys"] = loader_primary_keys, [column_alias]
 
         distinct_expression = expression.args.get("distinct")
         if distinct_expression and not config.get("aggregate", {}).get("distinct_keys"):
@@ -428,6 +430,12 @@ class Compiler(object):
 
         if group_expression and ("aggregate" not in config or not config["aggregate"] or not config["aggregate"]["schema"]):
             self.compile_group_column(group_expression, config, arguments, primary_table, join_tables)
+        if not from_expression and not primary_table["outputer_primary_keys"] and isinstance(config["schema"], dict):
+            for column_alias in config["schema"]:
+                if not column_alias.isidentifier():
+                    continue
+                primary_table["outputer_primary_keys"] = [column_alias]
+                break
         config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
                                    "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id"])
         config["output"] = "".join([config["output"].split("::")[0], "::",
@@ -530,7 +538,7 @@ class Compiler(object):
                 primary_table["loader_primary_keys"], primary_table["outputer_primary_keys"], primary_table["seted_primary_keys"] = [], [], True
             primary_table["loader_primary_keys"].append(column_info["column_name"])
             primary_table["outputer_primary_keys"].append(column_alias)
-        elif not primary_table["seted_primary_keys"] and (not primary_table["outputer_primary_keys"] or (column_alias and column_alias == "id")):
+        elif not primary_table["seted_primary_keys"] and not primary_table["outputer_primary_keys"]:
             if not column_info["table_name"] or column_info["table_name"] == primary_table["table_name"]:
                 primary_table["loader_primary_keys"], primary_table["outputer_primary_keys"] = [column_info["column_name"]], [column_alias]
 
