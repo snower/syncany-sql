@@ -147,6 +147,8 @@ class ScriptEngine(object):
         return ExecuterContext(self, Executor(self.manager, self.executor.session_config.session(), self.executor))
 
     def execute(self, sql):
+        if self.executor is None:
+            self.setup()
         return ExecuterContext(self, self.executor).execute(sql)
 
     def get_memory_datas(self, name, db=None):
