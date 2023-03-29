@@ -387,9 +387,9 @@ class Compiler(object):
                                                                           calculate_column, column_join_tables)
             else:
                 config["schema"][column_alias] = self.compile_calculate(calculate_expression, config, arguments, primary_table, [])
-                if not primary_table["outputer_primary_keys"] and not any([c if not c.isalpha() and not c.isdigit() and c != '_' else ''
-                                                                               for c in column_alias]):
-                    primary_table["loader_primary_keys"] = [calculate_field["column_name"] for calculate_field in calculate_fields]
+                if not primary_table["outputer_primary_keys"] and column_alias.isidentifier():
+                    primary_table["loader_primary_keys"] = [calculate_field["column_name"] for calculate_field in calculate_fields
+                                                            if calculate_field["column_name"].isidentifier()]
                     primary_table["outputer_primary_keys"] = [column_alias]
 
         distinct_expression = expression.args.get("distinct")
@@ -523,7 +523,7 @@ class Compiler(object):
         if not column_info["table_name"] or column_info["table_name"] == primary_table["table_name"]:
             primary_table["columns"][column_info["column_name"]] = column_info
 
-        if any([c if not c.isalpha() and not c.isdigit() and c != "_" else '' for c in column_alias]):
+        if not column_info["column_name"].isidentifier() or not column_alias.isidentifier():
             return None
         if "pk" in column_info["typing_options"]:
             if not primary_table["seted_primary_keys"]:
