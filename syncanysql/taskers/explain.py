@@ -11,7 +11,7 @@ class ExplainTasker(object):
         self.config = None
         self.tasker = tasker
 
-    def start(self, executor, session_config, manager, arguments):
+    def start(self, name, executor, session_config, manager, arguments):
         self.config = copy.deepcopy(self.tasker.config)
         beautify_print("%s tasker %s compiled config:" % (datetime.datetime.now(), self.config["name"]))
         beautify_print(self.config)
@@ -24,7 +24,7 @@ class ExplainTasker(object):
                 arguments[key] = True
         self.tasker.config["output"] = "&.-.&1::" + self.tasker.config["output"].split("::")[-1].split(" ")[0]
         self.tasker.config["name"] = self.tasker.config["name"] + "#explain"
-        self.tasker.start(executor, session_config, manager, arguments)
+        self.tasker.start(name, executor, session_config, manager, arguments)
         return [self]
 
     def run(self, executor, session_config, manager):

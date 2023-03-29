@@ -59,13 +59,13 @@ class QueryTasker(object):
         self.updaters = []
         self.temporary_memory_collections = set([])
 
-    def start(self, executor, session_config, manager, arguments):
+    def start(self, name, executor, session_config, manager, arguments):
         dependency_taskers, aggregate = [], self.config.pop("aggregate", None)
         if aggregate and aggregate.get("distinct_keys"):
             self.config, distinct_config = self.compile_distinct_config(aggregate), self.config
             distinct_config["name"] = distinct_config["name"] + "#select@distinct"
             distinct_tasker = QueryTasker(distinct_config)
-            distinct_tasker.start(executor, session_config, manager, copy.deepcopy(arguments))
+            distinct_tasker.start(name, executor, session_config, manager, copy.deepcopy(arguments))
             dependency_taskers.append(distinct_tasker)
             arguments["@limit"], arguments["@batch"] = 0, 0
             arguments["@primary_order"] = False
@@ -79,7 +79,7 @@ class QueryTasker(object):
                 dependency_arguments[key[knl:]] = value
                 dependency_arguments.pop(key, None)
             dependency_tasker = QueryTasker(dependency_config)
-            dependency_tasker.start(executor, session_config, manager, dependency_arguments)
+            dependency_tasker.start(name, executor, session_config, manager, dependency_arguments)
             dependency_taskers.append(dependency_tasker)
 
         limit, batch = int(arguments.get("@limit", 0)), int(arguments.get("@batch", 0))

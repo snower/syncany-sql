@@ -10,14 +10,14 @@ class IntoTasker(object):
         self.tasker = tasker
         self.config = config
 
-    def start(self, executor, session_config, manager, arguments):
+    def start(self, name, executor, session_config, manager, arguments):
         for variable in self.config["variables"]:
             if variable in executor.env_variables:
                 continue
             executor.env_variables[variable] = None
         self.tasker.config["output"] = "&.--.__into_" + str(id(self)) + "::" + self.tasker.config["output"].split("::")[-1].split(" ")[0]
         self.tasker.config["name"] = self.tasker.config["name"] + "#into"
-        self.tasker.start(executor, session_config, manager, arguments)
+        self.tasker.start(name, executor, session_config, manager, arguments)
         return [self]
 
     def run(self, executor, session_config, manager):

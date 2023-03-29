@@ -12,7 +12,7 @@ class ExecuteTasker(object):
         self.config = config
         self.executor = None
 
-    def start(self, executor, session_config, manager, arguments):
+    def start(self, name, executor, session_config, manager, arguments):
         if self.config["filename"].endswith("sql") or self.config["filename"].endswith("sqlx"):
             if self.executor != executor:
                 from ..executor import Executor

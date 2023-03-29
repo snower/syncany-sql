@@ -6,7 +6,7 @@ class SetCommandTasker(object):
     def __init__(self, config):
         self.config = config
 
-    def start(self, executor, session_config, manager, arguments):
+    def start(self, name, executor, session_config, manager, arguments):
         key, is_global = self.config["key"], False
         if key[:6].lower() == "global":
             key, is_global = key[6:].strip(), True
@@ -18,7 +18,16 @@ class SetCommandTasker(object):
         elif key[:7] == "@config":
             self.set_config(session_config, key[8:].strip(), is_global)
         else:
-            self.set_env_variable(executor, key, is_global)
+            try:
+                self.set_env_variable(executor, key, self.parse_value(self.config["value"].strip()), is_global)
+            except ValueError as e:
+                if key[:1] == "@":
+                    try:
+                        executor.compile(name, "select " + self.config["value"].strip() + " into " + key)
+                        return []
+                    except Exception as e:
+                        raise ValueError("unknown value: %s" % self.config["value"].strip())
+                raise e
         return []
 
     def set_config(self, session_config, key, is_global=False):
@@ -28,11 +37,11 @@ class SetCommandTasker(object):
             return
         session_config.set(key, self.parse_value(self.config["value"].strip()))
 
-    def set_env_variable(self, executor, key, is_global=False):
+    def set_env_variable(self, executor, key, value, is_global=False):
         if is_global:
-            executor.global_env_variables[key] = self.parse_value(self.config["value"].strip())
+            executor.global_env_variables[key] = value
             return
-        executor.env_variables[key] = self.parse_value(self.config["value"].strip())
+        executor.env_variables[key] = value
 
     def parse_value(self, value):
         if not isinstance(value, str):
@@ -50,7 +59,7 @@ class SetCommandTasker(object):
         digits = value.split(".")
         if digits and len(digits) <= 2 and digits[0].isdigit():
             return float(value) if len(digits) == 2 and digits[1].isdigit() else int(value)
-        return value
+        raise ValueError("unknown value: %s" % value)
 
     def run(self, executor, session_config, manager):
         return 0

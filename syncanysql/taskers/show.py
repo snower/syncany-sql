@@ -9,7 +9,7 @@ class ShowCommandTasker(object):
     def __init__(self, config):
         self.config = config
 
-    def start(self, executor, session_config, manager, arguments):
+    def start(self, name, executor, session_config, manager, arguments):
         if self.config.get("key").lower() == "databases":
             self.show_databases(session_config)
         elif self.config.get("key").lower() == "imports":

@@ -9,7 +9,7 @@ class UseCommandTasker(object):
     def __init__(self, config):
         self.config = config
 
-    def start(self, executor, session_config, manager, arguments):
+    def start(self, name, executor, session_config, manager, arguments):
         use_info = [s.strip() for s in self.config["use"].split(" as ")]
         if not use_info[0] or isinstance(use_info[0], (bool, int, float, list, tuple, set, dict)):
             return []

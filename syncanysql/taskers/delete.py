@@ -23,11 +23,11 @@ class DeleteTasker(object):
     def __init__(self, config):
         self.tasker = QueryTasker(config)
 
-    def start(self, executor, session_config, manager, arguments):
+    def start(self, name, executor, session_config, manager, arguments):
         arguments["@limit"] = 0
         arguments["@batch"] = 0
         self.tasker.config["name"] = self.tasker.config["name"] + "#delete"
-        taskers = self.tasker.start(executor, session_config, manager, arguments)
+        taskers = self.tasker.start(name, executor, session_config, manager, arguments)
         self.tasker.tasker.add_hooker(StreamingFollowHooker(manager, self))
         return taskers
 

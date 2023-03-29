@@ -5,7 +5,7 @@
 import os
 import copy
 import uuid
-from sqlglot import maybe_parse
+from sqlglot import maybe_parse, ParseError
 from sqlglot import expressions as sqlglot_expressions
 from sqlglot.dialects import Dialect
 from sqlglot import tokens
@@ -57,12 +57,26 @@ class Compiler(object):
         self.mapping = {}
 
     def compile(self, sql, arguments):
+        escape_sql = sql
         if sql[:4].lower() not in ("set ", "use ") and "\\\\" in sql:
             for escape_char in self.ESCAPE_CHARS:
-                sql = sql.replace(escape_char, "\\\\\\" + escape_char)
-        sql = self.parse_mapping(sql)
-        expression = maybe_parse(sql, dialect=CompilerDialect)
-        return self.compile_expression(expression, arguments)
+                escape_sql = escape_sql.replace(escape_char, "\\\\\\" + escape_char)
+        try:
+            expression = maybe_parse(self.parse_mapping(escape_sql), dialect=CompilerDialect)
+            return self.compile_expression(expression, arguments)
+        except ParseError as e:
+            if not e.errors:
+                raise e
+            error_info = e.errors[0]
+            if not error_info or not error_info.get("description") or not error_info.get("line") \
+                    or not error_info.get("col"):
+                raise e
+            sql_lines = sql.split("\n")
+            if len(sql_lines) <= error_info["line"] - 1:
+                raise e
+            sql_lines[error_info["line"] - 1] = sql_lines[error_info["line"] - 1][error_info["col"] - 1:]
+            error_sql = "\n".join(sql_lines)
+            raise ParseError("syntax '%s' near '%s'" % (error_info["description"], error_sql), [error_info]) from None
 
     def compile_expression(self, expression, arguments):
         if isinstance(expression, sqlglot_expressions.Delete):
@@ -373,7 +387,8 @@ class Compiler(object):
                                                                           calculate_column, column_join_tables)
             else:
                 config["schema"][column_alias] = self.compile_calculate(calculate_expression, config, arguments, primary_table, [])
-                if not primary_table["outputer_primary_keys"]:
+                if not primary_table["outputer_primary_keys"] and not any([c if not c.isalpha() and not c.isdigit() and c != '_' else ''
+                                                                               for c in column_alias]):
                     primary_table["loader_primary_keys"] = [calculate_field["column_name"] for calculate_field in calculate_fields]
                     primary_table["outputer_primary_keys"] = [column_alias]
 
@@ -507,6 +522,9 @@ class Compiler(object):
             config["schema"][column_alias] = self.compile_column(expression, config, arguments, column_info)
         if not column_info["table_name"] or column_info["table_name"] == primary_table["table_name"]:
             primary_table["columns"][column_info["column_name"]] = column_info
+
+        if any([c if not c.isalpha() and not c.isdigit() and c != "_" else '' for c in column_alias]):
+            return None
         if "pk" in column_info["typing_options"]:
             if not primary_table["seted_primary_keys"]:
                 primary_table["loader_primary_keys"], primary_table["outputer_primary_keys"], primary_table["seted_primary_keys"] = [], [], True

@@ -123,7 +123,7 @@ class Executor(object):
                      "@join_batch": self.env_variables.get("@join_batch", 10000), "@insert_batch": self.env_variables.get("@insert_batch", 0),
                      "@primary_order": False}
         tasker = compiler.compile(sql, arguments)
-        self.runners.extend(tasker.start(self, self.session_config, self.manager, arguments))
+        self.runners.extend(tasker.start(name, self, self.session_config, self.manager, arguments))
 
     def execute(self):
         while self.runners:
