@@ -672,7 +672,7 @@ class Compiler(object):
             else:
                 is_subquery = False
         else:
-            is_subquery = True
+            select_expressions, is_subquery = None, True
 
         if is_subquery:
             subquery_name, subquery_config = self.compile_subquery(expression, arguments)
@@ -693,6 +693,8 @@ class Compiler(object):
             config["dependencys"].append(subquery_config)
             return [db_table, "$." + column_name]
 
+        if not select_expressions:
+            raise SyncanySqlCompileException("unkonw query condition: " + self.to_sql(expression))
         from_expression = expression.args.get("from")
         if not isinstance(from_expression, sqlglot_expressions.From) or not from_expression.expressions:
             raise SyncanySqlCompileException("unkonw table: " + self.to_sql(expression))
@@ -713,10 +715,13 @@ class Compiler(object):
         return [db_table, self.compile_column(select_expressions[0], config, arguments, column_info)]
 
     def compile_group_column(self, expression, config, arguments, primary_table, join_tables):
-        if not expression or not isinstance(config["schema"], dict) or not primary_table["outputer_primary_keys"]:
-            raise SyncanySqlCompileException("group unkonw primary_key: " + self.to_sql(expression))
-        column_alias = primary_table["outputer_primary_keys"][0]
-        if column_alias not in config["schema"]:
+        column_alias = None
+        if primary_table["outputer_primary_keys"]:
+            if isinstance(config["schema"], dict) and primary_table["outputer_primary_keys"][0] in config["schema"]:
+                column_alias = primary_table["outputer_primary_keys"][0]
+        if not column_alias and isinstance(config["schema"], dict) and config["schema"]:
+            column_alias = list(config["schema"].keys())[0]
+        else:
             raise SyncanySqlCompileException("group unkonw primary_key: " + self.to_sql(expression))
         group_column = self.compile_aggregate_key(expression, config, arguments, primary_table, join_tables)
         if "aggregate" not in config:
