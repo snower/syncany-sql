@@ -76,7 +76,7 @@ class Compiler(object):
                 raise e
             sql_lines[error_info["line"] - 1] = sql_lines[error_info["line"] - 1][error_info["col"] - 1:]
             error_sql = "\n".join(sql_lines)
-            raise ParseError("syntax '%s' near '%s'" % (error_info["description"], error_sql), [error_info]) from None
+            raise ParseError('syntax error "%s" near "%s"' % (error_info["description"], error_sql), [error_info]) from None
 
     def compile_expression(self, expression, arguments):
         if isinstance(expression, sqlglot_expressions.Delete):
@@ -86,7 +86,7 @@ class Compiler(object):
             if not expression.args.get("into"):
                 return query_tasker
             if not isinstance(expression, sqlglot_expressions.Select):
-                raise SyncanySqlCompileException("unkonw into sql: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('unknown into, related sql "%s"' % self.to_sql(expression))
             return IntoTasker(query_tasker, self.compile_select_into(expression.args.get("into"), arguments))
         elif isinstance(expression, sqlglot_expressions.Command):
             if expression.args["this"].lower() == "explain" and self.is_const(expression.args["expression"], {}, arguments):
@@ -109,7 +109,7 @@ class Compiler(object):
             if use_info in self.mapping:
                 use_info = self.mapping[use_info]
             return UseCommandTasker({"use": use_info})
-        raise SyncanySqlCompileException("unkonw sql: " + self.to_sql(expression))
+        raise SyncanySqlCompileException('unknown sql "%s"' % self.to_sql(expression))
 
     def compile_delete(self, expression, arguments):
         config = copy.deepcopy(self.config)
@@ -147,7 +147,7 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Select):
             self.compile_select(expression, config, arguments)
         else:
-            raise SyncanySqlCompileException("unkonw sql: " + self.to_sql(expression))
+            raise SyncanySqlCompileException('unknown sql "%s"' % self.to_sql(expression))
         return config
 
     def compile_subquery(self, expression, arguments):
@@ -172,8 +172,10 @@ class Compiler(object):
             table_info = self.parse_table(expression.args["this"], config, arguments)
         elif isinstance(expression.args["this"], sqlglot_expressions.Schema):
             schema_expression = expression.args["this"]
-            if not isinstance(schema_expression.args["this"], sqlglot_expressions.Table) or not schema_expression.args.get("expressions"):
-                raise SyncanySqlCompileException("unkonw insert info schema: " + self.to_sql(expression))
+            if not isinstance(schema_expression.args["this"], sqlglot_expressions.Table):
+                raise SyncanySqlCompileException('unknown insert into table, related sql "%s"' % self.to_sql(expression))
+            if not schema_expression.args.get("expressions"):
+                raise SyncanySqlCompileException('unknown insert into columns, related sql "%s"' % self.to_sql(expression))
             table_info = self.parse_table(schema_expression.args["this"], config, arguments)
             for column_expression in schema_expression.args["expressions"]:
                 column_name = column_expression.name
@@ -187,9 +189,9 @@ class Compiler(object):
                     typing_filters = []
                 columns.append([column_name, typing_filters[0] if typing_filters else None])
         else:
-            raise SyncanySqlCompileException("unkonw insert into expression: " + self.to_sql(expression))
+            raise SyncanySqlCompileException('unkonw insert into, related sql "%s"' % self.to_sql(expression))
         if not expression.args.get("expression"):
-            raise SyncanySqlCompileException("unkonw insert expression: " + self.to_sql(expression))
+            raise SyncanySqlCompileException('unkonw insert into, related sql "%s"' % self.to_sql(expression))
 
         if table_info["db"] == "-" and table_info["name"] == "_":
             config["output"] = "&.-.&1::id use I"
@@ -213,7 +215,7 @@ class Compiler(object):
         elif isinstance(expression.args["expression"], sqlglot_expressions.Values):
             values_expression = expression.args["expression"]
             if not values_expression.args.get("expressions"):
-                raise SyncanySqlCompileException("unkonw insert expression: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('unkonw insert into, related sql "%s"' % self.to_sql(expression))
             datas = []
             for data_expression in values_expression.args["expressions"]:
                 data = {}
@@ -230,7 +232,7 @@ class Compiler(object):
             config["loader"] = "const_loader"
             config["loader_arguments"] = {"datas": datas}
         else:
-            raise SyncanySqlCompileException("unkonw insert expression: " + self.to_sql(expression))
+            raise SyncanySqlCompileException('unkonw insert into, related sql "%s"' % self.to_sql(expression))
 
     def compile_union(self, expression, config, arguments):
         select_expressions = []
@@ -279,9 +281,10 @@ class Compiler(object):
             arguments["@batch"] = 0
         else:
             if not isinstance(from_expression, sqlglot_expressions.From) or not from_expression.expressions:
-                raise SyncanySqlCompileException("unkonw table: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('unknown select table, related sql "%s"' % self.to_sql(expression))
             if len(from_expression.expressions) > 1:
-                raise SyncanySqlCompileException("noly query one table: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error select table, only select from one table, related sql "%s"'
+                                                 % self.to_sql(expression))
             from_expression = from_expression.expressions[0]
             if isinstance(from_expression, sqlglot_expressions.Table):
                 table_info = self.parse_table(from_expression, config, arguments)
@@ -291,7 +294,8 @@ class Compiler(object):
                 primary_table["table_name"] = table_info["table_name"]
             elif isinstance(from_expression, sqlglot_expressions.Subquery):
                 if "alias" not in from_expression.args:
-                    raise SyncanySqlCompileException("subquery must be alias name: " + self.to_sql(expression))
+                    raise SyncanySqlCompileException('error subquery, must have an alias name, related sql "%s"'
+                                                     % self.to_sql(expression))
                 primary_table["table_alias"] = from_expression.args["alias"].args["this"].name \
                     if "alias" in from_expression.args and from_expression.args["alias"] else None
                 primary_table["table_name"] = primary_table["table_alias"]
@@ -303,9 +307,10 @@ class Compiler(object):
                 if self.compile_pipleline_select(expression, config, arguments, primary_table):
                     return config
                 if not primary_table["table_alias"]:
-                    raise SyncanySqlCompileException("subquery must be alias: " + self.to_sql(expression))
+                    raise SyncanySqlCompileException('error subquery, must have an alias name, related sql "%s"'
+                                                     % self.to_sql(expression))
             else:
-                raise SyncanySqlCompileException("unkonw table: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('unknown select table, related sql "%s"' % self.to_sql(expression))
 
         join_tables = self.parse_joins(expression, config, arguments, primary_table, expression.args["joins"]) \
             if "joins" in expression.args and expression.args["joins"] else {}
@@ -313,7 +318,7 @@ class Compiler(object):
 
         select_expressions = expression.args.get("expressions")
         if not select_expressions:
-            raise SyncanySqlCompileException("unkonw table select fields: " + self.to_sql(expression))
+            raise SyncanySqlCompileException('unknown select columns, related sql "%s"' % self.to_sql(expression))
         config["schema"] = {}
         for select_expression in select_expressions:
             if isinstance(select_expression, sqlglot_expressions.Star):
@@ -323,10 +328,10 @@ class Compiler(object):
             elif isinstance(select_expression, sqlglot_expressions.Column) \
                     and isinstance(select_expression.args.get("this"), sqlglot_expressions.Star):
                 if not self.compile_select_star_column(select_expression, config, arguments, primary_table, join_tables):
-                    raise SyncanySqlCompileException("* query can only query the master table: " + self.to_sql(expression))
+                    raise SyncanySqlCompileException('unknown select * columns, related sql "%s"' % self.to_sql(expression))
                 continue
             if not isinstance(config["schema"], dict):
-                raise SyncanySqlCompileException("* query can only query the master table: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('unknown select * columns, related sql "%s"' % self.to_sql(expression))
 
             column_expression, aggregate_expression, calculate_expression, column_alias = None, None, None, None
             if self.is_column(select_expression, config, arguments):
@@ -357,7 +362,8 @@ class Compiler(object):
                 column_alias = str(select_expression)
                 calculate_expression = select_expression
             else:
-                raise SyncanySqlCompileException("table select field must be alias: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error select column, must have an alias name, related sql "%s"'
+                                                 % self.to_sql(expression))
             if column_expression:
                 self.compile_select_column(column_expression, config, arguments, primary_table, column_alias,
                                            self.parse_column(column_expression, config, arguments), join_tables)
@@ -374,8 +380,8 @@ class Compiler(object):
                 if not calculate_field["table_name"] or calculate_field["table_name"] == primary_table["table_name"]:
                     continue
                 if calculate_field["table_name"] not in join_tables:
-                    raise SyncanySqlCompileException("table select field join table %s unknown: %s" %
-                                                     (calculate_field["table_name"], self.to_sql(expression)))
+                    raise SyncanySqlCompileException('error select column, join table %s is unknown, related sql "%s"'
+                                                     % (calculate_field["table_name"], self.to_sql(expression)))
                 calculate_table_names.add(calculate_field["table_name"])
             if calculate_table_names:
                 column_join_tables = []
@@ -397,7 +403,7 @@ class Compiler(object):
         distinct_expression = expression.args.get("distinct")
         if distinct_expression and not config.get("aggregate", {}).get("distinct_keys"):
             if not isinstance(config["schema"], dict):
-                raise SyncanySqlCompileException("distinct error: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error distinct, select columns is unknown, related sql "%s"' % self.to_sql(expression))
             if "aggregate" not in config:
                 config["aggregate"] = copy.deepcopy(DEAULT_AGGREGATE)
             for name, column in config["schema"].items():
@@ -417,8 +423,8 @@ class Compiler(object):
             if config.get("aggregate") and config["aggregate"].get("schema") and config["aggregate"].get("having_columns"):
                 if len({True if having_column in config["aggregate"]["schema"] else False
                         for having_column in config["aggregate"]["having_columns"]}) != 1:
-                    raise SyncanySqlCompileException("having cannot contain the values before and after the aggregate calculation at the same time: "
-                                                     + self.to_sql(expression))
+                    raise SyncanySqlCompileException('error having condition, cannot contain the values before and after the aggregate calculation at the same time, related sql "%s"'
+                                                     % self.to_sql(expression))
 
         limit_expression = expression.args.get("limit")
         if limit_expression:
@@ -473,11 +479,11 @@ class Compiler(object):
     def compile_select_into(self, expression, arguments):
         config = {"variables": []}
         if not isinstance(expression.args["this"], sqlglot_expressions.Table):
-            raise SyncanySqlCompileException("unknown select into variable: %s", self.to_sql(expression))
+            raise SyncanySqlCompileException('unknown select into variable, related sql "%s"' % self.to_sql(expression))
         if not isinstance(expression.args["this"].args["this"], sqlglot_expressions.Parameter):
-            raise SyncanySqlCompileException("unknown select into variable: %s", self.to_sql(expression))
+            raise SyncanySqlCompileException('unknown select into variable, related sql "%s"' % self.to_sql(expression))
         if not isinstance(expression.args["this"].args["this"].args["this"], sqlglot_expressions.Var):
-            raise SyncanySqlCompileException("unknown select into variable: %s", self.to_sql(expression))
+            raise SyncanySqlCompileException('unknown select into variable, related sql "%s"' % self.to_sql(expression))
         config["variables"].append("@" + expression.args["this"].args["this"].args["this"].args["this"])
         return config
 
@@ -517,7 +523,7 @@ class Compiler(object):
                 column_alias = column_info["table_name"] + "." + column_info["column_name"].replace(".", "_")
         if column_info["table_name"] and column_info["table_name"] != primary_table["table_name"]:
             if column_info["table_name"] not in join_tables:
-                raise SyncanySqlCompileException("table select field join table %s unknown: %s" %
+                raise SyncanySqlCompileException('error join, table %s is unknown, related sql "%s"' %
                                                  (column_info["table_name"], self.to_sql(expression)))
             column_join_tables = []
             self.compile_join_column_tables(expression, config, arguments, primary_table,
@@ -608,10 +614,11 @@ class Compiler(object):
             else:
                 table_expression, value_expression = expression.args["this"], expression.args["expression"]
             if not self.is_column(table_expression, config, arguments):
-                raise SyncanySqlCompileException("unkonw where condition: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('unknown where condition, related sql "%s"' % self.to_sql(expression))
             condition_table = table_expression.args["table"].name if "table" in table_expression.args else None
             if condition_table and condition_table != primary_table["table_name"]:
-                raise SyncanySqlCompileException("unkonw where condition: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error where condition, Only the primary table query conditions can be added, related sql "%s"'
+                                                 % self.to_sql(expression))
 
             condition_column = self.parse_column(table_expression, config, arguments)
             if isinstance(value_expression, (sqlglot_expressions.Select, sqlglot_expressions.Subquery, sqlglot_expressions.Union)):
@@ -625,13 +632,14 @@ class Compiler(object):
                 value_column = []
                 for value_expression_item in value_expression:
                     if not self.is_const(value_expression_item, config, arguments):
-                        raise SyncanySqlCompileException("unkonw where condition: " + self.to_sql(expression))
+                        raise SyncanySqlCompileException('error where condition, array must be const value, related sql "%s"' % self.to_sql(expression))
                     value_column.append(self.parse_const(value_expression_item, config, arguments)["value"])
             else:
                 calculate_fields = []
                 self.parse_calculate(value_expression, config, arguments, primary_table, calculate_fields)
                 if calculate_fields:
-                    raise SyncanySqlCompileException("unkonw where condition: " + self.to_sql(expression))
+                    raise SyncanySqlCompileException('error where condition, the value of other tables when the query condition cannot, related sql "%s"'
+                                                     % self.to_sql(expression))
                 value_column = self.compile_calculate(value_expression, config, arguments, primary_table, [])
             if condition_column["typing_name"] not in config["querys"]:
                 config["querys"][condition_column["typing_name"]] = {}
@@ -659,13 +667,15 @@ class Compiler(object):
             condition_column, value_column = parse(expression)
             config["querys"][condition_column["typing_name"]]["in"] = value_column
         else:
-            raise SyncanySqlCompileException("unkonw where condition: " + self.to_sql(expression))
+            raise SyncanySqlCompileException('error where condition, only "=,!=,>,>=,<,<=,in" operations are supported, related sql "%s"'
+                                             % self.to_sql(expression))
 
     def compile_query_condition(self, expression, config, arguments, primary_table, typing_filters):
         if isinstance(expression, sqlglot_expressions.Select):
             select_expressions = expression.args.get("expressions")
             if not select_expressions or len(select_expressions) != 1 or not self.is_column(select_expressions[0], config, arguments):
-                raise SyncanySqlCompileException("unkonw query condition: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error subquery, there must be only one query field, related sql "%s"'
+                                                 % self.to_sql(expression))
             if expression.args.get("group") or expression.args.get("having") \
                     or expression.args.get("order") or expression.args.get("limit") or expression.args.get("distinct"):
                 is_subquery = True
@@ -677,7 +687,7 @@ class Compiler(object):
         if is_subquery:
             subquery_name, subquery_config = self.compile_subquery(expression, arguments)
             if not isinstance(subquery_config, dict):
-                raise SyncanySqlCompileException("unkonw query condition: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error subquery, unknown select columns, related sql "%s"' % self.to_sql(expression))
             if isinstance(subquery_config["schema"], dict):
                 subquery_schema = subquery_config["schema"]
             else:
@@ -687,19 +697,23 @@ class Compiler(object):
                         continue
                     subquery_schema.update(dependency["schema"])
             if len(subquery_schema) != 1:
-                raise SyncanySqlCompileException("unkonw query condition: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error subquery, there must be only one query field, related sql "%s"'
+                                                 % self.to_sql(expression))
             column_name = list(subquery_schema.keys())[0]
             db_table = "&.--." + subquery_name + "::" + column_name
             config["dependencys"].append(subquery_config)
             return [db_table, "$." + column_name]
 
         if not select_expressions:
-            raise SyncanySqlCompileException("unkonw query condition: " + self.to_sql(expression))
+            raise SyncanySqlCompileException('error subquery, there must be only one query field, related sql "%s"'
+                                             % self.to_sql(expression))
         from_expression = expression.args.get("from")
         if not isinstance(from_expression, sqlglot_expressions.From) or not from_expression.expressions:
-            raise SyncanySqlCompileException("unkonw table: " + self.to_sql(expression))
+            raise SyncanySqlCompileException('error subquery, unknown select from table, related sql "%s"'
+                                             % self.to_sql(expression))
         if len(from_expression.expressions) > 1:
-            raise SyncanySqlCompileException("noly query one table: " + self.to_sql(expression))
+            raise SyncanySqlCompileException('error subquery, there must be only one select from table, related sql "%s"'
+                                             % self.to_sql(expression))
         table_info = self.parse_table(from_expression.expressions[0], config, arguments)
         column_info = self.parse_column(select_expressions[0], config, arguments)
         if column_info["typing_filters"] and typing_filters:
@@ -719,10 +733,11 @@ class Compiler(object):
         if primary_table["outputer_primary_keys"]:
             if isinstance(config["schema"], dict) and primary_table["outputer_primary_keys"][0] in config["schema"]:
                 column_alias = primary_table["outputer_primary_keys"][0]
-        if not column_alias and isinstance(config["schema"], dict) and config["schema"]:
-            column_alias = list(config["schema"].keys())[0]
-        else:
-            raise SyncanySqlCompileException("group unkonw primary_key: " + self.to_sql(expression))
+        if not column_alias:
+            if isinstance(config["schema"], dict) and config["schema"]:
+                column_alias = list(config["schema"].keys())[0]
+            else:
+                raise SyncanySqlCompileException('error group by, unknown column, related sql "%s"' % self.to_sql(expression))
         group_column = self.compile_aggregate_key(expression, config, arguments, primary_table, join_tables)
         if "aggregate" not in config:
             config["aggregate"] = copy.deepcopy(DEAULT_AGGREGATE)
@@ -796,7 +811,7 @@ class Compiler(object):
             calculate_table_names = set([])
             for calculate_field in calculate_fields:
                 if calculate_field["table_name"] not in join_tables:
-                    raise SyncanySqlCompileException("table select field join table %s unknown: %s" %
+                    raise SyncanySqlCompileException('error join column, join table %s unknown, related sql "%s"' %
                                                      (calculate_field["table_name"], self.to_sql(group_expression)))
                 calculate_table_names.add(calculate_field["table_name"])
             self.compile_join_column_tables(group_expression, config, arguments, primary_table,
@@ -829,7 +844,7 @@ class Compiler(object):
             calculate_table_names = set([])
             for calculate_field in calculate_fields:
                 if calculate_field["table_name"] not in join_tables:
-                    raise SyncanySqlCompileException("table select field join table %s unknown: %s" %
+                    raise SyncanySqlCompileException('error join column, join table %s unknown, related sql "%s"' %
                                                      (calculate_field["table_name"], self.to_sql(value_expression)))
                 calculate_table_names.add(calculate_field["table_name"])
             self.compile_join_column_tables(value_expression, config, arguments, primary_table,
@@ -907,9 +922,9 @@ class Compiler(object):
                                     if hasattr(aggregate_calculater, "final_value") else None
                 }
             except CalculaterUnknownException:
-                raise SyncanySqlCompileException("unkonw aggregate calculate: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('unknown aggregate calculate, related sql "%s"' % self.to_sql(expression))
         else:
-            raise SyncanySqlCompileException("unkonw aggregate calculate: " + self.to_sql(expression))
+            raise SyncanySqlCompileException('unknown aggregate calculate, related sql "%s"' % self.to_sql(expression))
         
     def compile_calculate(self, expression, config, arguments, primary_table, column_join_tables, join_index=-1):
         if isinstance(expression, sqlglot_expressions.Neg):
@@ -920,7 +935,7 @@ class Compiler(object):
             if calculater_name == "get_value":
                 get_value_expressions = expression.args.get("expressions")
                 if not get_value_expressions:
-                    raise SyncanySqlCompileException("get_value args error: " + self.to_sql(expression))
+                    raise SyncanySqlCompileException('error get_value, args unknown, related sql "%s"' % self.to_sql(expression))
                 if len(get_value_expressions) == 1:
                     return self.compile_calculate(get_value_expressions[0], config, arguments, primary_table, 
                                                   column_join_tables, join_index)
@@ -938,7 +953,7 @@ class Compiler(object):
                                           if self.is_const(tuple_expression, config, arguments)]
                         column.append(":$.:" + ":".join([str(int(i)) for i in get_value_indexs if isinstance(i, (float, int))][:3]))
                     else:
-                        raise SyncanySqlCompileException("get_value key must by string or int tuple: " + self.to_sql(get_value_expressions[0]))
+                        raise SyncanySqlCompileException('error get_value, args must by string or int tuple, related sql "%s"' % self.to_sql(get_value_expressions[0]))
                     if len(get_value_expressions) >= 2:
                         column.append(get_value_parse(get_value_expressions[1:]))
                     return column[0] if len(column) == 1 else column
@@ -1046,7 +1061,7 @@ class Compiler(object):
             if expression.args.get("ifs"):
                 for case_expression in expression.args["ifs"]:
                     if not isinstance(case_expression, sqlglot_expressions.If) or not self.is_const(case_expression.args["this"], config, arguments):
-                        raise SyncanySqlCompileException("unkonw calculate: " + self.to_sql(expression))
+                        raise SyncanySqlCompileException('unknown calculate function, related sql "%s"' % self.to_sql(expression))
                     case_value = self.parse_const(case_expression.args["this"], config, arguments)["value"]
                     cases[(":" + str(case_value)) if isinstance(case_value, (int, float)) and not isinstance(case_value, bool) else case_value] = \
                         self.compile_calculate(case_expression.args["true"], config, arguments, primary_table, column_join_tables, join_index)
@@ -1096,7 +1111,7 @@ class Compiler(object):
         elif self.is_const(expression, config, arguments):
             return self.compile_const(expression, config, arguments, self.parse_const(expression, config, arguments))
         else:
-            raise SyncanySqlCompileException("unkonw calculate: " + self.to_sql(expression))
+            raise SyncanySqlCompileException('unknown calculate expression, related sql "%s"' % self.to_sql(expression))
 
     def compile_having_condition(self, expression, config, arguments, primary_table):
         if isinstance(expression, sqlglot_expressions.And):
@@ -1125,7 +1140,8 @@ class Compiler(object):
             if self.is_column(left_expression, config, arguments):
                 left_column = self.parse_column(left_expression, config, arguments)
                 if isinstance(config["schema"], dict) and left_column["column_name"] not in config["schema"]:
-                    raise SyncanySqlCompileException("unkonw having condition column: " + self.to_sql(expression))
+                    raise SyncanySqlCompileException('unknown having condition column, column must be in the query result, related sql "%s"'
+                                                     % self.to_sql(expression))
                 config["aggregate"]["having_columns"].add(left_column["column_name"])
                 left_calculater = self.compile_column(left_expression, config, arguments, left_column)
             else:
@@ -1133,7 +1149,8 @@ class Compiler(object):
                 self.parse_calculate(left_expression, config, arguments, primary_table, calculate_fields)
                 if isinstance(config["schema"], dict) and [calculate_field for calculate_field in calculate_fields
                                                            if calculate_field["column_name"] not in config["schema"]]:
-                    raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
+                    raise SyncanySqlCompileException('unknown having condition column, column must be in the query result, related sql "%s"'
+                                                     % self.to_sql(expression))
                 for calculate_field in calculate_fields:
                     if calculate_field["column_name"] not in config["schema"]:
                         continue
@@ -1144,13 +1161,14 @@ class Compiler(object):
                 value_items = []
                 for value_expression_item in right_expression:
                     if not self.is_const(value_expression_item, config, arguments):
-                        raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
+                        raise SyncanySqlCompileException('error having condition, array must be const value, related sql "%s"' % self.to_sql(expression))
                     value_items.append(self.parse_const(value_expression_item, config, arguments)["value"])
                 return left_calculater, value_items
             if self.is_column(right_expression, config, arguments):
                 right_column = self.parse_column(right_expression, config, arguments)
                 if isinstance(config["schema"], dict) and right_column["column_name"] not in config["schema"]:
-                    raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
+                    raise SyncanySqlCompileException('unknown having condition column, column must be in the query result, related sql "%s"'
+                                                     % self.to_sql(expression))
                 config["aggregate"]["having_columns"].add(right_column["column_name"])
                 return left_calculater, self.compile_column(right_expression, config, arguments, right_column)
             if isinstance(right_expression, (sqlglot_expressions.Select, sqlglot_expressions.Subquery, sqlglot_expressions.Union)):
@@ -1163,7 +1181,8 @@ class Compiler(object):
             self.parse_calculate(right_expression, config, arguments, primary_table, calculate_fields)
             if isinstance(config["schema"], dict) and [calculate_field for calculate_field in calculate_fields
                                                        if calculate_field["column_name"] not in config["schema"]]:
-                raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('unknown having condition column, column must be in the query result, related sql "%s"'
+                                                 % self.to_sql(expression))
             for calculate_field in calculate_fields:
                 if calculate_field["column_name"] not in config["schema"]:
                     continue
@@ -1194,7 +1213,8 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Like):
             left_calculater, right_calculater = parse(expression)
             if not isinstance(right_calculater, list) or len(right_calculater) != 2 or right_calculater[0] != "#const":
-                raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error having condition, like condition value must be const, related sql "%s"'
+                                                 % self.to_sql(expression))
             return ["#if", ["@re::match", right_calculater[1].replace("%", ".*").replace(".*.*", "%"), left_calculater],
                     ["#const", True], ["#const", False]]
         elif isinstance(expression, (sqlglot_expressions.Not, sqlglot_expressions.Is)):
@@ -1202,7 +1222,7 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_having_condition(expression.args.get("this"), config, arguments, primary_table)
         else:
-            raise SyncanySqlCompileException("unkonw having condition: " + self.to_sql(expression))
+            raise SyncanySqlCompileException('unknown having condition, related sql "%s"' % self.to_sql(expression))
 
     def compile_order(self, expression, config, arguments, primary_table):
         primary_sort_keys, sort_keys = [], []
@@ -1216,7 +1236,7 @@ class Compiler(object):
             if isinstance(config["schema"], dict):
                 for sort_key, _ in sort_keys:
                     if sort_key not in config["schema"]:
-                        raise SyncanySqlCompileException("unkonw order by key: " + str(sort_key))
+                        raise SyncanySqlCompileException('unknown order by column, related sql "%s"' % self.to_sql(expression))
             config["pipelines"].append([">>@sort", "$.*|array", False, sort_keys])
             if "@limit" in arguments and arguments["@limit"] > 0:
                 config["pipelines"].append([">>@array::slice", "$.*|array", 0, arguments["@limit"]])
@@ -1250,7 +1270,7 @@ class Compiler(object):
         join_tables = {}
         for join_expression in join_expressions:
             if "alias" not in join_expression.args["this"].args:
-                raise SyncanySqlCompileException("join table must be alias name: " + self.to_sql(join_expression))
+                raise SyncanySqlCompileException('error join, table must be alias name, related sql "%s"' % self.to_sql(join_expression))
             name = join_expression.args["this"].args["alias"].args["this"].name
             if isinstance(join_expression.args["this"], sqlglot_expressions.Table):
                 table_info = self.parse_table(join_expression.args["this"], config, arguments)
@@ -1260,9 +1280,10 @@ class Compiler(object):
                 db, table = "--", subquery_name
                 config["dependencys"].append(subquery_config)
             else:
-                raise SyncanySqlCompileException("unkonw join table: " + self.to_sql(join_expression))
+                raise SyncanySqlCompileException('unknown join expression, related sql "%s"' % self.to_sql(join_expression))
             if "on" not in join_expression.args:
-                raise SyncanySqlCompileException("unkonw join on: " + self.to_sql(join_expression))
+                raise SyncanySqlCompileException('error join, on condition is unknown, related sql "%s"'
+                                                 % self.to_sql(join_expression))
             join_table = {
                 "db": db, "table": table, "name": name, "primary_keys": [],
                 "join_columns": [], "calculate_expressions": [], "querys": {}, "ref_count": 0,
@@ -1271,7 +1292,7 @@ class Compiler(object):
             self.parse_on_condition(join_expression.args["on"], config, arguments, primary_table, join_table)
             self.parse_condition_typing_filter(expression, join_table, arguments)
             if not join_table["primary_keys"] or not join_table["join_columns"]:
-                raise SyncanySqlCompileException("empty join table: " + self.to_sql(join_expression))
+                raise SyncanySqlCompileException('error join, columns unknown, related sql "%s"' % self.to_sql(join_expression))
             join_tables[join_table["name"]] = join_table
 
         for name, join_table in join_tables.items():
@@ -1306,7 +1327,7 @@ class Compiler(object):
                         table_expression = arg_expression
                         break
                 if table_expression is None:
-                    raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+                    raise SyncanySqlCompileException('unkonw join on condition, related sql "%s"' % self.to_sql(expression))
                 value_expression = expression.args["expression"] if table_expression == expression.args["this"] else expression.args["this"]
             elif expression.args.get("expressions"):
                 table_expression, value_expression = expression.args["this"], expression.args["expressions"]
@@ -1321,7 +1342,7 @@ class Compiler(object):
             if not isinstance(expression, sqlglot_expressions.EQ) or self.is_const(value_expression, config, arguments) \
                     or isinstance(value_expression, list) or isinstance(value_expression, sqlglot_expressions.Select):
                 if not self.is_column(table_expression, config, arguments) or not condition_column["table_name"]:
-                    raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+                    raise SyncanySqlCompileException('unkonw join on condition, related sql "%s"' % self.to_sql(expression))
                 if isinstance(value_expression, (sqlglot_expressions.Select, sqlglot_expressions.Subquery, sqlglot_expressions.Union)):
                     value_column = self.compile_query_condition(value_expression, config, arguments, primary_table,
                                                                 condition_column["typing_filters"])
@@ -1334,18 +1355,20 @@ class Compiler(object):
                     value_items = []
                     for value_expression_item in value_expression:
                         if not self.is_const(value_expression_item, config, arguments):
-                            raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+                            raise SyncanySqlCompileException('error join on condition, array must be const value, related sql "%s"'
+                                                             % self.to_sql(expression))
                         value_items.append(self.parse_const(value_expression_item, config, arguments)["value"])
                     return False, condition_column, value_items
                 calculate_fields = []
                 self.parse_calculate(value_expression, config, arguments, primary_table, calculate_fields)
                 if calculate_fields:
-                    raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+                    raise SyncanySqlCompileException('error join on condition, conditions except = conditions must be constants, related sql "%s"'
+                                                     % self.to_sql(expression))
                 return False, condition_column, self.compile_calculate(value_expression, config, arguments, primary_table, [])
 
             if self.is_column(value_expression, config, arguments):
                 if condition_column["column_name"] in join_table["primary_keys"]:
-                    raise SyncanySqlCompileException("join on primary_key duplicate: " + self.to_sql(expression))
+                    raise SyncanySqlCompileException('error join on condition, primary_key duplicate, related sql "%s"' % self.to_sql(expression))
                 join_table["join_columns"].append(self.parse_column(value_expression, config, arguments))
                 join_table["primary_keys"].append(condition_column["column_name"])
                 join_table["calculate_expressions"].append(value_expression)
@@ -1355,7 +1378,7 @@ class Compiler(object):
             if not calculate_fields and condition_column["table_name"] == join_table["name"]:
                 return False, condition_column, self.compile_calculate(value_expression, config, arguments, primary_table, [])
             if condition_column["column_name"] in join_table["primary_keys"]:
-                raise SyncanySqlCompileException("join on primary_key duplicate: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error join on condition, primary_key duplicate, related sql "%s"' % self.to_sql(expression))
             join_table["join_columns"].extend(calculate_fields)
             join_table["primary_keys"].append(condition_column["column_name"])
             join_table["calculate_expressions"].append(value_expression)
@@ -1370,47 +1393,54 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.NEQ):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
-                raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error join on condition, conditions except = conditions must be constants, related sql "%s"'
+                                                 % self.to_sql(expression))
             if condition_column["typing_name"] not in join_table["querys"]:
                 join_table["querys"][condition_column["typing_name"]] = {}
             join_table["querys"][condition_column["typing_name"]]["!="] = value_column
         elif isinstance(expression, sqlglot_expressions.GT):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
-                raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error join on condition, conditions except = conditions must be constants, related sql "%s"'
+                                                 % self.to_sql(expression))
             if condition_column["typing_name"] not in join_table["querys"]:
                 join_table["querys"][condition_column["typing_name"]] = {}
             join_table["querys"][condition_column["typing_name"]][">"] = value_column
         elif isinstance(expression, sqlglot_expressions.GTE):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
-                raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error join on condition, conditions except = conditions must be constants, related sql "%s"'
+                                                 % self.to_sql(expression))
             if condition_column["typing_name"] not in join_table["querys"]:
                 join_table["querys"][condition_column["typing_name"]] = {}
             join_table["querys"][condition_column["typing_name"]][">="] = value_column
         elif isinstance(expression, sqlglot_expressions.LT):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
-                raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error join on condition, conditions except = conditions must be constants, related sql "%s"'
+                                                 % self.to_sql(expression))
             if condition_column["typing_name"] not in join_table["querys"]:
                 join_table["querys"][condition_column["typing_name"]] = {}
             join_table["querys"][condition_column["typing_name"]]["<"] = value_column
         elif isinstance(expression, sqlglot_expressions.LTE):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
-                raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error join on condition, conditions except = conditions must be constants, related sql "%s"'
+                                                 % self.to_sql(expression))
             if condition_column["typing_name"] not in join_table["querys"]:
                 join_table["querys"][condition_column["typing_name"]] = {}
             join_table["querys"][condition_column["typing_name"]]["<="] = value_column
         elif isinstance(expression, sqlglot_expressions.In):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
-                raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error join on condition, conditions except = conditions must be constants, related sql "%s"'
+                                                 % self.to_sql(expression))
             if condition_column["typing_name"] not in join_table["querys"]:
                 join_table["querys"][condition_column["typing_name"]] = {}
             join_table["querys"][condition_column["typing_name"]]["in"] = value_column
         else:
-            raise SyncanySqlCompileException("unkonw join on condition: " + self.to_sql(expression))
+            raise SyncanySqlCompileException('error join on condition, only "=,!=,>,>=,<,<=,in" operations are supported, related sql "%s"'
+                                             % self.to_sql(expression))
 
     def parse_calculate(self, expression, config, arguments, primary_table, calculate_fields):
         if isinstance(expression, sqlglot_expressions.Anonymous):
@@ -1476,11 +1506,11 @@ class Compiler(object):
             try:
                 table_name = self.env_variables.get_value("@" + expression.args["this"].name)
             except KeyError:
-                raise SyncanySqlCompileException("undefine table name variable: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error table, undefine table name variable, related sql "%s"' % self.to_sql(expression))
             if table_name is None:
                 table_name = "#{env_variable__@" + expression.args["this"].name + "}"
             elif not isinstance(table_name, str):
-                raise SyncanySqlCompileException("table name variable value must be str: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('error table, table name variable value must be str, related sql "%s"' % self.to_sql(expression))
         else:
             table_name = expression.args["this"].name
         origin_name = self.mapping[table_name] if table_name in self.mapping else table_name
@@ -1650,7 +1680,7 @@ class Compiler(object):
                     typing_filter = str(type(value).__name__)
                 value_getter = EnvVariableGetter(self.env_variables, "@" + name)
             except KeyError:
-                raise SyncanySqlCompileException("unkonw parameter: " + self.to_sql(expression))
+                raise SyncanySqlCompileException('unkonw parameter variable, related sql "%s"' % self.to_sql(expression))
         else:
             value = None
         return {
