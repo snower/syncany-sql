@@ -237,7 +237,7 @@ class CliPrompt(object):
             except EOFError:
                 return 130
             except Exception as e:
-                print(str(e))
+                print(e.__class__.__name__ + ": " + str(e))
         return 0
 
     def check_complete(self, content):
