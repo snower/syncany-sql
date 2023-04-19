@@ -14,3 +14,5 @@ select CURDATE(), CURRENT_DATE(), CURRENT_TIME(), CURTIME();
 select FROM_UNIXTIME(1677833819), UNIX_TIMESTAMP(), UNIX_TIMESTAMP(now()), CURRENT_TIMESTAMP();
 
 select UTC_DATE(), UTC_TIME(), UTC_TIMESTAMP();
+
+select date(now()), datetime(now()), time(now()), datetime(date(now())), datetime(time(now())), date(time(now())), time(date(now()));

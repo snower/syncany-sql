@@ -71,6 +71,39 @@ def mysql_currenttime():
 def mysql_sysdate():
     return datetime.datetime.now(tz=get_timezone())
 
+def mysql_date(dt):
+    if isinstance(dt, str):
+        dt = parse_datetime(dt, None, get_timezone())
+    if isinstance(dt, datetime.datetime):
+        return datetime.date(dt.year, dt.month, dt.day)
+    if isinstance(dt, datetime.date):
+        return dt
+    return None
+
+def mysql_datetime(dt):
+    if isinstance(dt, str):
+        dt = parse_datetime(dt, None, get_timezone())
+    if isinstance(dt, datetime.datetime):
+        return dt
+    if isinstance(dt, datetime.date):
+        return datetime.datetime(dt.year, dt.month, dt.day, tzinfo=get_timezone())
+    if isinstance(dt, datetime.time):
+        now = datetime.datetime.now(tz=get_timezone())
+        return datetime.datetime(now.year, now.month, now.day, dt.hour, dt.minute,
+                                 dt.second, dt.microsecond, tzinfo=get_timezone())
+    return None
+
+def mysql_time(dt):
+    if isinstance(dt, str):
+        dt = parse_datetime(dt, None, get_timezone())
+    if isinstance(dt, datetime.time):
+        return dt
+    if isinstance(dt, datetime.datetime):
+        return datetime.time(dt.hour, dt.minute, dt.second, dt.microsecond, tzinfo=get_timezone())
+    if isinstance(dt, datetime.date):
+        return datetime.time(tzinfo=get_timezone())
+    return None
+
 def mysql_unix_timestamp(dt=None):
     if dt is None:
         return int(time.time())
