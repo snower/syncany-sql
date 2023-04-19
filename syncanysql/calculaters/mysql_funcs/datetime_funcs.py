@@ -238,4 +238,5 @@ def mysql_utc_timestamp():
     dt = datetime.datetime.utcnow()
     return dt.replace(tzinfo=pytz.UTC)
 
+
 funcs = {key[6:]: value for key, value in globals().items() if key.startswith("mysql_")}

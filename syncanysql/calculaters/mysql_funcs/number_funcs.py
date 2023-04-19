@@ -1,86 +1,250 @@
 # -*- coding: utf-8 -*-
 # 2023/3/2
 # create by: snower
-
+import datetime
 import math
 import random
 
+def ensure_int(x):
+    try:
+        return int(x)
+    except:
+        return 0
+
+def ensure_float(x):
+    try:
+        return float(x)
+    except:
+        return 0
+
+def ensure_number(x):
+    if isinstance(x, (int, float)):
+        return x
+    try:
+        if isinstance(x, str) and "." in x:
+            return float(x)
+        return int(x)
+    except:
+        return 0
+
+def mysql_add(x, y):
+    try:
+        return x + y
+    except:
+        if isinstance(x, datetime.date):
+            return x + datetime.timedelta(seconds=ensure_int(y))
+        if isinstance(y, datetime.date):
+            return y + datetime.timedelta(seconds=ensure_int(x))
+        return ensure_number(x) + ensure_number(y)
+
+def mysql_sub(x, y):
+    try:
+        return x - y
+    except:
+        if isinstance(x, datetime.date):
+            return x - datetime.timedelta(seconds=ensure_int(y))
+        if isinstance(y, datetime.date):
+            return y - datetime.timedelta(seconds=ensure_int(x))
+        return ensure_number(x) - ensure_number(y)
+
+def mysql_mul(x, y):
+    try:
+        return x * y
+    except:
+        return ensure_number(x) * ensure_number(y)
+
+def mysql_div(x, y):
+    try:
+        return x / y
+    except:
+        return ensure_number(x) / ensure_number(y)
+
+def mysql_mod(x, y):
+    try:
+        return x % y
+    except:
+        return ensure_number(x) % ensure_number(y)
+
+def mysql_bitwiseand(x, y):
+    try:
+        return x & y
+    except:
+        return ensure_int(x) & ensure_int(y)
+
+def mysql_bitwiseor(x, y):
+    try:
+        return x | y
+    except:
+        return ensure_int(x) | ensure_int(y)
+
+def mysql_bitwisenot(x):
+    try:
+        return ~ x
+    except:
+        return ~ ensure_int(x)
+
+def mysql_bitwisexor(x, y):
+    try:
+        return x ^ y
+    except:
+        return ensure_int(x) ^ ensure_int(y)
+
+def mysql_bitwiserightshift(x, y):
+    try:
+        return x >> y
+    except:
+        return ensure_int(x) >> ensure_int(y)
+
+def mysql_bitwiseleftshift(x, y):
+    try:
+        return x << y
+    except:
+        return ensure_int(x) << ensure_int(y)
+
 def mysql_bit_and(x, y):
-    return x & y
+    try:
+        return x & y
+    except:
+        return ensure_int(x) & ensure_int(y)
 
 def mysql_bit_or(x, y):
-    return x | y
+    try:
+        return x | y
+    except:
+        return ensure_int(x) | ensure_int(y)
 
 def mysql_bit_xor(x, y):
-    return x ^ y
+    try:
+        return x ^ y
+    except:
+        return ensure_int(x) ^ ensure_int(y)
 
 def mysql_abs(x):
-    return abs(x)
+    try:
+        return abs(x)
+    except:
+        return abs(ensure_number(x))
 
 def mysql_sqrt(x):
-    return math.sqrt(x)
+    try:
+        return math.sqrt(x)
+    except:
+        return math.sqrt(ensure_number(x))
 
 def mysql_exp(x):
-    return math.exp(x)
+    try:
+        return math.exp(x)
+    except:
+        return math.exp(ensure_number(x))
 
 def mysql_pi():
     return math.pi
 
 def mysql_ln(x):
-    return math.log(x, math.e)
+    try:
+        return math.log(x, math.e)
+    except:
+        return math.log(ensure_number(x), math.e)
 
 def mysql_log(x, base=10):
-    return math.log(x, base)
-
-def mysql_mod(x, y):
-    return x % y
+    try:
+        return math.log(x, base)
+    except:
+        return math.log(ensure_number(x), base)
 
 def mysql_ceil(x):
-    return math.ceil(x)
+    try:
+        return math.ceil(x)
+    except:
+        return math.ceil(ensure_number(x))
 
 def mysql_ceiling(x):
-    return math.ceil(x)
+    try:
+        return math.ceil(x)
+    except:
+        return math.ceil(ensure_number(x))
 
 def mysql_floor(x):
-    return math.floor(x)
+    try:
+        return math.floor(x)
+    except:
+        return math.floor(ensure_number(x))
 
 def mysql_rand():
     return random.random()
 
 def mysql_round(x, y=2):
-    return round(x, y)
+    try:
+        return round(x, y)
+    except:
+        return round(ensure_number(x), ensure_int(y))
 
 def mysql_sign(x):
-    return 0 if x == 0 else (-1 if x < 0 else 1)
+    try:
+        return 0 if x == 0 else (-1 if x < 0 else 1)
+    except:
+        x = ensure_number(x)
+        return 0 if x == 0 else (-1 if x < 0 else 1)
 
 def mysql_pow(x, y):
-    return math.pow(x, y)
+    try:
+        return math.pow(x, y)
+    except:
+        return math.pow(ensure_number(x), ensure_number(y))
 
 def mysql_power(x, y):
-    return math.pow(x, y)
+    try:
+        return math.pow(x, y)
+    except:
+        return math.pow(ensure_number(x), ensure_number(y))
 
 def mysql_sin(x):
-    return math.sin(x)
+    try:
+        return math.sin(x)
+    except:
+        return math.sin(ensure_number(x))
 
 def mysql_asin(x):
-    return math.asin(x)
+    try:
+        return math.asin(x)
+    except:
+        return math.asin(ensure_number(x))
 
 def mysql_cos(x):
-    return math.cos(x)
+    try:
+        return math.cos(x)
+    except:
+        return math.cos(ensure_number(x))
 
 def mysql_acos(x):
-    return math.acos(x)
+    try:
+        return math.acos(x)
+    except:
+        return math.acos(ensure_number(x))
 
 def mysql_tan(x):
-    return math.tan(x)
+    try:
+        return math.tan(x)
+    except:
+        return math.tan(ensure_number(x))
 
 def mysql_atan(x):
-    return math.atan(x)
+    try:
+        return math.atan(x)
+    except:
+        return math.atan(ensure_number(x))
 
 def mysql_greatest(*args):
-    return max(*args)
+    try:
+        return max(*args)
+    except:
+        return max(*tuple([ensure_number(x) for x in args]))
 
 def mysql_least(*args):
-    return max(*args)
+    try:
+        return min(*args)
+    except:
+        return min(*tuple([ensure_number(x) for x in args]))
+
 
 funcs = {key[6:]: value for key, value in globals().items() if key.startswith("mysql_")}

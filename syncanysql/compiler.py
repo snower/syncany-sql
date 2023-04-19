@@ -1022,10 +1022,17 @@ class Compiler(object):
                 return ["#if", ["#const", True], value_column, None, ":$.*|" + typing_filter]
             return value_column
         elif isinstance(expression, sqlglot_expressions.Binary):
+            func_name = expression.key.lower()
             return [
-                "@" + expression.key.lower(),
+                ("@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name),
                 self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
                 self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index)
+            ]
+        elif isinstance(expression, sqlglot_expressions.BitwiseNot):
+            func_name = expression.key.lower()
+            return [
+                ("@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name),
+                self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
             ]
         elif isinstance(expression, sqlglot_expressions.If):
             return [
@@ -1782,7 +1789,7 @@ class Compiler(object):
     def is_calculate(self, expression, config, arguments):
         return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Anonymous, sqlglot_expressions.Binary, sqlglot_expressions.Func,
                                        sqlglot_expressions.Select, sqlglot_expressions.Subquery, sqlglot_expressions.Union, sqlglot_expressions.Not,
-                                       sqlglot_expressions.Tuple))
+                                       sqlglot_expressions.BitwiseNot, sqlglot_expressions.Tuple))
 
     def is_aggregate(self, expression, config, arguments):
         if isinstance(expression, (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Max,

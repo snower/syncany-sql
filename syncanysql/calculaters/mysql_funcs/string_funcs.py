@@ -6,6 +6,15 @@ import socket
 import base64
 import binascii
 
+def ensure_str(x):
+    if isinstance(x, str):
+        return x
+    if x is None:
+        return ""
+    if isinstance(x, bytes):
+        return x.decode("utf-8")
+    return str(x)
+
 def mysql_bin(x):
     return bin(x)
 
@@ -42,31 +51,32 @@ def mysql_character_length(s):
     return len(s)
 
 def mysql_concat(*args):
-    return "".join(str(arg) for arg in args)
+    return "".join(ensure_str(arg) for arg in args)
 
 def mysql_concat_ws(sep, *args):
-    return sep.join(str(arg) for arg in args)
+    return sep.join(ensure_str(arg) for arg in args)
 
 def mysql_insert(s1, x, l, s2):
+    s1, s2 = ensure_str(s1), ensure_str(s2)
     return s1[: x - 1] + s2 + s1[x + l - 1:]
 
 def mysql_lower(s):
-    return s.lower()
+    return ensure_str(s).lower()
 
 def mysql_upper(s):
-    return s.upper()
+    return ensure_str(s).upper()
 
 def mysql_ucase(s):
-    return s.upper()
+    return ensure_str(s).upper()
 
 def mysql_left(s, x):
-    return s[:x]
+    return ensure_str(s)[:x]
 
 def mysql_right(s, x):
-    return s[-x:]
+    return ensure_str(s)[-x:]
 
 def mysql_trim(s):
-    return s.strip()
+    return ensure_str(s).strip()
 
 def mysql_elt(n, *args):
     return args[n - 1] if n < len(args) else None
@@ -79,36 +89,55 @@ def mysql_field(s, *args):
 
 def mysql_find_in_set(s, ss):
     try:
-        return ss.split(",").index(s) + 1
+        return ensure_str(ss).split(",").index(s) + 1
     except ValueError:
         return 0
 
 def mysql_replace(s, s1, s2):
-    return s.replace(s1, s2)
+    return ensure_str(s).replace(s1, s2)
 
 def mysql_substring(s, n, l=None):
+    s = ensure_str(s)
     if isinstance(l, int):
         return s[n - 1: n + l - 1]
     return s[n - 1:]
 
 def mysql_substr(s, n, l=None):
+    s = ensure_str(s)
     if isinstance(l, int):
         return s[n - 1: n + l - 1]
     return s[n - 1:]
 
 def mysql_substring_index(s, d, c):
+    s, d = ensure_str(s), ensure_str(d)
     if c < 0:
         return d.join(s.split(d)[-c:])
     return d.join(s.split(d)[:c])
 
 def mysql_repeat(s, c):
-    return s * c
+    return ensure_str(s) * c
 
 def mysql_reverse(s):
-    return s[::-1]
+    return ensure_str(s)[::-1]
 
 def mysql_strcmp(s1, s2):
+    s1, s2 = ensure_str(s1), ensure_str(s2)
     return 0 if s1 == s2 else (-1 if s1 < s2 else 1)
+
+def mysql_startswith(s1, s2):
+    s1, s2 = ensure_str(s1), ensure_str(s2)
+    return s1.startswith(s2)
+
+def mysql_endswith(s1, s2):
+    s1, s2 = ensure_str(s1), ensure_str(s2)
+    return s1.endswith(s2)
+
+def mysql_contains(s1, s2):
+    try:
+        return s2 in s1
+    except:
+        s1, s2 = ensure_str(s1), ensure_str(s2)
+        return s2 in s1
 
 def mysql_crc32(s):
     import zlib
@@ -157,5 +186,6 @@ def mysql_is_ipv6(s):
         return 1
     except:
         return 0
+
 
 funcs = {key[6:]: value for key, value in globals().items() if key.startswith("mysql_")}
