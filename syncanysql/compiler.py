@@ -5,6 +5,8 @@
 import os
 import copy
 import uuid
+
+import sqlglot.expressions
 from sqlglot import maybe_parse, ParseError
 from sqlglot import expressions as sqlglot_expressions
 from sqlglot.dialects import Dialect
@@ -91,8 +93,12 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Command):
             if expression.args["this"].lower() == "explain" and self.is_const(expression.args["expression"], {}, arguments):
                 return ExplainTasker(self.compile(self.parse_const(expression.args["expression"], {}, arguments)["value"], arguments))
-            if expression.args["this"].lower() == "set" and self.is_const(expression.args["expression"], {}, arguments):
-                value = self.parse_const(expression.args["expression"], {}, arguments)["value"].split("=")
+            if expression.args["this"].lower() == "set" and (isinstance(expression.args["expression"], str)
+                                                             or self.is_const(expression.args["expression"], {}, arguments)):
+                if isinstance(expression.args["expression"], str):
+                    value = expression.args["expression"].split("=")
+                else:
+                    value = self.parse_const(expression.args["expression"], {}, arguments)["value"].split("=")
                 config = {"key": value[0].strip(), "value": "=".join(value[1:]).strip()}
                 return SetCommandTasker(config)
             if expression.args["this"].lower() == "execute" and self.is_const(expression.args["expression"], {}, arguments):
@@ -109,6 +115,12 @@ class Compiler(object):
             if use_info in self.mapping:
                 use_info = self.mapping[use_info]
             return UseCommandTasker({"use": use_info})
+        elif isinstance(expression, sqlglot.expressions.Set) and expression.args.get("expressions") and len(expression.args.get("expressions")) == 1:
+            set_item_expression = expression.args.get("expressions")[0]
+            if isinstance(set_item_expression, sqlglot_expressions.SetItem) and isinstance(set_item_expression.args["this"], sqlglot_expressions.EQ):
+                value = str(set_item_expression.args["this"]).split("=")
+                config = {"key": value[0].strip(), "value": "=".join(value[1:]).strip()}
+                return SetCommandTasker(config)
         raise SyncanySqlCompileException('unknown sql "%s"' % self.to_sql(expression))
 
     def compile_delete(self, expression, arguments):
