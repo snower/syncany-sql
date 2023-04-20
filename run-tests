@@ -6,7 +6,7 @@ do
     if [ ! -d $DEMO_NAME ]; then
         continue
     fi
-    if [ "${DEMO_NAME}" -eq "./raw_query" ]; then
+    if [ "${DEMO_NAME}" == './raw_query' ]; then
         continue
     fi
 
