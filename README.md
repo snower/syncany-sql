@@ -1,4 +1,6 @@
 # Syncany-SQL
+[![Tests](https://img.shields.io/github/actions/workflow/status/snower/syncany-sql/ci.yml?label=tests)](https://github.com/snower/syncany-sql/actions/workflows/ci.yml)
+[![GitHub Repo stars](https://img.shields.io/github/stars/snower/syncany-sql?style=social)](https://github.com/snower/syncany-sql/stargazers)
 
 简单易用的SQL执行引擎。
 
