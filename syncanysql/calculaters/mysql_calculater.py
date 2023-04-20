@@ -24,6 +24,8 @@ class MysqlCalculater(Calculater):
                 except TypeError:
                     pass
             return self.func(*args)
+        except (ValueError, KeyError) as e:
+            return None
         except Exception as e:
             get_logger().warning("mysql calculater execute %s(%s) error: %s\n%s", self.name[7:], args, e,
                                  traceback.format_exc())

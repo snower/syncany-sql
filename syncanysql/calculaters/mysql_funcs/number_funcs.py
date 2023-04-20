@@ -1,69 +1,91 @@
 # -*- coding: utf-8 -*-
 # 2023/3/2
 # create by: snower
+
+import string
 import datetime
 import math
 import random
 
+def parse_number(x, is_float=False):
+    index, dot_index = -1, -1
+    for i in range(len(x)):
+        if x[i] in string.digits:
+            index = i
+            continue
+        if index >= 0 and is_float and dot_index < 0 and x[i] == ".":
+            dot_index = i
+            continue
+        break
+    if index < 0:
+        return float(x) if is_float else int(x)
+    return float(x[:index + 1]) if dot_index > 0 else int(x[:index + 1])
+
 def ensure_int(x):
-    try:
-        return int(x)
-    except:
+    if isinstance(x, int):
+        return x
+    if x is None:
+        raise ValueError('value is None')
+    if not x:
         return 0
+    if x is True:
+        return 1
+    if isinstance(x, datetime.date):
+        if isinstance(x, datetime.datetime):
+            return int(x.strftime("%Y%m%d%H%M%S"))
+        return int(x.strftime("%Y%m%d"))
+    if isinstance(x, datetime.datetime):
+        return int(x.strftime("%H%M%S"))
+    if isinstance(x, str):
+        try:
+            return int(x)
+        except:
+            return parse_number(x, False)
+    return int(x)
 
 def ensure_float(x):
-    try:
-        return float(x)
-    except:
+    if isinstance(x, float):
+        return x
+    if x is None:
+        raise ValueError('value is None')
+    if not x:
         return 0
+    if x is True:
+        return 1
+    if isinstance(x, datetime.date):
+        if isinstance(x, datetime.datetime):
+            return float(x.strftime("%Y%m%d%H%M%S")) + x.microsecond / 1000
+        return float(x.strftime("%Y%m%d"))
+    if isinstance(x, datetime.datetime):
+        return float(x.strftime("%H%M%S")) + x.microsecond / 1000
+    if isinstance(x, str):
+        try:
+            return float(x)
+        except:
+            return parse_number(x, True)
+    return float(x)
 
 def ensure_number(x):
     if isinstance(x, (int, float)):
         return x
-    try:
-        if isinstance(x, str) and "." in x:
-            return float(x)
-        return int(x)
-    except:
-        return 0
+    if isinstance(x, str) and "." in x:
+        return ensure_float(x)
+    return ensure_int(x)
 
 def mysql_add(x, y):
-    try:
-        return x + y
-    except:
-        if isinstance(x, datetime.date):
-            return x + datetime.timedelta(seconds=ensure_int(y))
-        if isinstance(y, datetime.date):
-            return y + datetime.timedelta(seconds=ensure_int(x))
-        return ensure_number(x) + ensure_number(y)
+    return ensure_number(x) + ensure_number(y)
 
 def mysql_sub(x, y):
-    try:
-        return x - y
-    except:
-        if isinstance(x, datetime.date):
-            return x - datetime.timedelta(seconds=ensure_int(y))
-        if isinstance(y, datetime.date):
-            return y - datetime.timedelta(seconds=ensure_int(x))
-        return ensure_number(x) - ensure_number(y)
+    return ensure_number(x) - ensure_number(y)
 
 def mysql_mul(x, y):
-    try:
-        return x * y
-    except:
-        return ensure_number(x) * ensure_number(y)
+    return ensure_number(x) * ensure_number(y)
 
 def mysql_div(x, y):
-    try:
-        return x / y
-    except:
-        return ensure_number(x) / ensure_number(y)
+    return ensure_number(x) / ensure_number(y)
 
 def mysql_mod(x, y):
-    try:
-        return x % y
-    except:
-        return ensure_number(x) % ensure_number(y)
+    return ensure_number(x) % ensure_number(y)
 
 def mysql_bitwiseand(x, y):
     try:

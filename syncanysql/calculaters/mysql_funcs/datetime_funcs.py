@@ -72,8 +72,10 @@ def mysql_sysdate():
     return datetime.datetime.now(tz=get_timezone())
 
 def mysql_date(dt):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     if isinstance(dt, datetime.datetime):
         return datetime.date(dt.year, dt.month, dt.day)
     if isinstance(dt, datetime.date):
@@ -81,8 +83,10 @@ def mysql_date(dt):
     return None
 
 def mysql_datetime(dt):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     if isinstance(dt, datetime.datetime):
         return dt
     if isinstance(dt, datetime.date):
@@ -94,8 +98,10 @@ def mysql_datetime(dt):
     return None
 
 def mysql_time(dt):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     if isinstance(dt, datetime.time):
         return dt
     if isinstance(dt, datetime.datetime):
@@ -110,120 +116,162 @@ def mysql_unix_timestamp(dt=None):
     return int(time.mktime(dt.utctimetuple()))
 
 def mysql_from_unixtime(t):
+    if t is None:
+        return None
     return datetime.datetime.utcfromtimestamp(t).replace(tzinfo=pytz.UTC).astimezone(tz=get_timezone())
 
 def mysql_month(dt):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     return dt.month
 
 def mysql_monthname(dt):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     return dt.strftime("%b")
 
 def mysql_dayname(dt):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     return dt.strftime("%A")
 
 def mysql_dayofweek(dt):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     return dt.weekday() + 1
 
 def mysql_week(dt, mod=None):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     return int(dt.strftime("%U"))
 
 def mysql_dayofyear(dt):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     return int(dt.strftime("%j"))
 
 def mysql_dayofmonth(dt):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     return dt.day
 
 def mysql_year(dt):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     return dt.year
 
 def mysql_time_to_sec(dt):
+    if dt is None:
+        return None
     st = parse_datetime("2000-01-01 00:00:00", None, get_timezone())
     if isinstance(dt, str):
         dt = parse_datetime("2000-01-01 " + dt, None, get_timezone())
     return int((dt - st).total_seconds())
 
 def mysql_sec_to_time(t):
+    if t is None:
+        return None
     st = parse_datetime("2000-01-01 00:00:00", None, get_timezone())
     return (st + datetime.timedelta(seconds=t)).strftime("%H:%M:%S")
 
 def mysql_dateadd(dt, i):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     if isinstance(i, (int, float)) or (isinstance(i, str) and i.isdigit()):
         return dt + datetime.timedelta(days=int(i))
     return calculate_datetime(dt, i, False)
 
 def mysql_adddate(dt, i):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     if isinstance(i, (int, float)) or (isinstance(i, str) and i.isdigit()):
         return dt + datetime.timedelta(days=int(i))
     return calculate_datetime(dt, i, False)
 
 def mysql_datesub(dt, i):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     if isinstance(i, (int, float)) or (isinstance(i, str) and i.isdigit()):
         return dt - datetime.timedelta(days=int(i))
     return calculate_datetime(dt, i, True)
 
 def mysql_subdate(dt, i):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     if isinstance(i, (int, float)) or (isinstance(i, str) and i.isdigit()):
         return dt - datetime.timedelta(days=int(i))
     return calculate_datetime(dt, i, True)
 
 def mysql_addtime(dt, i):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     if isinstance(i, (int, float)) or (isinstance(i, str) and i.isdigit()):
         return dt + datetime.timedelta(days=int(i))
     return calculate_datetime(dt, i, False)
 
 def mysql_subtime(dt, i):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     if isinstance(i, (int, float)) or (isinstance(i, str) and i.isdigit()):
         return dt - datetime.timedelta(days=int(i))
     return calculate_datetime(dt, i, True)
 
 def mysql_datediff(dt1, dt2):
-    if isinstance(dt1, str):
-        dt1 = parse_datetime(dt1, None, get_timezone())
-    if isinstance(dt2, str):
-        dt2 = parse_datetime(dt2, None, get_timezone())
+    if dt1 is None or dt2 is None:
+        return None
+    if isinstance(dt1, (int, float, str)):
+        dt1 = parse_datetime(str(dt1), None, get_timezone())
+    if isinstance(dt2, (int, float, str)):
+        dt2 = parse_datetime(str(dt2), None, get_timezone())
     return int((dt2 - dt1).total_seconds() / 86400)
 
 def mysql_date_format(dt, f):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     return dt.strftime(f)
 
 def mysql_time_format(dt, f):
-    if isinstance(dt, str):
-        dt = parse_datetime("2000-01-01 " + dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime("2000-01-01 " + str(dt), None, get_timezone())
     return dt.strftime(f)
 
 def mysql_weekday(dt):
-    if isinstance(dt, str):
-        dt = parse_datetime(dt, None, get_timezone())
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
     return dt.weekday()
 
 def mysql_utc_date():

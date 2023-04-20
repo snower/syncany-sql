@@ -983,7 +983,7 @@ class Compiler(object):
                                                              column_join_tables, join_index))
                 return column
 
-            if is_mysql_func(calculater_name):
+            if calculater_name not in ("add", "sub", "mul", "div", "mod") and is_mysql_func(calculater_name):
                 column = ["@mysql::" + calculater_name]
             else:
                 if calculater_name[:8] == "convert_":

@@ -51,7 +51,7 @@ def parse_json_path(json_path):
 
 def get_json_path_value(json_data, json_path):
     if json_data is None:
-        return None
+        raise ValueError('value is None')
     if json_path and json_path[:2] == "$.":
         json_path = json_path[2:]
     elif json_path and json_path[0] == '$':
