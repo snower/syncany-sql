@@ -48,10 +48,10 @@ class ExampleTestCase(TestCase):
                     if not isinstance(driver.instance, MemoryDBCollection):
                         continue
                     for key in list(driver.instance.keys()):
-                        if not key.startswith("--.__test__"):
-                            continue
-                        self.execute_results[key[3:]] = driver.instance[key]
+                        if key.startswith("--.__test__"):
+                            self.execute_results[key[3:]] = driver.instance[key]
                         driver.instance.remove(key)
+            self.script_engine.manager.database_manager.states.clear()
         finally:
             sys.path.pop(0)
             os.chdir(cwd)
