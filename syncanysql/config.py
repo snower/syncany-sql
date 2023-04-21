@@ -131,7 +131,7 @@ class GlobalConfig(object):
             if filename not in self.config["extends"]:
                 self.config["extends"].append(filename)
         self.load_config()
-        if custom_config and isinstance(custom_config):
+        if custom_config and isinstance(custom_config, dict):
             self.merge_config(custom_config)
 
         if "timezone" in self.config:

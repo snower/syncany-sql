@@ -5,8 +5,7 @@ SELECT
     b.name AS site_name,
     IF(c.site_amount > 0, c.site_amount, 0) AS site_amount,
     MAX(a.timeout_at) AS timeout_at,
-    MAX(a.vip_timeout_at) AS vip_timeout_at,
-    now() as `created_at?`
+    MAX(a.vip_timeout_at) AS vip_timeout_at
 FROM
     (SELECT
         YIELD_DATA(sites) AS site_id,

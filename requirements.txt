@@ -1,9 +1,17 @@
 pyyaml>=5.1.2
 sqlglot>=10.6.2
-syncany>=0.2.5
 Pygments>=2.14.0
 Pygments>=2.14.0
 prompt-toolkit>=3.0.36
 rich>=9.11.1
 pymongo>=3.6.1
 PyMySQL>=0.8.1
+
+##Dev
+coverage
+
+# Testing dependencies
+pytest
+pytest-benchmark
+pytest-cov
+pytest-integration
