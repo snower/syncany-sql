@@ -20,6 +20,8 @@ CALCULATERS.update(SQL_CALCULATERS)
 
 
 def is_mysql_func(name):
+    if MysqlCalculater.funcs is None:
+        MysqlCalculater.find_func(name)
     return name in MysqlCalculater.funcs
 
 
