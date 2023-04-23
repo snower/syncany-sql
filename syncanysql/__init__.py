@@ -15,8 +15,8 @@ from syncany.calculaters import Calculater, TypeFormatCalculater, TypingCalculat
 from syncany.taskers.config import Parser, ConfigReader, register_parser, register_reader
 from syncany.taskers.tasker import current_tasker
 from syncany.taskers.manager import TaskerManager
-from syncany.database.database import DatabaseManager
-from syncany.database.memory import MemoryDBFactory, MemoryDBCollection
+from syncany.database import DatabaseManager, find_database
+from syncany.errors import DatabaseUnknownException
 from .version import version, version_info
 from .parser import SqlParser, SqlSegment
 from .config import GlobalConfig
@@ -54,7 +54,7 @@ class ExecuterContext(object):
         self.executor.env_variables[name] = value
 
     def use(self, name, func_or_module):
-        if "imports" not in self.executor.session_config:
+        if "imports" not in self.executor.session_config.config:
             self.executor.session_config.config["imports"] = {}
         self.executor.session_config.config["imports"][name] = func_or_module
 
@@ -72,11 +72,17 @@ class ExecuterContext(object):
         finally:
             self.__class__._thread_local.current_executer_context = None
 
-    def get_memory_datas(self, name, db=None):
-        return self.engine.get_memory_datas(name, db)
+    def get_database(self, db=None):
+        return self.engine.get_database(db)
 
-    def pop_memory_datas(self, name, db=None):
-        return self.engine.pop_memory_datas(name, db)
+    def get_memory_datas(self, name):
+        return self.engine.get_memory_datas(name)
+
+    def pop_memory_datas(self, name):
+        return self.engine.pop_memory_datas(name)
+
+    def push_memory_datas(self, name, datas):
+        return self.engine.push_datas(name, datas)
 
     def terminal(self):
         if not self.executor:
@@ -103,6 +109,7 @@ class ScriptEngine(object):
         self.config = GlobalConfig()
         self.config.load(config)
         self.manager = None
+        self.databases = {}
         self.executor = None
 
     def setup(self):
@@ -151,37 +158,48 @@ class ScriptEngine(object):
             self.setup()
         return ExecuterContext(self, self.executor).execute(sql)
 
-    def get_memory_datas(self, name, db=None):
+    def get_database(self, db=None):
         if self.manager is None:
-            return []
-        collection_key = ("--." + name) if not db else (db + "." + name)
-        for config_key, factory in self.manager.database_manager.factorys.items():
-            if not isinstance(factory, MemoryDBFactory):
-                continue
-            for driver in factory.drivers:
-                if not isinstance(driver.instance, MemoryDBCollection):
-                    continue
-                for key in list(driver.instance.keys()):
-                    if collection_key == key:
-                        return driver.instance[key]
-        return []
+            self.setup()
+        db = db if db else "--"
+        if db in self.databases:
+            return self.databases[db]
+        session_config = self.executor.session_config.get()
+        databases = session_config["databases"] if session_config and "databases" in session_config else []
+        try:
+            database_config = dict(**[database for database in databases if database["name"] == db][0])
+        except Exception:
+            raise DatabaseUnknownException("%s is unknown" % db)
+        database_cls = find_database(database_config.pop("driver"))
+        if not database_cls:
+            raise DatabaseUnknownException(database_config["name"] + " is unknown")
+        self.databases[db] = database_cls(self.manager.database_manager, database_config).build()
+        return self.databases[db]
 
-    def pop_memory_datas(self, name, db=None):
+    def get_memory_datas(self, name):
         if self.manager is None:
             return []
-        collection_key = ("--." + name) if not db else (db + "." + name)
-        for config_key, factory in self.manager.database_manager.factorys.items():
-            if not isinstance(factory, MemoryDBFactory):
-                continue
-            for driver in factory.drivers:
-                if not isinstance(driver.instance, MemoryDBCollection):
-                    continue
-                for key in list(driver.instance.keys()):
-                    if collection_key == key:
-                        collection_datas = driver.instance[key]
-                        driver.instance.remove(key)
-                        return collection_datas
-        return []
+        database = self.get_database("--")
+        if not hasattr(database, "ensure_memory_databases"):
+            raise DatabaseUnknownException("memory is unknown")
+        database.ensure_memory_databases()
+        return database.memory_databases.get("--." + name, [])
+
+    def pop_memory_datas(self, name):
+        if self.manager is None:
+            return []
+        database = self.get_database("--")
+        if not hasattr(database, "ensure_memory_databases"):
+            raise DatabaseUnknownException("memory is unknown")
+        database.ensure_memory_databases()
+        return database.memory_databases.pop("--." + name, [])
+
+    def push_memory_datas(self, name, datas):
+        database = self.get_database("--")
+        if not hasattr(database, "ensure_memory_databases"):
+            raise DatabaseUnknownException("memory is unknown")
+        database.ensure_memory_databases()
+        database.memory_databases["--." + name] = datas if isinstance(datas, list) else [datas]
 
     def terminal(self):
         executer_context = ExecuterContext.current()
@@ -196,6 +214,10 @@ class ScriptEngine(object):
         if self.manager:
             self.manager.close()
             self.manager = None
+        if self.databases:
+            for name, database in self.databases.items():
+                database.close()
+            self.databases = {}
         self.executor = None
         self.config = None
 
@@ -229,12 +251,20 @@ def execute(sql):
     return ScriptEngine.instance().execute(sql)
 
 
-def get_memory_datas(name, db=None):
-    return ScriptEngine.instance().get_memory_datas(name, db)
+def get_database(db=None):
+    return ScriptEngine.instance().get_database(db)
 
 
-def pop_memory_datas(name, db=None):
-    return ScriptEngine.instance().pop_memory_datas(name, db)
+def get_memory_datas(name):
+    return ScriptEngine.instance().get_memory_datas(name)
+
+
+def pop_memory_datas(name):
+    return ScriptEngine.instance().pop_memory_datas(name)
+
+
+def push_memory_datas(name, datas):
+    return ScriptEngine.instance().push_datas(name, datas)
 
 
 def terminal():

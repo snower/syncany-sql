@@ -5,7 +5,8 @@
 import sys
 import os
 from unittest import TestCase
-from syncanysql import ScriptEngine, Executor, MemoryDBCollection, MemoryDBFactory
+from syncanysql import ScriptEngine, Executor
+from syncany.database.memory import MemoryDBCollection, MemoryDBFactory
 from syncanysql.parser import FileParser
 
 

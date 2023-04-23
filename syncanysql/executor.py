@@ -73,7 +73,7 @@ class Executor(object):
         self.tasker = None
         if self.global_env_variables is None:
             self.__class__.global_env_variables = EnvVariables.build_global()
-        self.env_variables = parent_executor.env_variables if parent_executor else EnvVariables(self.global_env_variables)
+        self.env_variables = EnvVariables(parent_executor.env_variables if parent_executor else self.global_env_variables)
 
     def compile_variable(self, sql):
         variables = ENV_VARIABLE_RE.findall(sql)
