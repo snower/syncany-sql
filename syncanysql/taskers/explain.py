@@ -18,12 +18,8 @@ class ExplainTasker(object):
         print()
 
         for key in list(arguments.keys()):
-            if key.endswith("@limit"):
-                arguments[key] = 1
-            elif key.endswith("@verbose"):
+            if key.endswith("@verbose"):
                 arguments[key] = True
-        self.tasker.config["output"] = "&.-.&1::" + self.tasker.config["output"].split("::")[-1].split(" ")[0]
-        self.tasker.config["name"] = self.tasker.config["name"] + "#explain"
         self.tasker.start(name, executor, session_config, manager, arguments)
         return [self]
 

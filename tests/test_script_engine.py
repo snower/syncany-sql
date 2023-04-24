@@ -55,6 +55,8 @@ class ScriptEngineTestCase(TestCase):
                 context.execute('''
                     insert into `result_data` select test_func() as test_func, @test_var as test_var,
                      test_context_func() as test_context_func, @test_context_var as test_context_var;
+                     
+                     set global @aaa=1;
                 ''')
                 self.assertEqual(context.get_memory_datas("result_data"),
                                  [{"test_func": 2, "test_var": 2, "test_context_func": 2, "test_context_var": 2}])
@@ -64,10 +66,14 @@ class ScriptEngineTestCase(TestCase):
 
             engine.execute('''
                                 insert into `result_data` select test_func() as test_func, @test_var as test_var;
+                                
+                                insert into `result_aaa` select @aaa as aaa;
                             ''')
             self.assertEqual(engine.get_memory_datas("result_data"),
                              [{"test_func": 1, "test_var": 1}])
             self.assertEqual(engine.pop_memory_datas("result_data"),
                              [{"test_func": 1, "test_var": 1}])
             self.assertEqual(engine.get_memory_datas("test_context_data"), [])
+
+            self.assertEqual(engine.pop_memory_datas("result_aaa"), [{"aaa": 1}])
 
