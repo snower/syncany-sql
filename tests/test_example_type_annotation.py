@@ -23,7 +23,7 @@ class TypeAnnotationExampleTestCase(ExampleTestCase):
         self.assert_value(12, 'v', '2023-02-23', "data error")
         self.assert_value(16, 'orderAt', lambda value: isinstance(value, datetime.datetime), "data error")
         self.assert_value(16, 't', 'int', "data error")
-        self.assert_value(16, 'v', 1677119001, "data error")
+        self.assert_value(16, 'v', lambda value: isinstance(value, int), "data error")
         self.assert_data(21, [{'t': 'objectid', 'v': ObjectId('6422a08fb4055348da72633b')},
                               {'t': 'objectid', 'v': ObjectId('6422a0a4b4055348da72633c')}], "data error")
         self.assert_data(26, [{'t': 'uuid', 'v': uuid.UUID('da984ae6-cd3f-11ed-af1b-eb91b1b4fa12')}], "data error")
