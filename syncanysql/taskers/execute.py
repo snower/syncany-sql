@@ -7,6 +7,7 @@ import time
 from syncany.logger import get_logger
 from ..parser import FileParser
 
+
 class ExecuteTasker(object):
     def __init__(self, config):
         self.config = config
@@ -23,7 +24,8 @@ class ExecuteTasker(object):
             try:
                 file_parser = FileParser(self.config["filename"])
                 sqls = file_parser.load()
-                self.executor.run(self.config["filename"], sqls)
+                with self.executor as executor:
+                    executor.run(self.config["filename"], sqls)
             finally:
                 session_config.merge()
                 get_logger().info("execute file %s finish %.2fms", self.config["filename"], (time.time() - start_time) * 1000)
@@ -34,7 +36,8 @@ class ExecuteTasker(object):
     def run(self, executor, session_config, manager):
         if not self.executor:
             return 0
-        return self.executor.execute()
+        with self.executor as executor:
+            return executor.execute()
 
     def terminate(self):
         if not self.executor:

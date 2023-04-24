@@ -6,6 +6,7 @@ import os
 import sys
 import re
 import copy
+import threading
 from collections import deque
 from syncany.filters import StringFilter
 from syncany.calculaters import find_calculater
@@ -63,7 +64,12 @@ class EnvVariables(dict):
 
 
 class Executor(object):
+    _thread_local = threading.local()
     global_env_variables = None
+
+    @classmethod
+    def current(cls):
+        return cls._thread_local.current_executor
 
     def __init__(self, manager, session_config, parent_executor=None):
         self.manager = manager
@@ -157,3 +163,10 @@ class Executor(object):
                                                 config_key + "::" + key, "is_streaming")):
                         continue
                     driver.instance.remove(key)
+
+    def __enter__(self):
+        self._thread_local.current_executor = self
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._thread_local.current_executor = self.parent_executor

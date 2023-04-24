@@ -59,18 +59,15 @@ class ExecuterContext(object):
         self.executor.session_config.config["imports"][name] = func_or_module
 
     def execute(self, sql):
-        self.__class__._thread_local.current_executer_context = self
-        try:
-            sql_parser = SqlParser(sql)
-            sqls = sql_parser.split()
-            self.__class__._execute_index += 1
-            self.executor.run("execute[%d]" % self._execute_index, sqls)
-            exit_code = self.executor.execute()
+        sql_parser = SqlParser(sql)
+        sqls = sql_parser.split()
+        self.__class__._execute_index += 1
+        with self.executor as executor:
+            executor.run("execute[%d]" % self._execute_index, sqls)
+            exit_code = executor.execute()
             if exit_code is not None and exit_code != 0:
                 raise ExecuterError(exit_code)
-            return 0
-        finally:
-            self.__class__._thread_local.current_executer_context = None
+        return 0
 
     def get_database(self, db=None):
         return self.engine.get_database(db)
@@ -90,10 +87,11 @@ class ExecuterContext(object):
         self.executor.terminate()
 
     def __enter__(self):
+        self._thread_local.current_executer_context = self
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
+        self._thread_local.current_executer_context = None
 
 
 class ScriptEngine(object):
@@ -104,6 +102,10 @@ class ScriptEngine(object):
         if cls.default_instance is None:
             cls.default_instance = ScriptEngine(config)
         return cls.default_instance
+
+    @classmethod
+    def current_context(cls):
+        return ExecuterContext.current()
 
     def __init__(self, config=None):
         self.config = GlobalConfig()
@@ -122,9 +124,10 @@ class ScriptEngine(object):
         if init_execute_files:
             self.executor.run("init", [SqlSegment("execute `%s`" % init_execute_files[i], i + 1) for i in
                                        range(len(init_execute_files))])
-            exit_code = self.executor.execute()
-            if exit_code is not None and exit_code != 0:
-                raise ExecuterError(exit_code)
+            with self.executor as executor:
+                exit_code = executor.execute()
+                if exit_code is not None and exit_code != 0:
+                    raise ExecuterError(exit_code)
         return 0
 
     def get_variable(self, name, default=None):
