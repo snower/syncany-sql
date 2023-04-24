@@ -199,22 +199,22 @@ def mysql_startswith(s1, s2):
     if s1 is None or s2 is None:
         return None
     s1, s2 = ensure_str(s1), ensure_str(s2)
-    return s1.startswith(s2)
+    return 1 if s1.startswith(s2) else 0
 
 def mysql_endswith(s1, s2):
     if s1 is None or s2 is None:
         return None
     s1, s2 = ensure_str(s1), ensure_str(s2)
-    return s1.endswith(s2)
+    return 1 if s1.endswith(s2) else 0
 
 def mysql_contains(s1, s2):
     if s1 is None or s2 is None:
         return None
     try:
-        return s2 in s1
+        return 1 if s2 in s1 else 0
     except:
         s1, s2 = ensure_str(s1), ensure_str(s2)
-        return s2 in s1
+        return 1 if s2 in s1 else 0
 
 def mysql_crc32(s):
     if s is None:

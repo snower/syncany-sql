@@ -805,11 +805,11 @@ class Compiler(object):
                     value_expressions = [aggregate_expression.args.get("this")]
             aggregate_value_expressions.append(value_expressions)
 
+        if "aggregate" not in config:
+            config["aggregate"] = copy.deepcopy(DEAULT_AGGREGATE)
         if len(aggregate_expressions) == 1 and aggregate_expressions[0] is expression:
             value_column = self.compile_aggregate_value(aggregate_expressions[0], config, arguments, primary_table, join_tables,
                                                         aggregate_value_expressions[0])
-            if "aggregate" not in config:
-                config["aggregate"] = copy.deepcopy(DEAULT_AGGREGATE)
             if distinct_column_index == 0 and value_column:
                 aggregate_distinct_keys = [copy.deepcopy(value_column[1])] if len(value_column) == 2 else copy.deepcopy(value_column[1:])
                 if not config["aggregate"]["distinct_keys"]:

@@ -34,7 +34,7 @@ def ensure_int(x):
         if isinstance(x, datetime.datetime):
             return int(x.strftime("%Y%m%d%H%M%S"))
         return int(x.strftime("%Y%m%d"))
-    if isinstance(x, datetime.datetime):
+    if isinstance(x, datetime.time):
         return int(x.strftime("%H%M%S"))
     if isinstance(x, str):
         try:
@@ -56,7 +56,7 @@ def ensure_float(x):
         if isinstance(x, datetime.datetime):
             return float(x.strftime("%Y%m%d%H%M%S")) + x.microsecond / 1000
         return float(x.strftime("%Y%m%d"))
-    if isinstance(x, datetime.datetime):
+    if isinstance(x, datetime.time):
         return float(x.strftime("%H%M%S")) + x.microsecond / 1000
     if isinstance(x, str):
         try:

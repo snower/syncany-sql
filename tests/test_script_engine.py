@@ -38,7 +38,7 @@ class ScriptEngineTestCase(TestCase):
             engine.execute('''
                 INSERT INTO `stats_data` SELECT site_id, site_name, count(*) order_cnt, sum(site_amount) total_amount 
                 FROM test_data GROUP BY site_id;
-                ''')
+            ''')
             self.assertEqual(engine.get_memory_datas("stats_data"), self.get_stats_data())
             self.assertEqual(engine.pop_memory_datas("stats_data"), self.get_stats_data())
             self.assertEqual(engine.get_memory_datas("stats_data"), [])
@@ -65,10 +65,10 @@ class ScriptEngineTestCase(TestCase):
                 self.assertEqual(context.get_memory_datas("result_data"), [])
 
             engine.execute('''
-                                insert into `result_data` select test_func() as test_func, @test_var as test_var;
+                insert into `result_data` select test_func() as test_func, @test_var as test_var;
                                 
-                                insert into `result_aaa` select @aaa as aaa;
-                            ''')
+                insert into `result_aaa` select @aaa as aaa;
+            ''')
             self.assertEqual(engine.get_memory_datas("result_data"),
                              [{"test_func": 1, "test_var": 1}])
             self.assertEqual(engine.pop_memory_datas("result_data"),

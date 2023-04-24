@@ -7,7 +7,7 @@ select DATE_ADD(now(), 1), ADDDATE(now(), INTERVAL 20 DAY), DATE_SUB(now(), INTE
 
 select ADDTIME(now(), '10:00'), SUBTIME(now(), '1 10:00');
 
-select DATE_FORMAT(now(), '%Y-%m-%d %H:%M:%S'), TIME_FORMAT(now(), '%H:%M:%S'), TIME_TO_SEC('10:11:00'), SEC_TO_TIME(234);
+select DATE_FORMAT(datetime('2023-04-24 17:07:08'), '%Y-%m-%d %H:%M:%S'), TIME_FORMAT(datetime('2023-04-24 17:07:08'), '%H:%M:%S'), TIME_TO_SEC('10:11:00'), SEC_TO_TIME(234);
 
 select CURDATE(), CURRENT_DATE(), CURRENT_TIME(), CURTIME();
 
