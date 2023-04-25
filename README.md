@@ -24,8 +24,14 @@
 
 ## 安装
 
-```
+```bash
 pip3 install syncanysql
+```
+
+#### Docker
+
+```bash
+docker pull sujin190/syncany-sql
 ```
 
 ## 查询Nginx日志
