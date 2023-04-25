@@ -167,10 +167,9 @@ class ScriptEngine(object):
         db = db if db else "--"
         if db in self.databases:
             return self.databases[db]
-        session_config = self.executor.session_config.get()
-        databases = session_config["databases"] if session_config and "databases" in session_config else []
         try:
-            database_config = dict(**[database for database in databases if database["name"] == db][0])
+            database_config = dict(**[database for database in self.executor.session_config.get()["databases"]
+                                      if database["name"] == db][0])
         except Exception:
             raise DatabaseUnknownException("%s is unknown" % db)
         database_cls = find_database(database_config.pop("driver"))
@@ -183,26 +182,23 @@ class ScriptEngine(object):
         if self.manager is None:
             return []
         database = self.get_database("--")
-        if not hasattr(database, "ensure_memory_databases"):
-            raise DatabaseUnknownException("memory is unknown")
-        database.ensure_memory_databases()
-        return database.memory_databases.get("--." + name, [])
+        query = database.query("--." + name, ["id"])
+        return query.commit()
 
     def pop_memory_datas(self, name):
         if self.manager is None:
             return []
         database = self.get_database("--")
-        if not hasattr(database, "ensure_memory_databases"):
-            raise DatabaseUnknownException("memory is unknown")
-        database.ensure_memory_databases()
-        return database.memory_databases.pop("--." + name, [])
+        query = database.query("--." + name, ["id"])
+        datas = query.commit()
+        delete = database.delete("--." + name, ["id"])
+        delete.commit()
+        return datas
 
     def push_memory_datas(self, name, datas):
         database = self.get_database("--")
-        if not hasattr(database, "ensure_memory_databases"):
-            raise DatabaseUnknownException("memory is unknown")
-        database.ensure_memory_databases()
-        database.memory_databases["--." + name] = datas if isinstance(datas, list) else [datas]
+        insert = database.insert("--." + name, ["id"], datas=datas if isinstance(datas, list) else [datas])
+        insert.commit()
 
     def terminal(self):
         executer_context = ExecuterContext.current()

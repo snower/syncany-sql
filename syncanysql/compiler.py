@@ -126,7 +126,9 @@ class Compiler(object):
     def compile_delete(self, expression, arguments):
         config = copy.deepcopy(self.config)
         config.update({
-            "input": "&.--.__subquery_null_" + str(uuid.uuid1().int) + "::id",
+            "input": "&.--.--::id",
+            "loader": "const_loader",
+            "loader_arguments":  {"datas": [{}]},
             "output": "&.-.&1::id",
             "querys": {},
             "schema": "$.*",
@@ -240,7 +242,7 @@ class Compiler(object):
                 datas.append(data)
             config["schema"] = {column_name: "$." + column_name + (("|" + column_type) if column_type else "")
                                 for column_name, column_type in columns}
-            config["input"] = "&.-.-::" + columns[0][0]
+            config["input"] = "&.--.--::" + columns[0][0]
             config["loader"] = "const_loader"
             config["loader_arguments"] = {"datas": datas}
         else:
@@ -289,6 +291,8 @@ class Compiler(object):
             primary_table["name"] = "--"
             primary_table["table_alias"] = "--"
             primary_table["table_name"] = "--"
+            config["loader"] = "const_loader"
+            config["loader_arguments"] = {"datas": [{}]}
             arguments["@limit"] = 1
             arguments["@batch"] = 0
         else:
@@ -695,7 +699,9 @@ class Compiler(object):
     def compile_query_condition(self, expression, config, arguments, primary_table, typing_filters):
         if isinstance(expression, sqlglot_expressions.Select):
             select_expressions = expression.args.get("expressions")
-            if not select_expressions or len(select_expressions) != 1 or not self.is_column(select_expressions[0], config, arguments):
+            if not select_expressions or len(select_expressions) != 1 or \
+                    (not isinstance(select_expressions[0], sqlglot_expressions.Alias) and
+                     not self.is_column(select_expressions[0], config, arguments)):
                 raise SyncanySqlCompileException('error subquery, there must be only one query field, related sql "%s"'
                                                  % self.to_sql(expression))
             if expression.args.get("group") or expression.args.get("having") \
@@ -737,7 +743,10 @@ class Compiler(object):
             raise SyncanySqlCompileException('error subquery, there must be only one select from table, related sql "%s"'
                                              % self.to_sql(expression))
         table_info = self.parse_table(from_expression.expressions[0], config, arguments)
-        column_info = self.parse_column(select_expressions[0], config, arguments)
+        if isinstance(select_expressions[0], sqlglot_expressions.Alias):
+            column_info = self.parse_column(select_expressions[0].args["this"], config, arguments)
+        else:
+            column_info = self.parse_column(select_expressions[0], config, arguments)
         if column_info["typing_filters"] and typing_filters:
             column_info["typing_filters"] = typing_filters
         querys = {"querys": {}}

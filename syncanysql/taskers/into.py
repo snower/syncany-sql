@@ -2,7 +2,7 @@
 # 2023/3/17
 # create by: snower
 
-from syncany.database.memory import MemoryDBFactory, MemoryDBCollection
+from syncany.database import find_database, DatabaseUnknownException
 
 
 class IntoTasker(object):
@@ -22,41 +22,55 @@ class IntoTasker(object):
 
     def run(self, executor, session_config, manager):
         try:
+            core_tasker = self.tasker.tasker
+            if not core_tasker:
+                return 1
+            name = core_tasker.outputer.name
+            schema_keys = tuple(core_tasker.schema.keys()) if isinstance(core_tasker.schema, dict) else None
             exit_code = self.tasker.run(executor, session_config, manager)
             if exit_code is not None and exit_code != 0:
                 return exit_code
-            collection_key = "--.__into_" + str(id(self))
-            for config_key, factory in manager.database_manager.factorys.items():
-                if not isinstance(factory, MemoryDBFactory):
-                    continue
-                for driver in factory.drivers:
-                    if not isinstance(driver.instance, MemoryDBCollection):
-                        continue
-                    for key in list(driver.instance.keys()):
-                        if collection_key != key:
+
+            try:
+                database_config = dict(**[database for database in session_config.get()["databases"]
+                                          if database["name"] == "--"][0])
+            except (TypeError, KeyError, IndexError):
+                raise DatabaseUnknownException("memory db is unknown")
+            database_cls = find_database(database_config.pop("driver"))
+            if not database_cls:
+                return
+            database = database_cls(manager.database_manager, database_config).build()
+            try:
+                query = database.query(name, ["id"])
+                datas = query.commit()
+                delete = database.delete(name, ["id"])
+                delete.commit()
+
+                if schema_keys and len(schema_keys) == 1:
+                    if len(datas) == 1:
+                        value = datas[0][schema_keys[0]] if schema_keys[0] in datas[0] else None
+                    else:
+                        value = [data[schema_keys[0]] for data in datas if schema_keys[0] in data]
+                    if not value:
+                        if self.config["variables"][0] in executor.env_variables:
+                            executor.env_variables[self.config["variables"][0]] = None
+                    else:
+                        executor.env_variables[self.config["variables"][0]] = value
+                else:
+                    if len(datas) == 1:
+                        value = {datas[0].get(key) for key in schema_keys}
+                    else:
+                        value = [{data.get(key) for key in schema_keys} for data in datas]
+                    value_keys = list(value.keys()) if isinstance(value, dict) else []
+                    for i in range(len(self.config["variables"])):
+                        if i >= len(value_keys):
+                            if self.config["variables"][i] in executor.env_variables:
+                                executor.env_variables[self.config["variables"][i]] = None
                             continue
-                        collection_instance = driver.instance[key]
-                        driver.instance.remove(key)
-                        if len(collection_instance) == 1:
-                            collection_instance = collection_instance[0]
-                        if len(self.config["variables"]) == 1:
-                            if not collection_instance:
-                                if self.config["variables"][0] in executor.env_variables:
-                                    executor.env_variables[self.config["variables"][0]] = None
-                            elif isinstance(collection_instance, dict):
-                                executor.env_variables[self.config["variables"][0]] = list(collection_instance.values())[0] \
-                                    if len(collection_instance) == 1 else collection_instance
-                            else:
-                                executor.env_variables[self.config["variables"][0]] = collection_instance
-                        else:
-                            collection_keys = list(collection_instance.keys()) if isinstance(collection_instance, dict) else []
-                            for i in range(len(self.config["variables"])):
-                                if i >= len(collection_keys):
-                                    if self.config["variables"][i] in executor.env_variables:
-                                        executor.env_variables[self.config["variables"][i]] = None
-                                    continue
-                                executor.env_variables[self.config["variables"][i]] = collection_instance[collection_keys[i]]
-                        return exit_code
+                        executor.env_variables[self.config["variables"][i]] = value[value_keys[i]]
+                return exit_code
+            finally:
+                database.close()
         finally:
             self.tasker = None
 

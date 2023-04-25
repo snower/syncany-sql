@@ -10,7 +10,7 @@ import threading
 from collections import deque
 from syncany.filters import StringFilter
 from syncany.calculaters import find_calculater
-from syncany.database.memory import MemoryDBFactory, MemoryDBCollection
+from syncany.database import find_database
 from .errors import SyncanySqlCompileException
 from .utils import parse_value
 from .compiler import Compiler
@@ -151,18 +151,23 @@ class Executor(object):
         self.runners.append(tasker)
 
     def clear_temporary_memory_collection(self, names):
-        for config_key, factory in self.manager.database_manager.factorys.items():
-            if not isinstance(factory, MemoryDBFactory):
-                continue
-            for driver in factory.drivers:
-                if not isinstance(driver.instance, MemoryDBCollection):
+        try:
+            database_config = dict(**[database for database in self.session_config.get()["databases"]
+                                      if database["name"] == "--"][0])
+        except (TypeError, KeyError, IndexError):
+            return
+        database_cls = find_database(database_config.pop("driver"))
+        if not database_cls:
+            return
+        database = database_cls(self.manager.database_manager, database_config).build()
+        try:
+            for name in names:
+                if self.runners and database.is_streaming(name):
                     continue
-                for key in list(driver.instance.keys()):
-                    if key not in names or (self.runners and
-                                            self.manager.database_manager.get_state(
-                                                config_key + "::" + key, "is_streaming")):
-                        continue
-                    driver.instance.remove(key)
+                delete = database.delete(name, ["id"])
+                delete.commit()
+        finally:
+            database.close()
 
     def __enter__(self):
         self._thread_local.current_executor = self

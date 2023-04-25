@@ -73,7 +73,7 @@ class ScriptEngineTestCase(TestCase):
                              [{"test_func": 1, "test_var": 1}])
             self.assertEqual(engine.pop_memory_datas("result_data"),
                              [{"test_func": 1, "test_var": 1}])
-            self.assertEqual(engine.get_memory_datas("test_context_data"), [])
+            self.assertEqual(engine.get_memory_datas("result_data"), [])
 
             self.assertEqual(engine.pop_memory_datas("result_aaa"), [{"aaa": 1}])
 
