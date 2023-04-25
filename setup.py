@@ -33,7 +33,7 @@ setup(
     author='snower',
     author_email='sujian199@gmail.com',
     license='MIT',
-    packages=find_packages(),
+    packages=find_packages(exclude=['*tests*']),
     zip_safe=False,
     install_requires=[
         "pyyaml>=5.1.2",
