@@ -122,3 +122,12 @@ class TransformExampleTestCase(ExampleTestCase):
                               {'key': 'name', 'value': 'wanzhi'}, {'key': 'age', 'value': 22}], "data error")
         self.assert_data(41, [{'key': 'id', 'name': 'limei', 'value': 1}, {'key': 'age', 'name': 'limei', 'value': 18}, {'key': 'id', 'name': 'wanzhi', 'value': 2},
                               {'key': 'age', 'name': 'wanzhi', 'value': 22}], "data error")
+
+    def test_transform_customize(self):
+        self.execute("transform_customize.sql")
+
+        self.assert_data(4, [{'amount': 10, 'create_date': '2023-01-03', 'name': '黄豆网', 'order_id': 7, 'row_id': 1, 'site_id': 8},
+                             {'amount': 7.2, 'create_date': '2023-01-03', 'name': '青菜网', 'order_id': 2, 'row_id': 2, 'site_id': 15},
+                             {'amount': 4.7, 'create_date': '2023-01-05', 'name': '火箭网', 'order_id': 4, 'row_id': 3, 'site_id': 28},
+                             {'amount': 11.2, 'create_date': '2023-01-07', 'name': '卫星网', 'order_id': 6, 'row_id': 4, 'site_id': 34}],
+                         "data error")

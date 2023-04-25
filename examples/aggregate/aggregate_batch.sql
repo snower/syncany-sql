@@ -1,6 +1,6 @@
 
 use `aggregate_customize`;
-
+set @batch=2;
 
 select count(*) as cnt, sum(amount) as total_amount, avg(amount) as avg_amount, min(amount) as min_amount, max(amount) as max_amount from `data/orders.json` where status=0;
 
