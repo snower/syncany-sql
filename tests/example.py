@@ -28,7 +28,7 @@ class ExampleTestCase(TestCase):
         fileParser = FileParser(os.path.join("examples", self.example_name, filename))
         sqls = fileParser.load()
         for sql in sqls:
-            if sql.sql[:6].lower() != "select":
+            if sql.sql[:6].lower() != "select" or "into" in sql.sql:
                 continue
             sql.sql = "INSERT INTO `__test__%s_%s` %s" % (self.__class__.__name__, sql.lineno, sql.sql)
 

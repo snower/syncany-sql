@@ -51,23 +51,25 @@ class IntoTasker(object):
                         value = datas[0][schema_keys[0]] if schema_keys[0] in datas[0] else None
                     else:
                         value = [data[schema_keys[0]] for data in datas if schema_keys[0] in data]
-                    if not value:
+                else:
+                    if len(datas) == 1:
+                        value = {key: datas[0].get(key) for key in schema_keys}
+                    else:
+                        value = [{key: data.get(key) for key in schema_keys} for data in datas]
+
+                if len(self.config["variables"]) == 1:
+                    if value is None:
                         if self.config["variables"][0] in executor.env_variables:
                             executor.env_variables[self.config["variables"][0]] = None
                     else:
                         executor.env_variables[self.config["variables"][0]] = value
                 else:
-                    if len(datas) == 1:
-                        value = {datas[0].get(key) for key in schema_keys}
-                    else:
-                        value = [{data.get(key) for key in schema_keys} for data in datas]
-                    value_keys = list(value.keys()) if isinstance(value, dict) else []
                     for i in range(len(self.config["variables"])):
-                        if i >= len(value_keys):
+                        if i >= len(schema_keys):
                             if self.config["variables"][i] in executor.env_variables:
                                 executor.env_variables[self.config["variables"][i]] = None
                             continue
-                        executor.env_variables[self.config["variables"][i]] = value[value_keys[i]]
+                        executor.env_variables[self.config["variables"][i]] = value[schema_keys[i]]
                 return exit_code
             finally:
                 database.close()
