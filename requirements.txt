@@ -1,11 +1,25 @@
+pytz>=2018.5
+tzlocal>=1.5.1
 pyyaml>=5.1.2
+pendulum>=2.1.2
 sqlglot>=10.6.2
 Pygments>=2.14.0
 Pygments>=2.14.0
 prompt-toolkit>=3.0.36
 rich>=9.11.1
+
 pymongo>=3.6.1
 PyMySQL>=0.8.1
+openpyxl>=2.5.0
+psycopg2>=2.8.6
+elasticsearch>=6.3.1
+influxdb>=5.3.1
+clickhouse_driver>=0.1.5
+redis>=3.5.3
+requests>=2.22.0
+pymssql>=2.2.7
+
+# Items below this point will not be included in the Docker Image
 
 ##Dev
 coverage
