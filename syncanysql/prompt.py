@@ -200,7 +200,8 @@ class CliPrompt(object):
         home_config_path = os.path.join(os.path.expanduser('~'), ".syncany")
         if not os.path.exists(home_config_path):
             os.mkdir(home_config_path)
-        database_completer_words = [database["name"] for database in (self.session_config.get().get("databases") or [])]
+        database_completer_words = [database["name"] for database in (self.session_config.get().get("databases") or [])
+                                    if database["name"] not in ("-", "--")]
         sql_completer = WordCompleter(SQL_COMPLETER_WORDS + database_completer_words, ignore_case=True)
         history = CliFileHistory(os.path.join(home_config_path, "history"))
         session = PromptSession(
