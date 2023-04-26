@@ -3,7 +3,6 @@
 # create by: snower
 
 import os
-import sys
 import copy
 import re
 import uuid
@@ -12,6 +11,7 @@ import json
 import pytz
 from syncany.taskers.core import CoreTasker
 from syncany.taskers.config import load_config
+from syncany.logger import get_logger
 from syncany.utils import set_timezone
 
 
@@ -184,6 +184,16 @@ class GlobalConfig(object):
         else:
             self.load_config(extends)
         self.merge_config(config)
+
+    def load_extensions(self):
+        extensions = self.config.get("extensions")
+        if not extensions or not isinstance(extensions, list):
+            return
+        for extension in extensions:
+            try:
+                __import__(extension, globals(), locals(), [extension.rpartition(".")[-1]])
+            except Exception as e:
+                get_logger().warning("import extension %s error %s:%s", extension, e.__class__.__name__, str(e))
 
     def merge_config(self, config):
         for k, v in config.items():

@@ -11,6 +11,7 @@ from sqlglot import maybe_parse, ParseError
 from sqlglot import expressions as sqlglot_expressions
 from sqlglot.dialects import Dialect
 from sqlglot import tokens
+from syncany.taskers.core import CoreTasker
 from .errors import SyncanySqlCompileException
 from .calculaters import is_mysql_func, find_aggregate_calculater, CalculaterUnknownException
 from .config import CONST_CONFIG_KEYS
@@ -124,7 +125,7 @@ class Compiler(object):
         raise SyncanySqlCompileException('unknown sql "%s"' % self.to_sql(expression))
 
     def compile_delete(self, expression, arguments):
-        config = copy.deepcopy(self.config)
+        config = {key: copy.deepcopy(self.config.get(key)) for key in CoreTasker.DEFAULT_CONFIG}
         config.update({
             "input": "&.--.--::id",
             "loader": "const_loader",
@@ -143,7 +144,7 @@ class Compiler(object):
         return config
 
     def compile_query(self, expression, arguments):
-        config = copy.deepcopy(self.config)
+        config = {key: copy.deepcopy(self.config.get(key)) for key in CoreTasker.DEFAULT_CONFIG}
         config.update({
             "input": "&.-.&1::id",
             "output": "&.-.&1::id",

@@ -5,7 +5,6 @@
 import os
 import sys
 import re
-import copy
 import threading
 from collections import deque
 from syncany.filters import StringFilter
@@ -120,15 +119,18 @@ class Executor(object):
             self.compile(name + "(" + str(lineno) + ")", sql)
 
     def compile(self, name, sql):
-        config = copy.deepcopy(self.session_config.get())
+        config = self.session_config.get()
         config["name"] = name
-        compiler = Compiler(config, self.env_variables)
-        arguments = {"@verbose": self.env_variables.get("@verbose", False), "@timeout": self.env_variables.get("@timeout", 0),
-                     "@limit": self.env_variables.get("@limit", 0), "@batch": self.env_variables.get("@batch", 0),
-                     "@streaming": self.env_variables.get("@streaming", False), "@recovery": self.env_variables.get("@recovery", False),
-                     "@join_batch": self.env_variables.get("@join_batch", 10000), "@insert_batch": self.env_variables.get("@insert_batch", 0),
-                     "@primary_order": False}
-        tasker = compiler.compile(sql, arguments)
+        try:
+            compiler = Compiler(config, self.env_variables)
+            arguments = {"@verbose": self.env_variables.get("@verbose", False), "@timeout": self.env_variables.get("@timeout", 0),
+                         "@limit": self.env_variables.get("@limit", 0), "@batch": self.env_variables.get("@batch", 0),
+                         "@streaming": self.env_variables.get("@streaming", False), "@recovery": self.env_variables.get("@recovery", False),
+                         "@join_batch": self.env_variables.get("@join_batch", 10000), "@insert_batch": self.env_variables.get("@insert_batch", 0),
+                         "@primary_order": False}
+            tasker = compiler.compile(sql, arguments)
+        finally:
+            config["name"] = ""
         self.runners.extend(tasker.start(name, self, self.session_config, self.manager, arguments))
 
     def execute(self):

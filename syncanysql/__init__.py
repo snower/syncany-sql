@@ -119,6 +119,7 @@ class ScriptEngine(object):
             return
         init_execute_files = self.config.load()
         self.config.config_logging()
+        self.config.load_extensions()
         self.manager = TaskerManager(DatabaseManager())
         self.executor = Executor(self.manager, self.config.session())
         if init_execute_files:

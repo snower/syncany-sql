@@ -80,6 +80,10 @@ databases:
     driver: sqlite
     database: ':memory:'
 
+# 配置导入扩展，可用于注册自定义database driver、自定义普通函数或自定义聚合函数及其他扩展功能
+# extensions:
+#  - myext
+
 # 配置全局导入包，也可在SQL中用"use"指令导入
 #imports:
 #  np: numpy # 导入numpy到别名numpy，可在SQL中"np$array()"使用

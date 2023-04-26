@@ -36,6 +36,7 @@ def main():
             global_config.config_logging(False)
         else:
             global_config.config_logging(True)
+        global_config.load_extensions()
         manager = TaskerManager(DatabaseManager())
 
         try:

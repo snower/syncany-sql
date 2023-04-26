@@ -46,7 +46,11 @@ class IntoTasker(object):
                 delete = database.delete(name, ["id"])
                 delete.commit()
 
-                if schema_keys and len(schema_keys) == 1:
+                if not schema_keys:
+                    value = datas[0] if len(datas) == 1 else datas
+                    if len(self.config["variables"]) == 1 and isinstance(value, dict) and len(value) == 1:
+                        value = list(value.values())[0]
+                elif len(schema_keys) == 1:
                     if len(datas) == 1:
                         value = datas[0][schema_keys[0]] if schema_keys[0] in datas[0] else None
                     else:
@@ -69,7 +73,10 @@ class IntoTasker(object):
                             if self.config["variables"][i] in executor.env_variables:
                                 executor.env_variables[self.config["variables"][i]] = None
                             continue
-                        executor.env_variables[self.config["variables"][i]] = value[schema_keys[i]]
+                        if isinstance(value, dict):
+                            executor.env_variables[self.config["variables"][i]] = value[schema_keys[i]]
+                        else:
+                            executor.env_variables[self.config["variables"][i]] = [v[schema_keys[i]] for v in value]
                 return exit_code
             finally:
                 database.close()
