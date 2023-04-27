@@ -1032,9 +1032,10 @@ class Compiler(object):
                 column = ["@mysql::" + calculater_name]
             else:
                 if calculater_name[:8] == "convert_":
-                    column = ["@" + "::".join(calculater_name.split("$")) + "|" + calculater_name[8:]]
+                    column = ["@" + calculater_name + "|" + calculater_name[8:]]
                 else:
-                    column = ["@" + "::".join(calculater_name.split("$"))]
+                    calculater_modules = calculater_name.split("$")
+                    column = ["@" + calculater_modules[0] + (("::" + ".".join(calculater_modules[1:])) if len(calculater_modules) >= 2 else "")]
             for arg_expression in expression.args.get("expressions", []):
                 if self.is_const(arg_expression, config, arguments):
                     column.append(self.compile_const(arg_expression, config, arguments,

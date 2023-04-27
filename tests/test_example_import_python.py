@@ -14,13 +14,16 @@ class ImportPythonExampleTestCase(ExampleTestCase):
     def test_import_python(self):
         self.execute("import_python.sql")
 
-        self.assert_value(7, "UTILS$HELLO()", 'hello world!', "data error")
+        self.assert_value(8, "UTILS$HELLO()", 'hello world!', "data error")
 
-        self.assert_value(9, "UTILS$ADD_NUMBER(1, 2)", 3, "data error")
-        self.assert_value(9, "UTILS$SUM_ARRAY((1, 2, 3))", 6, "data error")
+        self.assert_value(10, "UTILS$ADD_NUMBER(1, 2)", 3, "data error")
+        self.assert_value(10, "UTILS$SUM_ARRAY((1, 2, 3))", 6, "data error")
 
-        self.assert_value(11, "PARSING$PARSE('2023-02-10 10:33:22')",
+        self.assert_value(12, "PARSING$PARSE('2023-02-10 10:33:22')",
                           lambda value: isinstance(value, datetime.datetime), "data error")
 
-        self.assert_value(13, "SYS$VERSION()", sys.version, "data error")
-        self.assert_value(13, "OS$GETCWD()", lambda value: os.getcwd() in value, "data error")
+        self.assert_value(14, "SYS$VERSION()", sys.version, "data error")
+        self.assert_value(14, "OS$GETCWD()", lambda value: os.getcwd() in value, "data error")
+
+        self.assert_value(16, "PYTHON_DATETIME$DATETIME$NOW()",
+                          lambda value: isinstance(value, datetime.datetime), "data error")
