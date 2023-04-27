@@ -129,7 +129,7 @@ class Compiler(object):
         config.update({
             "input": "&.--.--::id",
             "loader": "const_loader",
-            "loader_arguments":  {"datas": [{}]},
+            "loader_arguments":  {"datas": []},
             "output": "&.-.&1::id",
             "querys": {},
             "schema": "$.*",

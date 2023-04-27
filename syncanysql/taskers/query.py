@@ -178,6 +178,8 @@ class QueryTasker(object):
     def compile_distinct_config(self, aggregate):
         subquery_name = "__subquery_" + str(uuid.uuid1().int) + "_distinct"
         config = copy.deepcopy(self.config)
+        config.pop("loader", None)
+        config.pop("loader_arguments", None)
         config.update({
             "input": "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0],
             "output": self.config["output"],
@@ -236,11 +238,15 @@ class QueryTasker(object):
             distinct_aggregate["having_columns"] = aggregate["having_columns"]
         config["pipelines"] = self.config.pop("pipelines", [])
         self.config["output"] = "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0] + " use I"
+        self.config.pop("outputer", None)
+        self.config.pop("outputer_arguments", None)
         return config
 
     def compile_reduce_config(self, aggregate):
         subquery_name = "__subquery_" + str(uuid.uuid1().int) + "_reduce"
         config = copy.deepcopy(self.config)
+        config.pop("loader", None)
+        config.pop("loader_arguments", None)
         config.update({
             "input": "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0],
             "output": self.config["output"],
@@ -268,6 +274,8 @@ class QueryTasker(object):
             self.config["schema"]["_aggregate_key_"] = aggregate["key"]
         config["aggregate"] = aggregate
         self.config["output"] = "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0] + " use I"
+        self.config.pop("outputer", None)
+        self.config.pop("outputer_arguments", None)
         self.reduce_config = config
 
     def run_reduce(self, executor, session_config, manager, arguments, final_reduce=False):
