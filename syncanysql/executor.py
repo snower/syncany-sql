@@ -26,11 +26,11 @@ class EnvVariables(dict):
         self.parent = parent
 
     @classmethod
-    def build_global(cls):
+    def build_global(cls, session_config):
         env_variables = cls()
         env_variables.update({key.lower(): value for key, value in os.environ.items()})
         env_variables["home"] = os.path.expanduser('~')
-        env_variables["syncany_home"] = os.path.join(os.path.expanduser('~'), ".syncany")
+        env_variables["syncany_home"] = session_config.get_home()
         env_variables["cwd"] = os.getcwd()
         env_variables["platform"] = sys.platform
         for arg in sys.argv:
@@ -77,8 +77,9 @@ class Executor(object):
         self.runners = deque()
         self.tasker = None
         if self.global_env_variables is None:
-            self.__class__.global_env_variables = EnvVariables.build_global()
-        self.env_variables = EnvVariables(parent_executor.env_variables if parent_executor else self.global_env_variables)
+            self.__class__.global_env_variables = EnvVariables.build_global(session_config)
+        self.env_variables = EnvVariables(parent_executor.env_variables if parent_executor
+                                          else self.global_env_variables)
 
     def compile_variable(self, sql):
         variables = ENV_VARIABLE_RE.findall(sql)

@@ -197,7 +197,7 @@ class CliPrompt(object):
         self.executor = executor
 
     def run(self):
-        home_config_path = os.path.join(os.path.expanduser('~'), ".syncany")
+        home_config_path = self.session_config.get_home()
         if not os.path.exists(home_config_path):
             os.mkdir(home_config_path)
         database_completer_words = [database["name"] for database in (self.session_config.get().get("databases") or [])

@@ -24,6 +24,11 @@ class GlobalConfig(object):
     def __init__(self):
         self.config = copy.deepcopy(CoreTasker.DEFAULT_CONFIG)
 
+    def get_home(self):
+        if "SYNCANY_HOME" in os.environ:
+            return os.path.abspath(os.environ["SYNCANY_HOME"])
+        return os.path.abspath(os.path.join(os.path.expanduser('~'), ".syncany"))
+
     def get(self):
         return self.config
 
@@ -121,9 +126,9 @@ class GlobalConfig(object):
         return query, args
 
     def load(self, custom_config=None):
-        home_config_path = os.path.join(os.path.expanduser('~'), ".syncany")
-        for filename in (os.path.join(home_config_path, "config.json"), os.path.join(home_config_path, "config.yaml"),
-                         "config.json", "config.yaml"):
+        home_config_path, cwd_config_path = self.get_home(), os.path.abspath(os.getcwd())
+        for filename in {os.path.join(home_config_path, "config.json"), os.path.join(home_config_path, "config.yaml"),
+                         os.path.join(cwd_config_path, "config.json"), os.path.join(cwd_config_path, "config.yaml")}:
             if not os.path.exists(filename):
                 continue
             if "extends" not in self.config or not isinstance(self.config["extends"], list):
