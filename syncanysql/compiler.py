@@ -1282,7 +1282,8 @@ class Compiler(object):
         primary_sort_keys, sort_keys = [], []
         for order_expression in expression:
             column = self.parse_column(order_expression.args["this"], config, arguments)
-            if (column["table_name"] and primary_table["table_alias"] == column["table_name"]) or \
+            if not isinstance(config["schema"], dict) or \
+                    (column["table_name"] and primary_table["table_alias"] == column["table_name"]) or \
                     (not column["table_name"] and column["column_name"] in primary_table["columns"]):
                 primary_sort_keys.append([column["column_name"], True if order_expression.args["desc"] else False])
             sort_keys.append((column["column_name"], True if order_expression.args["desc"] else False))
