@@ -4,6 +4,7 @@
 
 import os
 import copy
+import time
 import traceback
 import uuid
 from syncany.logger import get_logger
@@ -49,8 +50,10 @@ class ReduceHooker(Hooker):
 
 
 class QueryTasker(object):
-    def __init__(self, config):
+    def __init__(self, config, sql_expression=None):
+        self.name = config.get("name", "")
         self.config = config
+        self.sql_expression = sql_expression
         self.reduce_config = None
         self.tasker = None
         self.dependency_taskers = []
@@ -58,6 +61,7 @@ class QueryTasker(object):
         self.tasker_generator = None
         self.updaters = []
         self.temporary_memory_collections = set([])
+        self.run_start_time = 0
 
     def start(self, name, executor, session_config, manager, arguments):
         dependency_taskers, aggregate = [], self.config.pop("aggregate", None)
@@ -123,6 +127,7 @@ class QueryTasker(object):
             self.execute_updater(executor, session_config, manager)
             if not self.tasker_generator:
                 self.tasker_generator = self.run_tasker(executor, session_config, manager, self.tasker, self.dependency_taskers)
+                self.run_start_time = time.time()
             else:
                 _thread_local.current_tasker = self.tasker
             while True:
@@ -134,10 +139,16 @@ class QueryTasker(object):
                 except StopIteration as e:
                     exit_code = e.value
                     if exit_code is not None and exit_code != 0:
+                        if self.sql_expression:
+                            get_logger().info("execute SQL %s finish with code %s %.2fms", self.name, exit_code,
+                                              (time.time() - self.run_start_time) * 1000)
                         return exit_code
                     break
             if self.reduce_config:
-                return self.run_reduce(executor, session_config, manager, self.arguments, True)
+                exit_code = self.run_reduce(executor, session_config, manager, self.arguments, True)
+            if self.sql_expression:
+                get_logger().info("execute SQL %s finish with code %s %.2fms", self.name, exit_code,
+                                  (time.time() - self.run_start_time) * 1000)
             return exit_code
         finally:
             names = self.get_temporary_memory_collections()

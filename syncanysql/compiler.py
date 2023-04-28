@@ -85,7 +85,7 @@ class Compiler(object):
         if isinstance(expression, sqlglot_expressions.Delete):
             return DeleteTasker(self.compile_delete(expression, arguments))
         elif isinstance(expression, (sqlglot_expressions.Union, sqlglot_expressions.Insert, sqlglot_expressions.Select)):
-            query_tasker = QueryTasker(self.compile_query(expression, arguments))
+            query_tasker = QueryTasker(self.compile_query(expression, arguments), expression)
             if not expression.args.get("into"):
                 return query_tasker
             if not isinstance(expression, sqlglot_expressions.Select):
@@ -93,7 +93,8 @@ class Compiler(object):
             return IntoTasker(query_tasker, self.compile_select_into(expression.args.get("into"), arguments))
         elif isinstance(expression, sqlglot_expressions.Command):
             if expression.args["this"].lower() == "explain" and self.is_const(expression.args["expression"], {}, arguments):
-                return ExplainTasker(self.compile(self.parse_const(expression.args["expression"], {}, arguments)["value"], arguments))
+                return ExplainTasker(self.compile(self.parse_const(expression.args["expression"], {}, arguments)["value"],
+                                                  arguments), self.to_sql(expression.args["expression"]))
             if expression.args["this"].lower() == "set" and (isinstance(expression.args["expression"], str)
                                                              or self.is_const(expression.args["expression"], {}, arguments)):
                 if isinstance(expression.args["expression"], str):
