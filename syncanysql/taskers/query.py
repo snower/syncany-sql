@@ -34,7 +34,7 @@ class ReduceHooker(Hooker):
     def outputed(self, tasker, datas):
         self.count += len(datas)
         self.batch_count += 1
-        if self.batch > 0 and self.count >= self.batch:
+        if self.batch > 0 and len(datas) < self.batch and self.count >= self.batch:
             self.count, self.batch_count = 0, 1
             self.tasker.run_reduce(self.executor, self.session_config, self.manager, self.arguments, False)
         else:
@@ -64,15 +64,13 @@ class QueryTasker(object):
         self.run_start_time = 0
 
     def start(self, name, executor, session_config, manager, arguments):
-        dependency_taskers, aggregate = [], self.config.pop("aggregate", None)
+        dependency_taskers, where_schema, aggregate = [], self.config.pop("where_schema", None), self.config.pop("aggregate", None)
         if aggregate and aggregate.get("distinct_keys"):
             self.config, distinct_config = self.compile_distinct_config(aggregate), self.config
             distinct_config["name"] = distinct_config["name"] + "#select@distinct"
             distinct_tasker = QueryTasker(distinct_config)
             distinct_tasker.start(name, executor, session_config, manager, copy.deepcopy(arguments))
             dependency_taskers.append(distinct_tasker)
-            arguments["@limit"], arguments["@batch"] = 0, 0
-            arguments["@primary_order"] = False
 
         for dependency_config in self.config.get("dependencys", []):
             kn, knl = (dependency_config["name"] + "@"), len(dependency_config["name"] + "@")
@@ -100,18 +98,21 @@ class QueryTasker(object):
             elif [aggregate_column["final_value"] for aggregate_column in aggregate["schema"].values()
                   if aggregate_column["final_value"]]:
                 require_reduce = True
+        if where_schema:
+            require_reduce = True
         if require_reduce and isinstance(self.config["schema"], dict) and not arguments.get("@streaming"):
-            if limit > 0 and batch <= 0:
-                batch = min(max(*(int(arguments.get(key, 0)) for key in ("@limit", "@batch", "@join_batch"))), 1000)
-                arguments["@batch"] = batch
             if not aggregate:
                 aggregate = copy.deepcopy(DEAULT_AGGREGATE)
-            self.compile_reduce_config(aggregate)
+            self.compile_reduce_config(where_schema, aggregate)
             if reduce_intercept:
-                self.reduce_config["intercepts"] = self.config.pop("intercepts", [])
+                intercepts = self.config.pop("intercepts", [])
+                self.config["intercepts"], self.reduce_config["intercepts"] = intercepts[:1], intercepts[1:]
             self.reduce_config["pipelines"] = self.config.pop("pipelines", [])
         elif 0 < limit < batch:
             arguments["@batch"] = limit
+        if "intercepts" in self.config:
+            self.config["intercepts"] = [intercept for intercept in self.config["intercepts"] if
+                                         intercept != ["#const", True]]
         tasker = CoreTasker(self.config, manager)
         if "#" not in tasker.config["name"]:
             tasker.config["name"] = tasker.config["name"] + "#select"
@@ -232,6 +233,7 @@ class QueryTasker(object):
 
         if aggregate["key"]:
             self.config["schema"]["_aggregate_distinct_key_"] = aggregate["key"]
+            aggregate["key"] = "$._aggregate_distinct_key_"
         self.config["schema"]["_aggregate_distinct_aggregate_key_"] = ["#aggregate", group_column, ["#const", 0]]
         distinct_aggregate["key"] = group_column
         distinct_aggregate["schema"]["_aggregate_distinct_aggregate_key_"] = {
@@ -253,7 +255,7 @@ class QueryTasker(object):
         self.config.pop("outputer_arguments", None)
         return config
 
-    def compile_reduce_config(self, aggregate):
+    def compile_reduce_config(self, where_schema, aggregate):
         subquery_name = "__subquery_" + str(uuid.uuid1().int) + "_reduce"
         config = copy.deepcopy(self.config)
         config.pop("loader", None)
@@ -284,6 +286,7 @@ class QueryTasker(object):
             config["schema"]["_aggregate_key_"] = "$._aggregate_key_"
             self.config["schema"]["_aggregate_key_"] = aggregate["key"]
         config["aggregate"] = aggregate
+        config["where_schema"] = where_schema
         self.config["output"] = "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0] + " use I"
         self.config.pop("outputer", None)
         self.config.pop("outputer_arguments", None)
@@ -291,11 +294,15 @@ class QueryTasker(object):
 
     def run_reduce(self, executor, session_config, manager, arguments, final_reduce=False):
         config, arguments = copy.deepcopy(self.reduce_config), copy.deepcopy(arguments)
+        where_schema, aggregate = config.pop("where_schema", None), config.pop("aggregate", None)
         if final_reduce:
             config["schema"].pop("_aggregate_key_", None)
+            if where_schema:
+                for key in where_schema:
+                    config.pop(key, None)
             for key, column in config["schema"].items():
-                if key in config["aggregate"]["schema"] and config["aggregate"]["schema"][key]["final_value"]:
-                    config["schema"][key] = config["aggregate"]["schema"][key]["final_value"]
+                if key in aggregate["schema"] and aggregate["schema"][key]["final_value"]:
+                    config["schema"][key] = aggregate["schema"][key]["final_value"]
                 else:
                     config["schema"][key] = "$." + key
             config["name"] = config["name"] + "#select@final_reduce"
@@ -304,6 +311,9 @@ class QueryTasker(object):
             config["name"] = config["name"] + "#select@reduce"
             config["intercepts"] = []
             config["pipelines"] = []
+        if "intercepts" in config:
+            config["intercepts"] = [intercept for intercept in config["intercepts"] if
+                                    intercept != ["#const", True]]
         tasker = CoreTasker(config, manager)
         arguments["@primary_order"] = False
         arguments["@batch"] = 0

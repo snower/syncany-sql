@@ -139,7 +139,7 @@ class Compiler(object):
         table_info = self.parse_table(expression.args["this"], config, arguments)
         where_expression = expression.args.get("where")
         if where_expression and isinstance(where_expression, sqlglot_expressions.Where):
-            self.compile_where_condition(where_expression.args["this"], config, arguments, table_info)
+            self.compile_where_condition(where_expression.args["this"], config, arguments, table_info, [])
             self.parse_condition_typing_filter(expression, config, arguments)
         config["output"] = "".join(["&.", table_info["db"], ".", table_info["name"], "::id use DI"])
         return config
@@ -413,26 +413,42 @@ class Compiler(object):
 
         where_expression = expression.args.get("where")
         if where_expression and isinstance(where_expression, sqlglot_expressions.Where):
-            self.compile_where_condition(where_expression.args["this"], config, arguments, primary_table)
+            where_condition = self.compile_where_condition(where_expression.args["this"], config, arguments, primary_table, join_tables)
+            if where_condition:
+                if not config["intercepts"]:
+                    config["intercepts"] = [["#const", True], ["#const", True]]
+                config["intercepts"][0] = where_condition
             self.parse_condition_typing_filter(expression, config, arguments)
 
         having_expression = expression.args.get("having")
         if having_expression:
-            config["intercepts"].append(self.compile_having_condition(having_expression.args["this"], config, arguments,
-                                                                      primary_table))
-            if config.get("aggregate") and config["aggregate"].get("schema") and config["aggregate"].get("having_columns"):
+            having_condition = self.compile_having_condition(having_expression.args["this"], config, arguments, primary_table)
+            if config.get("aggregate") and config["aggregate"]["having_columns"]:
                 if len({True if having_column in config["aggregate"]["schema"] else False
                         for having_column in config["aggregate"]["having_columns"]}) != 1:
-                    raise SyncanySqlCompileException('error having condition, cannot contain the values before and after the aggregate calculation at the same time, related sql "%s"'
-                                                     % self.to_sql(expression))
-
-        limit_expression = expression.args.get("limit")
-        if limit_expression:
-            arguments["@limit"] = int(limit_expression.args["expression"].args["this"])
+                    raise SyncanySqlCompileException(
+                        'error having condition, cannot contain the values before and after the aggregate calculation at the same time, related sql "%s"'
+                        % self.to_sql(expression))
+            if not config["intercepts"]:
+                config["intercepts"] = [["#const", True], ["#const", True]]
+            config["intercepts"][1] = having_condition
 
         order_expression = expression.args.get("order")
         if order_expression:
             self.compile_order(order_expression.args["expressions"], config, arguments, primary_table)
+
+        if expression.args.get("offset"):
+            offset_expression, limit_expression = expression.args.get("limit"), expression.args.get("offset")
+        else:
+            offset_expression, limit_expression = None, expression.args.get("limit")
+        if limit_expression:
+            offset_value = max(int(offset_expression.args["expression"].args["this"]), 0) if offset_expression else 0
+            limit_value = max(int(limit_expression.args["expression"].args["this"]), 1)
+            if limit_value > 0 and (config["intercepts"] or (config.get("aggregate") and config["aggregate"]["schema"])
+                                    or config["pipelines"] or offset_value > 0):
+                config["pipelines"].append([">>@array::slice", "$.*|array", offset_value, offset_value + limit_value])
+            elif limit_value > 0:
+                arguments["@limit"] = limit_value
 
         if group_expression and ("aggregate" not in config or not config["aggregate"] or not config["aggregate"]["schema"]):
             self.compile_group_column(group_expression, config, arguments, primary_table, join_tables)
@@ -624,78 +640,177 @@ class Compiler(object):
         ji = [j for j in range(len(column_join_tables)) if join_column["table_name"] == column_join_tables[j]["name"]][0]
         return self.compile_column(expression, config, arguments, join_column, ji - ci)
 
-    def compile_where_condition(self, expression, config, arguments, primary_table):
-        if not expression:
-            return
+    def compile_where_condition(self, expression, config, arguments, primary_table, join_tables, is_query_condition=True):
         if isinstance(expression, sqlglot_expressions.And):
-            self.compile_where_condition(expression.args.get("this"), config, arguments, primary_table)
-            self.compile_where_condition(expression.args.get("expression"), config, arguments, primary_table)
-            return
+            left_condition = self.compile_where_condition(expression.args.get("this"), config, arguments,
+                                                          primary_table, join_tables, True)
+            right_condition = self.compile_where_condition(expression.args.get("expression"), config, arguments,
+                                                           primary_table, join_tables, True)
+            if left_condition and right_condition:
+                return ["@and", left_condition, right_condition]
+            return left_condition or right_condition or None
+        if isinstance(expression, sqlglot_expressions.Or):
+            return [
+                "@or",
+                self.compile_where_condition(expression.args.get("this"), config, arguments, primary_table, join_tables, False),
+                self.compile_where_condition(expression.args.get("expression"), config, arguments, primary_table, join_tables, False)
+            ]
+
+        def parse_calucate(calculate_expression):
+            if not isinstance(config.get("schema"), dict):
+                return calculate_expression
+            if self.is_column(calculate_expression, config, arguments):
+                calculate_name = "__where_condition_value_%d__" % id(calculate_expression)
+                self.compile_select_calculate_column(calculate_expression, config, arguments, primary_table,
+                                                     calculate_name, join_tables)
+                setattr(calculate_expression, "syncany_valuer", ["$." + calculate_name])
+                if "where_schema" not in config:
+                    config["where_schema"] = {}
+                config["where_schema"][calculate_name] = copy.deepcopy(config["schema"][calculate_name])
+                return calculate_expression
+            if not self.is_calculate(calculate_expression, config, arguments):
+                return calculate_expression
+            for _, child_expression in calculate_expression.args.items():
+                if isinstance(child_expression, list):
+                    for child_expression_item in child_expression:
+                        parse_calucate(child_expression_item)
+                else:
+                    parse_calucate(child_expression)
+            return calculate_expression
 
         def parse(expression):
-            if expression.args.get("query"):
-                table_expression, value_expression = expression.args["this"], expression.args["query"]
-            elif expression.args.get("expressions"):
-                table_expression, value_expression = expression.args["this"], expression.args["expressions"]
-            elif isinstance(expression.args["expression"], sqlglot_expressions.Subquery):
-                table_expression, value_expression = expression.args["this"], expression.args["expression"].args["this"]
+            is_query_column, left_column, left_calculater = False, None, None
+            if expression.args.get("expressions"):
+                left_expression, right_expression = expression.args["this"], expression.args["expressions"]
+            elif expression.args.get("query"):
+                left_expression, right_expression = expression.args["this"], expression.args["query"]
             else:
-                table_expression, value_expression = expression.args["this"], expression.args["expression"]
-            if not self.is_column(table_expression, config, arguments):
-                raise SyncanySqlCompileException('unknown where condition, related sql "%s"' % self.to_sql(expression))
-            condition_table = table_expression.args["table"].name if "table" in table_expression.args else None
-            if condition_table and condition_table != primary_table["table_name"]:
-                raise SyncanySqlCompileException('error where condition, Only the primary table query conditions can be added, related sql "%s"'
-                                                 % self.to_sql(expression))
+                left_expression, right_expression = expression.args["this"], expression.args["expression"]
+            if self.is_column(left_expression, config, arguments):
+                left_column = self.parse_column(left_expression, config, arguments)
+                if is_query_condition and (left_column["table_name"] and primary_table["table_alias"] == left_column["table_name"]) \
+                        or not left_column["table_name"]:
+                    is_query_column = True
+            if not is_query_column:
+                if not isinstance(config["schema"], dict):
+                    raise SyncanySqlCompileException(
+                        'error where condition, only "=,!=,>,>=,<,<=,in" operations executed by the database cannot be transparently transmitted,'
+                        ' and it is executed with the having statement, column unkown, related sql "%s"'
+                        % self.to_sql(expression))
+                left_calculater = self.compile_calculate(parse_calucate(left_expression), config, arguments,
+                                                         primary_table, [])
 
-            condition_column = self.parse_column(table_expression, config, arguments)
-            if isinstance(value_expression, (sqlglot_expressions.Select, sqlglot_expressions.Subquery, sqlglot_expressions.Union)):
-                value_column = self.compile_query_condition(value_expression, config, arguments, primary_table,
-                                                            condition_column["typing_filters"])
-                if isinstance(expression, sqlglot_expressions.In):
-                    value_column = ["@convert_array", value_column]
-                else:
-                    value_column = ["@convert_array", value_column, ":$.:0"]
-            elif isinstance(value_expression, list):
-                value_column = []
-                for value_expression_item in value_expression:
+            if isinstance(right_expression, list):
+                value_items = []
+                for value_expression_item in right_expression:
                     if not self.is_const(value_expression_item, config, arguments):
-                        raise SyncanySqlCompileException('error where condition, array must be const value, related sql "%s"' % self.to_sql(expression))
-                    value_column.append(self.parse_const(value_expression_item, config, arguments)["value"])
-            else:
-                calculate_fields = []
-                self.parse_calculate(value_expression, config, arguments, primary_table, calculate_fields)
-                if calculate_fields:
-                    raise SyncanySqlCompileException('error where condition, the value of other tables when the query condition cannot, related sql "%s"'
-                                                     % self.to_sql(expression))
-                value_column = self.compile_calculate(value_expression, config, arguments, primary_table, [])
-            if condition_column["typing_name"] not in config["querys"]:
-                config["querys"][condition_column["typing_name"]] = {}
-            return condition_column, value_column
+                        raise SyncanySqlCompileException('error where condition, array must be const value, related sql "%s"'
+                                                         % self.to_sql(expression))
+                    value_items.append(self.parse_const(value_expression_item, config, arguments)["value"])
+                return is_query_column, left_column, left_calculater, value_items
+            if self.is_column(right_expression, config, arguments):
+                if not isinstance(config["schema"], dict):
+                    raise SyncanySqlCompileException(
+                        'error where condition, only "=,!=,>,>=,<,<=,in" operations executed by the database cannot be transparently transmitted,'
+                        ' and it is executed with the having statement, column unkown, related sql "%s"'
+                        % self.to_sql(expression))
+                if not left_calculater:
+                    left_calculater = self.compile_calculate(parse_calucate(left_expression), config, arguments, primary_table, [])
+                right_calculater = self.compile_calculate(parse_calucate(right_expression), config, arguments, primary_table, [])
+                return False, left_column, left_calculater, right_calculater
+            if isinstance(right_expression, (sqlglot_expressions.Select, sqlglot_expressions.Subquery, sqlglot_expressions.Union)):
+                value_column = self.compile_query_condition(right_expression, config, arguments, primary_table,
+                                                            left_column["typing_filters"] if left_column else None)
+                if isinstance(expression, sqlglot_expressions.In):
+                    return is_query_column, left_column, left_calculater, ["@convert_array", value_column]
+                return is_query_column, left_column, left_calculater, ["@convert_array", value_column, ":$.:0"]
+            calculate_fields = []
+            self.parse_calculate(right_expression, config, arguments, primary_table, calculate_fields)
+            if is_query_column and not calculate_fields:
+                return (is_query_column, left_column, left_calculater,
+                        self.compile_calculate(parse_calucate(right_expression), config, arguments, primary_table, []))
+            if not isinstance(config["schema"], dict):
+                raise SyncanySqlCompileException(
+                    'error where condition, only "=,!=,>,>=,<,<=,in" operations executed by the database cannot be transparently transmitted,'
+                    ' and it is executed with the having statement, column must be in the query result, related sql "%s"'
+                    % self.to_sql(expression))
+            if not left_calculater:
+                left_calculater = self.compile_calculate(parse_calucate(left_expression), config, arguments,
+                                                      primary_table, [])
+            right_calculater = self.compile_calculate(parse_calucate(right_expression), config, arguments,
+                                                      primary_table, [])
+            return False, left_column, left_calculater, right_calculater
 
         if isinstance(expression, sqlglot_expressions.EQ):
-            condition_column, value_column = parse(expression)
-            config["querys"][condition_column["typing_name"]]["=="] = value_column
+            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            if is_query_condition and is_query_column:
+                if condition_column["typing_name"] not in config["querys"]:
+                    config["querys"][condition_column["typing_name"]] = {}
+                config["querys"][condition_column["typing_name"]]["=="] = right_calculater
+                return None
+            return ["@eq", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.NEQ):
-            condition_column, value_column = parse(expression)
-            config["querys"][condition_column["typing_name"]]["!="] = value_column
+            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            if is_query_condition and is_query_column:
+                if condition_column["typing_name"] not in config["querys"]:
+                    config["querys"][condition_column["typing_name"]] = {}
+                config["querys"][condition_column["typing_name"]]["!="] = right_calculater
+                return None
+            return ["@neq", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.GT):
-            condition_column, value_column = parse(expression)
-            config["querys"][condition_column["typing_name"]][">"] = value_column
+            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            if is_query_condition and is_query_column:
+                if condition_column["typing_name"] not in config["querys"]:
+                    config["querys"][condition_column["typing_name"]] = {}
+                config["querys"][condition_column["typing_name"]][">"] = right_calculater
+                return None
+            return ["@gt", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.GTE):
-            condition_column, value_column = parse(expression)
-            config["querys"][condition_column["typing_name"]][">="] = value_column
+            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            if is_query_condition and is_query_column:
+                if condition_column["typing_name"] not in config["querys"]:
+                    config["querys"][condition_column["typing_name"]] = {}
+                config["querys"][condition_column["typing_name"]][">="] = right_calculater
+                return None
+            return ["@gte", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.LT):
-            condition_column, value_column = parse(expression)
-            config["querys"][condition_column["typing_name"]]["<"] = value_column
+            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            if is_query_condition and is_query_column:
+                if condition_column["typing_name"] not in config["querys"]:
+                    config["querys"][condition_column["typing_name"]] = {}
+                config["querys"][condition_column["typing_name"]]["<"] = right_calculater
+                return None
+            return ["@lt", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.LTE):
-            condition_column, value_column = parse(expression)
-            config["querys"][condition_column["typing_name"]]["<="] = value_column
+            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            if is_query_condition and is_query_column:
+                if condition_column["typing_name"] not in config["querys"]:
+                    config["querys"][condition_column["typing_name"]] = {}
+                config["querys"][condition_column["typing_name"]]["<="] = right_calculater
+                return None
+            return ["@lte", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.In):
-            condition_column, value_column = parse(expression)
-            config["querys"][condition_column["typing_name"]]["in"] = value_column
+            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            if is_query_condition and is_query_column:
+                if condition_column["typing_name"] not in config["querys"]:
+                    config["querys"][condition_column["typing_name"]] = {}
+                config["querys"][condition_column["typing_name"]]["in"] = ["@convert_array", right_calculater]
+                return None
+            return ["@in", left_calculater, ["@convert_array", right_calculater]]
+        elif isinstance(expression, sqlglot_expressions.Like):
+            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            if not isinstance(right_calculater, list) or len(right_calculater) != 2 or right_calculater[0] != "#const":
+                raise SyncanySqlCompileException(
+                    'error having condition, like condition value must be const, related sql "%s"'
+                    % self.to_sql(expression))
+            return ["#if", ["@re::match", right_calculater[1].replace("%", ".*").replace(".*.*", "%"), left_calculater],
+                    ["#const", True], ["#const", False]]
+        elif isinstance(expression, (sqlglot_expressions.Not, sqlglot_expressions.Is)):
+            return self.compile_calculate(parse_calucate(expression), config, arguments, primary_table, [])
+        elif isinstance(expression, sqlglot_expressions.Paren):
+            return self.compile_where_condition(expression.args.get("this"), config, arguments, primary_table, join_tables, False)
         else:
-            raise SyncanySqlCompileException('error where condition, only "=,!=,>,>=,<,<=,in" operations are supported, related sql "%s"'
+            raise SyncanySqlCompileException('unknown where condition, only "=,!=,>,>=,<,<=,in" operations are supported, related sql "%s"'
                                              % self.to_sql(expression))
 
     def compile_query_condition(self, expression, config, arguments, primary_table, typing_filters):
@@ -754,7 +869,7 @@ class Compiler(object):
         querys = {"querys": {}}
         where_expression = expression.args.get("where")
         if where_expression and isinstance(where_expression, sqlglot_expressions.Where):
-            self.compile_where_condition(where_expression.args["this"], querys, arguments, primary_table)
+            self.compile_where_condition(where_expression.args["this"], querys, arguments, primary_table, [])
             self.parse_condition_typing_filter(expression, querys, arguments)
         db_table = "&." + table_info["db"] + "." + table_info["name"] + "::" + column_info["column_name"]
         if querys.get("querys"):
@@ -864,7 +979,7 @@ class Compiler(object):
                 reduce_column[1][aggregate_value_key] = [reduce_calculate,
                                                                    "$." + column_alias + "." + aggregate_value_key,
                                                                    "$$." + column_alias + "." + aggregate_value_key]
-                setattr(aggregate_expressions[i], "final_column",
+                setattr(aggregate_expressions[i], "syncany_valuer",
                         [final_calculate, "$." + column_alias + "." + aggregate_value_key]
                         if final_calculate else ("$." + column_alias + "." + aggregate_value_key))
             self.compile_select_calculate_column(expression, config, arguments, primary_table, column_alias, join_tables)
@@ -971,8 +1086,8 @@ class Compiler(object):
             raise SyncanySqlCompileException('unknown aggregate calculate, related sql "%s"' % self.to_sql(expression))
         
     def compile_calculate(self, expression, config, arguments, primary_table, column_join_tables, join_index=-1):
-        if self.is_aggregate(expression, config, arguments) and hasattr(expression, "final_column"):
-            return expression.final_column
+        if hasattr(expression, "syncany_valuer"):
+            return expression.syncany_valuer
         if isinstance(expression, sqlglot_expressions.Neg):
             return ["@neg", self.compile_calculate(expression.args["this"], config, arguments, primary_table, 
                                                    column_join_tables, join_index)]
@@ -1293,9 +1408,6 @@ class Compiler(object):
                     if sort_key not in config["schema"]:
                         raise SyncanySqlCompileException('unknown order by column, related sql "%s"' % self.to_sql(expression))
             config["pipelines"].append([">>@sort", "$.*|array", False, sort_keys])
-            if "@limit" in arguments and arguments["@limit"] > 0:
-                config["pipelines"].append([">>@array::slice", "$.*|array", 0, arguments["@limit"]])
-                arguments["@limit"] = 0
         if primary_sort_keys:
             config["orders"].extend(primary_sort_keys)
         
@@ -1498,7 +1610,7 @@ class Compiler(object):
                                              % self.to_sql(expression))
 
     def parse_calculate(self, expression, config, arguments, primary_table, calculate_fields):
-        if self.is_aggregate(expression, config, arguments) and hasattr(expression, "final_column"):
+        if hasattr(expression, "syncany_valuer"):
             return
         if isinstance(expression, sqlglot_expressions.Anonymous):
             for arg_expression in expression.args.get("expressions", []):
@@ -1556,7 +1668,11 @@ class Compiler(object):
         if not self.is_calculate(expression, config, arguments):
             return
         for _, child_expression in expression.args.items():
-            self.parse_aggregate(child_expression, config, arguments, aggregate_expressions)
+            if isinstance(child_expression, list):
+                for child_expression_item in child_expression:
+                    self.parse_aggregate(child_expression_item, config, arguments, aggregate_expressions)
+            else:
+                self.parse_aggregate(child_expression, config, arguments, aggregate_expressions)
 
     def parse_table(self, expression, config, arguments):
         db_name = expression.args["db"].name if "db" in expression.args and expression.args["db"] else None
