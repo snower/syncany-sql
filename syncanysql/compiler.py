@@ -281,7 +281,8 @@ class Compiler(object):
         config["output"] = config["output"].split("::")[0] + "::" + config["input"].split("::")[-1].split(" ")[0]
         arguments["@primary_order"] = False
         arguments["@limit"] = 0
-        arguments["@batch"] = 0
+        if self.is_local_memory(config):
+            arguments["@batch"] = 0
 
     def compile_select(self, expression, config, arguments):
         primary_table = {"db": None, "name": None, "table_name": None, "table_alias": None, "seted_primary_keys": False,
@@ -489,7 +490,8 @@ class Compiler(object):
                                     (" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else " use I"])
         arguments["@primary_order"] = False
         arguments["@limit"] = 0
-        arguments["@batch"] = 0
+        if self.is_local_memory(config):
+            arguments["@batch"] = 0
         return config
 
     def compile_select_into(self, expression, arguments):
@@ -1978,6 +1980,14 @@ class Compiler(object):
                 return False
             return True
         return False
+
+    def is_local_memory(self, config, name="--"):
+        try:
+            database_config = dict(**[database for database in config["databases"]
+                                      if database["name"] == name][0])
+            return database_config["driver"] == "memory"
+        except (TypeError, KeyError, IndexError):
+            return False
 
     def to_sql(self, expression_sql):
         if not isinstance(expression_sql, str):

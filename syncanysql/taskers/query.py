@@ -32,12 +32,12 @@ class ReduceHooker(Hooker):
         self.batch_count = 0
 
     def outputed(self, tasker, datas):
-        self.count += len(datas)
-        self.batch_count += 1
-        if self.batch > 0 and len(datas) < self.batch and self.count >= self.batch:
+        if self.batch > 0 and self.count > 0 and self.count + len(datas) >= self.batch:
             self.count, self.batch_count = 0, 1
             self.tasker.run_reduce(self.executor, self.session_config, self.manager, self.arguments, False)
         else:
+            self.count += len(datas)
+            self.batch_count += 1
             limit = tasker.arguments["@limit"] if "@limit" in tasker.arguments and tasker.arguments["@limit"] > 0 else 0
             if 0 < limit <= tasker.status["store_count"]:
                 self.count, self.batch_count = 0, 1
@@ -71,6 +71,9 @@ class QueryTasker(object):
             distinct_tasker = QueryTasker(distinct_config)
             distinct_tasker.start(name, executor, session_config, manager, copy.deepcopy(arguments))
             dependency_taskers.append(distinct_tasker)
+            arguments["@limit"] = 0
+            if self.is_local_memory(self.config):
+                arguments["@batch"] = 0
 
         for dependency_config in self.config.get("dependencys", []):
             kn, knl = (dependency_config["name"] + "@"), len(dependency_config["name"] + "@")
@@ -316,7 +319,8 @@ class QueryTasker(object):
                                     intercept != ["#const", True]]
         tasker = CoreTasker(config, manager)
         arguments["@primary_order"] = False
-        arguments["@batch"] = 0
+        if self.is_local_memory(config):
+            arguments["@batch"] = 0
         arguments["@limit"] = 0
         self.compile_tasker(arguments, tasker)
         tasker_generator = self.run_tasker(executor, session_config, manager, tasker, [])
@@ -407,3 +411,11 @@ class QueryTasker(object):
         for dependency_tasker in self.dependency_taskers:
             names.extend(dependency_tasker.get_temporary_memory_collections())
         return names
+
+    def is_local_memory(self, config, name="--"):
+        try:
+            database_config = dict(**[database for database in config["databases"]
+                                      if database["name"] == name][0])
+            return database_config["driver"] == "memory"
+        except (TypeError, KeyError, IndexError):
+            return False
