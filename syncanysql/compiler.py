@@ -798,6 +798,7 @@ class Compiler(object):
                 return None
             return ["@in", left_calculater, ["@convert_array", right_calculater]]
         elif isinstance(expression, sqlglot_expressions.Like):
+            is_query_condition = False
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
             if not isinstance(right_calculater, list) or len(right_calculater) != 2 or right_calculater[0] != "#const":
                 raise SyncanySqlCompileException(
