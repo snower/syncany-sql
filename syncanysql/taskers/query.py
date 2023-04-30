@@ -72,8 +72,6 @@ class QueryTasker(object):
             distinct_tasker.start(name, executor, session_config, manager, copy.deepcopy(arguments))
             dependency_taskers.append(distinct_tasker)
             arguments["@limit"] = 0
-            if self.is_local_memory(self.config):
-                arguments["@batch"] = 0
 
         for dependency_config in self.config.get("dependencys", []):
             kn, knl = (dependency_config["name"] + "@"), len(dependency_config["name"] + "@")
@@ -319,8 +317,6 @@ class QueryTasker(object):
                                     intercept != ["#const", True]]
         tasker = CoreTasker(config, manager)
         arguments["@primary_order"] = False
-        if self.is_local_memory(config):
-            arguments["@batch"] = 0
         arguments["@limit"] = 0
         self.compile_tasker(arguments, tasker)
         tasker_generator = self.run_tasker(executor, session_config, manager, tasker, [])
@@ -341,6 +337,11 @@ class QueryTasker(object):
         compile_arguments = {}
         compile_arguments.update({key.lower(): value for key, value in os.environ.items()})
         compile_arguments.update(arguments)
+        if self.is_local_memory(tasker.config):
+            if isinstance(tasker.config["input"], str) and "&.--." in tasker.config["input"]:
+                compile_arguments["@batch"] = 0
+            if isinstance(tasker.config["output"], str) and "&.--." in tasker.config["output"]:
+                compile_arguments["@insert_batch"] = 0
 
         tasker.compile(compile_arguments)
         if "@verbose" in compile_arguments and compile_arguments["@verbose"]:
