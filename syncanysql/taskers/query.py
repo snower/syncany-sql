@@ -64,9 +64,9 @@ class QueryTasker(object):
         self.run_start_time = 0
 
     def start(self, name, executor, session_config, manager, arguments):
-        dependency_taskers, where_schema, aggregate = [], self.config.pop("where_schema", None), self.config.pop("aggregate", None)
+        dependency_taskers, where_schema, aggregate = [], self.config.get("where_schema", None), self.config.pop("aggregate", None)
         if aggregate and aggregate.get("distinct_keys"):
-            self.config, distinct_config = self.compile_distinct_config(aggregate), self.config
+            self.config, distinct_config = self.compile_distinct_config(where_schema, aggregate), self.config
             distinct_config["name"] = distinct_config["name"] + "#select@distinct"
             distinct_tasker = QueryTasker(distinct_config)
             distinct_tasker.start(name, executor, session_config, manager, copy.deepcopy(arguments))
@@ -85,6 +85,7 @@ class QueryTasker(object):
             dependency_tasker.start(name, executor, session_config, manager, dependency_arguments)
             dependency_taskers.append(dependency_tasker)
 
+        where_schema = self.config.pop("where_schema", None)
         limit, batch = int(arguments.get("@limit", 0)), int(arguments.get("@batch", 0))
         require_reduce, reduce_intercept, sorted_limit = False, False, len(self.config.get("pipelines", [])) == 2
         if self.config.get("intercepts"):
@@ -188,7 +189,7 @@ class QueryTasker(object):
         self.tasker.terminate()
         self.tasker = None
 
-    def compile_distinct_config(self, aggregate):
+    def compile_distinct_config(self, where_schema, aggregate):
         subquery_name = "__subquery_" + str(uuid.uuid1().int) + "_distinct"
         config = copy.deepcopy(self.config)
         config.pop("loader", None)
@@ -229,6 +230,8 @@ class QueryTasker(object):
                 distinct_aggregate["schema"][key] = copy.deepcopy(aggregate["schema"][key])
                 distinct_aggregate["schema"][key]["final_value"] = None
                 config["schema"][key] = ["#aggregate", "$._aggregate_distinct_key_", aggregate["schema"][key]["reduce"]]
+            elif where_schema and key in where_schema:
+                continue
             else:
                 config["schema"][key] = "$." + key
 
@@ -247,9 +250,14 @@ class QueryTasker(object):
         }
         self.config["aggregate"] = distinct_aggregate
         if [having_column for having_column in aggregate["having_columns"] if having_column in aggregate["schema"]]:
-            config["intercepts"] = self.config.pop("intercepts", [])
+            intercepts = self.config.pop("intercepts", [])
+            if intercepts and len(intercepts) >= 1:
+                self.config["intercepts"] = [intercepts[0], ["#const", True]]
+            if intercepts and len(intercepts) >= 2:
+                config["intercepts"] = [["#const", True], intercepts[1]]
         else:
             distinct_aggregate["having_columns"] = aggregate["having_columns"]
+        config.pop("where_schema", None)
         config["pipelines"] = self.config.pop("pipelines", [])
         self.config["output"] = "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0] + " use I"
         self.config.pop("outputer", None)
@@ -337,7 +345,7 @@ class QueryTasker(object):
         compile_arguments = {}
         compile_arguments.update({key.lower(): value for key, value in os.environ.items()})
         compile_arguments.update(arguments)
-        if self.is_local_memory(tasker.config):
+        if self.is_local_memory_database(tasker.config):
             if isinstance(tasker.config["input"], str) and "&.--." in tasker.config["input"]:
                 compile_arguments["@batch"] = 0
             if isinstance(tasker.config["output"], str) and "&.--." in tasker.config["output"]:
@@ -413,7 +421,7 @@ class QueryTasker(object):
             names.extend(dependency_tasker.get_temporary_memory_collections())
         return names
 
-    def is_local_memory(self, config, name="--"):
+    def is_local_memory_database(self, config, name="--"):
         try:
             database_config = dict(**[database for database in config["databases"]
                                       if database["name"] == name][0])

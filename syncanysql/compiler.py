@@ -443,11 +443,12 @@ class Compiler(object):
         if limit_expression:
             offset_value = max(int(offset_expression.args["expression"].args["this"]), 0) if offset_expression else 0
             limit_value = max(int(limit_expression.args["expression"].args["this"]), 1)
-            if limit_value > 0 and (config["intercepts"] or (config.get("aggregate") and config["aggregate"]["schema"])
-                                    or config["pipelines"] or offset_value > 0):
-                config["pipelines"].append([">>@array::slice", "$.*|array", offset_value, offset_value + limit_value])
-            elif limit_value > 0:
-                arguments["@limit"] = limit_value
+            if limit_value > 0:
+                if config["intercepts"] or (config.get("aggregate") and config["aggregate"]["schema"]) \
+                        or config["pipelines"] or offset_value > 0:
+                    config["pipelines"].append([">>@array::slice", "$.*|array", offset_value, offset_value + limit_value])
+                else:
+                    arguments["@limit"] = limit_value
 
         if group_expression and ("aggregate" not in config or not config["aggregate"] or not config["aggregate"]["schema"]):
             self.compile_group_column(group_expression, config, arguments, primary_table, join_tables)
