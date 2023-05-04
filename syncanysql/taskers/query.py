@@ -314,7 +314,7 @@ class QueryTasker(object):
                     config["schema"][key] = aggregate["schema"][key]["final_value"]
                 else:
                     config["schema"][key] = "$." + key
-            config["name"] = config["name"] + "#select@final_reduce"
+            config["name"] = config["name"] + "#select@final"
         else:
             config["output"] = config["input"] + " use DI"
             config["name"] = config["name"] + "#select@reduce"
