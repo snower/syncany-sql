@@ -563,7 +563,7 @@ class Compiler(object):
             if not column_info["table_name"] or column_info["table_name"] == primary_table["table_name"]:
                 primary_table["loader_primary_keys"], primary_table["outputer_primary_keys"] = [column_info["column_name"]], [column_alias]
 
-    def compile_select_calculate_column(self, expression, config, arguments, primary_table, column_alias, join_tables):
+    def compile_select_calculate_column(self, expression, config, arguments, primary_table, column_alias, join_tables, parse_primary_key=True):
         calculate_fields = []
         self.parse_calculate(expression, config, arguments, primary_table, calculate_fields)
         calculate_table_names = set([])
@@ -584,7 +584,8 @@ class Compiler(object):
                                                                       calculate_column, column_join_tables)
         else:
             config["schema"][column_alias] = self.compile_calculate(expression, config, arguments, primary_table, [])
-        if not primary_table["seted_primary_keys"] and not primary_table["outputer_primary_keys"] and column_alias.isidentifier():
+        if parse_primary_key and not primary_table["seted_primary_keys"] and not primary_table["outputer_primary_keys"] \
+                and column_alias.isidentifier():
             loader_primary_keys = [calculate_field["column_name"] for calculate_field in calculate_fields
                                    if calculate_field["column_name"].isidentifier() and
                                    (not calculate_field["table_name"] or calculate_field["table_name"] == primary_table["table_name"])]
@@ -661,7 +662,7 @@ class Compiler(object):
             if self.is_column(calculate_expression, config, arguments):
                 calculate_name = "__where_condition_value_%d__" % id(calculate_expression)
                 self.compile_select_calculate_column(calculate_expression, config, arguments, primary_table,
-                                                     calculate_name, join_tables)
+                                                     calculate_name, join_tables, False)
                 setattr(calculate_expression, "syncany_valuer", ["$." + calculate_name])
                 if "where_schema" not in config:
                     config["where_schema"] = {}
@@ -982,7 +983,8 @@ class Compiler(object):
                 setattr(aggregate_expressions[i], "syncany_valuer",
                         [final_calculate, "$." + column_alias + "." + aggregate_value_key]
                         if final_calculate else ("$." + column_alias + "." + aggregate_value_key))
-            self.compile_select_calculate_column(expression, config, arguments, primary_table, column_alias, join_tables)
+            self.compile_select_calculate_column(expression, config, arguments, primary_table, column_alias,
+                                                 join_tables, False)
             aggregate_column = {
                 "key": group_column,
                 "value": value_column,
