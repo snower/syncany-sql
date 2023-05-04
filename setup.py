@@ -40,7 +40,6 @@ setup(
         "sqlglot>=10.6.2",
         "syncany>=0.2.8",
         'Pygments>=2.14.0',
-        'Pygments>=2.14.0',
         'prompt-toolkit>=3.0.36',
         "rich>=9.11.1",
     ],
