@@ -808,6 +808,8 @@ class Compiler(object):
                     ["#const", True], ["#const", False]]
         elif isinstance(expression, (sqlglot_expressions.Not, sqlglot_expressions.Is)):
             return self.compile_calculate(parse_calucate(expression), config, arguments, primary_table, [])
+        elif isinstance(expression, sqlglot_expressions.Between):
+            return self.compile_calculate(parse_calucate(expression), config, arguments, primary_table, [])
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_where_condition(expression.args.get("this"), config, arguments, primary_table, join_tables, False)
         else:
@@ -1007,6 +1009,16 @@ class Compiler(object):
 
         group_column = ["@aggregate_key"]
         for group_expression in expression.args["expressions"]:
+            if self.is_column(group_expression, config, arguments):
+                group_expression_column = self.parse_column(group_expression, config, arguments)
+                if isinstance(config["schema"], dict) and not group_expression_column["table_name"] \
+                        and primary_table["table_alias"] and group_expression_column["column_name"] in config["schema"]:
+                    group_column.append(config["schema"][group_expression_column["column_name"]])
+                    continue
+                if not group_expression_column["table_name"] or group_expression_column["table_name"] == primary_table["table_name"]:
+                    group_column.append(self.compile_column(group_expression, config, arguments, group_expression_column))
+                    continue
+
             calculate_fields = []
             self.parse_calculate(group_expression, config, arguments, primary_table, calculate_fields)
             calculate_fields = [calculate_field for calculate_field in calculate_fields if calculate_field["table_name"]
@@ -1187,6 +1199,8 @@ class Compiler(object):
             return value_column
         elif isinstance(expression, sqlglot_expressions.Binary):
             func_name = expression.key.lower()
+            if isinstance(expression.args["expression"], sqlglot_expressions.Interval):
+                func_name = "date" + func_name
             return [
                 ("@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name),
                 self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
@@ -1262,6 +1276,12 @@ class Compiler(object):
             return self.compile_query_condition(expression, config, arguments, primary_table, None)
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
+        elif isinstance(expression, sqlglot_expressions.Between):
+            return ["#make", {
+                "key_value": self.compile_calculate(expression.args["this"], config, arguments, primary_table, []),
+                "low_value": self.compile_calculate(expression.args["low"], config, arguments, primary_table, []),
+                "high_value": self.compile_calculate(expression.args["high"], config, arguments, primary_table, [])
+            }, [":@and", ["@gte", "$.key_value", "$.low_value"], ["@lte", "$.key_value", "$.high_value"]]]
         elif isinstance(expression, sqlglot_expressions.Not):
             return ["@not", self.compile_calculate(expression.args["this"], config, arguments, primary_table,
                                                    column_join_tables, join_index)]
@@ -1389,6 +1409,8 @@ class Compiler(object):
             return ["#if", ["@re::match", right_calculater[1].replace("%", ".*").replace(".*.*", "%"), left_calculater],
                     ["#const", True], ["#const", False]]
         elif isinstance(expression, (sqlglot_expressions.Not, sqlglot_expressions.Is)):
+            return self.compile_calculate(expression, config, arguments, primary_table, [])
+        elif isinstance(expression, sqlglot_expressions.Between):
             return self.compile_calculate(expression, config, arguments, primary_table, [])
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_having_condition(expression.args.get("this"), config, arguments, primary_table)
@@ -1964,8 +1986,8 @@ class Compiler(object):
 
     def is_calculate(self, expression, config, arguments):
         return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Anonymous, sqlglot_expressions.Binary, sqlglot_expressions.Func,
-                                       sqlglot_expressions.Select, sqlglot_expressions.Subquery, sqlglot_expressions.Union, sqlglot_expressions.Not,
-                                       sqlglot_expressions.BitwiseNot, sqlglot_expressions.Tuple))
+                                       sqlglot_expressions.Select, sqlglot_expressions.Subquery, sqlglot_expressions.Union, sqlglot_expressions.Between,
+                                       sqlglot_expressions.Not, sqlglot_expressions.BitwiseNot, sqlglot_expressions.Tuple))
 
     def is_aggregate(self, expression, config, arguments):
         if isinstance(expression, (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Max,

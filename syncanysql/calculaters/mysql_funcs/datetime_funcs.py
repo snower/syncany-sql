@@ -258,14 +258,14 @@ def mysql_date_format(dt, f):
         return None
     if isinstance(dt, (int, float, str)):
         dt = parse_datetime(str(dt), None, get_timezone())
-    return dt.strftime(f)
+    return dt.strftime(f.replace("%v", "%V"))
 
 def mysql_time_format(dt, f):
     if dt is None:
         return None
     if isinstance(dt, (int, float, str)):
         dt = parse_datetime("2000-01-01 " + str(dt), None, get_timezone())
-    return dt.strftime(f)
+    return dt.strftime(f.replace("%v", "%V"))
 
 def mysql_weekday(dt):
     if dt is None:
