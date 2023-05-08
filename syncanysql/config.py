@@ -140,7 +140,7 @@ class GlobalConfig(object):
             self.merge_config(custom_config)
 
         if "timezone" in self.config:
-            timezone = self.config.pop("timezone")
+            timezone = self.config.get("timezone")
             set_timezone(pytz.timezone(timezone))
         if "databases" not in self.config:
             self.config["databases"] = []
@@ -156,10 +156,10 @@ class GlobalConfig(object):
                 if key not in databases["--"]:
                     databases["--"][key] = value
 
-        encoding = self.config.pop("encoding", None)
-        datetime_format = self.config.pop("datetime_format", None)
-        date_format = self.config.pop("date_format", None)
-        time_format = self.config.pop("time_format", None)
+        encoding = self.config.get("encoding", None)
+        datetime_format = self.config.get("datetime_format", None)
+        date_format = self.config.get("date_format", None)
+        time_format = self.config.get("time_format", None)
         for database in self.config["databases"]:
             if database["driver"] not in ("textline", "json", "csv"):
                 continue
@@ -242,11 +242,11 @@ class GlobalConfig(object):
                 self.config[k] = v
 
     def config_logging(self, isatty=True):
-        logfile = self.config.pop("logfile", None)
+        logfile = self.config.get("logfile", None)
         if not logfile or logfile == "-":
             logfile = None
-        logformat = self.config.pop("logformat", "%(asctime)s %(process)d %(levelname)s %(message)s")
-        loglevel = self.config.pop("loglevel", None)
+        logformat = self.config.get("logformat", "%(asctime)s %(process)d %(levelname)s %(message)s")
+        loglevel = self.config.get("loglevel", None)
         if "logger" in self.config and isinstance(self.config["logger"], dict):
             logging.config.dictConfig(self.config["logger"])
         else:

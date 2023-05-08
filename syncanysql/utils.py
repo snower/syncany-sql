@@ -8,7 +8,7 @@ def parse_value(value):
         return ""
     if len(value) >= 2 and value[0] in ("'", '"') and value[-1] in ("'", '"'):
         return value[1:-1]
-    if value.isdigit():
+    if value.isdigit() or (value[0] == "-" and value[1:].isdigit()):
         return int(value)
     if value.lower() == "true":
         return True
@@ -17,6 +17,7 @@ def parse_value(value):
     if value.lower() == "null":
         return None
     value_info = value.split(".")
-    if len(value_info) == 2 and value_info[0].isdigit() and value_info[1].isdigit():
+    if len(value_info) == 2 and (value_info[0].isdigit() or (value[0][0] == "-" and value[0][1:].isdigit())) \
+            and value_info[1].isdigit():
         return float(value)
     return value

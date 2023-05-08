@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # 2023/2/13
 # create by: snower
-
+import datetime
 import os
 import sys
 import re
@@ -14,7 +14,7 @@ from .errors import SyncanySqlCompileException
 from .utils import parse_value
 from .compiler import Compiler
 
-ENV_VARIABLE_RE = re.compile("(\$\{\w+?(:.*?){0,1}\})", re.DOTALL | re.M)
+ENV_VARIABLE_RE = re.compile("(\$\{[@\w]+?(:.*?){0,1}\})", re.DOTALL | re.M)
 RAW_SQL_RE = re.compile("(\/\*\s*raw\(([\w\.]+?)\)\s*(\*\/\s*\()?\s*(.*?)\s*(\)\s*\/\*)?\s*endraw\s*\*\/)", re.DOTALL | re.M)
 FUNC_RE = re.compile("^(\w+?)\(((.+),{0,1})*\)$", re.DOTALL)
 
@@ -94,15 +94,29 @@ class Executor(object):
                     if groups[1]:
                         for arg in groups[1].split(","):
                             calculater_args.append(parse_value(arg))
-                    calculater = find_calculater(groups[0].split("__")[0])(groups[0].replace("__", "::"))
+                    calculater = find_calculater(groups[0].split("__")[0]).instance(groups[0].replace("__", "::"))
                     variable_value = calculater.calculate(*tuple(calculater_args))
                     variable_value = StringFilter().filter(variable_value)
                 except Exception as e:
                     variable_value = default_value[1:]
-            if isinstance(variable_value, str):
-                variable_value = "true" if variable_value is True else ("false" if variable_value is False else
-                                                                        ("null" if variable_value is None else str(variable_value)))
-            sql = sql.replace(variable, variable_value)
+
+            def format_variable_value(value):
+                if value is True:
+                    return "true"
+                if value is False:
+                    return "false"
+                if value is None:
+                    return "null"
+                if isinstance(value, datetime.date):
+                    if isinstance(value, datetime.datetime):
+                        return value.strftime(self.session_config.get().get("datetime_format", "%Y-%m-%d %H:%M:%S"))
+                    return value.strftime(self.session_config.get().get("date_format", "%Y-%m-%d"))
+                if isinstance(value, datetime.time):
+                    return value.strftime(self.session_config.get().get("time_format", "%H:%M:%S"))
+                if isinstance(value, (list, tuple, set)):
+                    return "(" + ",".join([format_variable_value(v) for v in value]) + ")"
+                return str(value)
+            sql = sql.replace(variable, format_variable_value(variable_value))
         return sql
 
     def run(self, name, sqls):

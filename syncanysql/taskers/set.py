@@ -56,9 +56,12 @@ class SetCommandTasker(object):
             return False
         if value.lower() == 'null':
             return None
-        digits = value.split(".")
-        if digits and len(digits) <= 2 and digits[0].isdigit():
-            return float(value) if len(digits) == 2 and digits[1].isdigit() else int(value)
+        if value.isdigit() or (value[0] == "-" and value[1:].isdigit()):
+            return int(value)
+        value_info = value.split(".")
+        if len(value_info) == 2 and (value_info[0].isdigit() or (value[0][0] == "-" and value[0][1:].isdigit())) \
+                and value_info[1].isdigit():
+            return float(value)
         raise ValueError("unknown value: %s" % value)
 
     def run(self, executor, session_config, manager):
