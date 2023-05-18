@@ -161,6 +161,9 @@ class Compiler(object):
             "dependencys": [],
             "pipelines": []
         })
+
+        if expression.args.get("with"):
+            self.compile_with(expression.args.get("with"), config, arguments)
         if isinstance(expression, sqlglot_expressions.Union):
             self.compile_union(expression, config, arguments)
         elif isinstance(expression, sqlglot_expressions.Insert):
@@ -170,6 +173,17 @@ class Compiler(object):
         else:
             raise SyncanySqlCompileException('unknown sql "%s"' % self.to_sql(expression))
         return config
+
+    def compile_with(self, expression, config, arguments):
+        for sub_expression in expression.args["expressions"]:
+            table_name = sub_expression.args["alias"].name
+            subquery_arguments = {key: arguments[key] for key in CONST_CONFIG_KEYS if key in arguments}
+            subquery_config = self.compile_query(sub_expression.args["this"], subquery_arguments)
+            subquery_config["output"] = "&.--." + table_name + "::" + \
+                                        subquery_config["output"].split("::")[-1].split(" use ")[0] + " use I"
+            subquery_config["name"] = subquery_config["name"] + "#" + table_name + "#select"
+            arguments.update({subquery_config["name"] + "@" + key: value for key, value in subquery_arguments.items()})
+            config["dependencys"].append(subquery_config)
 
     def compile_subquery(self, expression, arguments):
         if not isinstance(expression, sqlglot_expressions.Subquery):

@@ -298,7 +298,7 @@ class QueryTasker(object):
             config["schema"].pop("_aggregate_key_", None)
             if where_schema:
                 for key in where_schema:
-                    config.pop(key, None)
+                    config["schema"].pop(key, None)
             for key, column in config["schema"].items():
                 if key in aggregate["schema"] and aggregate["schema"][key]["final_value"]:
                     config["schema"][key] = aggregate["schema"][key]["final_value"]
