@@ -53,6 +53,11 @@ class CompilerDialect(Dialect):
 
 class Compiler(object):
     ESCAPE_CHARS = ['\\\\a', '\\\\b', '\\\\f', '\\\\n', '\\\\r', '\\\\t', '\\\\v', '\\\\0']
+    TYPE_FILTERS = {"int": "int", "float": "float", "str": "str", "bytes": "bytes", 'bool': 'bool', 'array': 'array', 'set': 'set',
+                   'map': 'map', "objectid": "objectid", "uuid": "uuid", "datetime": "datetime", "date": "date", "time": "time",
+                   "char": "str", "varchar": "str", "nchar": "str", "text": "str", "mediumtext": "str", "tinytext": "str",
+                   "bigint": "int", "mediumint": "int", "SMALLINT": "int", "tinyint": "int", "decimal": "float", "double": "float",
+                   "boolean": "bool", "binary": "bytes", "varbinary": "bytes", "blob": "bytes", "timestamp": "datetime"}
 
     def __init__(self, config, env_variables):
         self.config = config
@@ -1891,7 +1896,12 @@ class Compiler(object):
         origin_name = self.mapping[column_name] if column_name in self.mapping else column_name
         try:
             start_index, end_index = origin_name.index("["), origin_name.rindex("]")
-            typing_filters = origin_name[start_index+1: end_index].split(";")
+            typing_filters = []
+            for typing_filter in origin_name[start_index+1: end_index].split(";"):
+                typing_filter = typing_filter.split(" ")
+                if not typing_filter or typing_filter[0].lower() not in self.TYPE_FILTERS:
+                    continue
+                typing_filters.append(" ".join([self.TYPE_FILTERS[typing_filter[0].lower()]] + typing_filter[1:]))
             column_name = origin_name[:start_index]
             typing_name = (column_name + "|" + typing_filters[0]) if typing_filters else column_name
         except ValueError:
