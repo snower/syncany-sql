@@ -612,107 +612,46 @@ class Compiler(object):
                                          if column_join_name != primary_table["table_name"]], join_tables, column_join_tables)
 
     def compile_join_column(self, expression, config, arguments, primary_table, column, column_join_tables):
-        def parse_calucate(calculate_expression, join_table):
-            if self.is_column(calculate_expression, config, arguments):
-                calculate_column = self.parse_column(calculate_expression, config, arguments)
-                if calculate_column["table_name"] == join_table["name"]:
-                    setattr(calculate_expression, "syncany_valuer", self.compile_column(calculate_expression,
-                                                                                        config, arguments,
-                                                                                        calculate_column))
-                return calculate_expression
-            if not self.is_calculate(calculate_expression, config, arguments):
-                return calculate_expression
-            for _, child_expression in calculate_expression.args.items():
-                if isinstance(child_expression, list):
-                    for child_expression_item in child_expression:
-                        parse_calucate(child_expression_item, join_table)
-                else:
-                    parse_calucate(child_expression, join_table)
-            return calculate_expression
-
-        if column_join_tables and column_join_tables[0]["having_expressions"]:
-            def inc_scope(valuer):
-                if isinstance(valuer, list):
-                    for i in range(len(valuer)):
-                        if isinstance(valuer[i], (dict, list)):
-                            inc_scope(valuer[i])
-                        elif isinstance(valuer[i], str) and valuer[i] and valuer[i][:2] == "$$" and "$." in valuer[i]:
-                            valuer[i] = "$" + valuer[i]
-                    return valuer
-                if isinstance(valuer, dict):
-                    for key, value in tuple(valuer.items()):
-                        if isinstance(value, (dict, list)):
-                            inc_scope(value)
-                        elif isinstance(value, str) and value and value[:2] == "$$" and "$." in value:
-                            valuer[key] = "$" + value
-                    return valuer
-                if isinstance(valuer, str) and valuer and valuer[:2] == "$$" and "$." in valuer:
-                    return "$" + valuer
-                return valuer
-            column = inc_scope(column)
-            if len(column_join_tables[0]["having_expressions"]) == 1:
-                having_columns = self.compile_calculate(parse_calucate(column_join_tables[0]["having_expressions"][0], column_join_tables[0]), config,
-                                                        arguments, primary_table, column_join_tables, -2)
+        if isinstance(column, str):
+            column = ":" + column
+        elif isinstance(column, list):
+            if column and isinstance(column[0], str):
+                column[0] = ":" + column[0]
             else:
-                having_columns = ["@and"]
-                for having_expression in column_join_tables[0]["having_expressions"]:
-                    having_columns.append(self.compile_calculate(parse_calucate(having_expression, column_join_tables[0]), config,
-                                                                 arguments, primary_table, column_join_tables, -2))
-            column = [":@db_join_value", ["#foreach", "$.*|array", [
-                "#if", having_columns, column, "#continue"
-            ]]]
+                column = [":"] + column
         else:
-            if isinstance(column, str):
-                column = ":" + column
-            elif isinstance(column, list):
-                if column and isinstance(column[0], str):
-                    column[0] = ":" + column[0]
-                else:
-                    column = [":"] + column
-            else:
-                column = [":", column]
-
+            column = [":", column]
 
         for i in range(len(column_join_tables)):
             join_table = column_join_tables[i]
-
-            if join_table["calculate_expressions"] and i + 1 < len(column_join_tables) and column_join_tables[i + 1]["having_expressions"]:
-                last_join_table = column_join_tables[i + 1]
-                if len(join_table["calculate_expressions"]) == 1:
-                    join_columns = self.compile_calculate(parse_calucate(join_table["calculate_expressions"][0],
-                                                                         last_join_table), config, arguments,
-                                                          primary_table, column_join_tables, i - 1)
-                else:
-                    join_columns = [self.compile_calculate(parse_calucate(calculate_expression, last_join_table), config, arguments,
-                                                           primary_table, column_join_tables, i - 1)
-                                   for calculate_expression in join_table["calculate_expressions"]]
-                if len(last_join_table["having_expressions"]) == 1:
-                    having_columns = self.compile_calculate(parse_calucate(last_join_table["having_expressions"][0],
-                                                                           last_join_table), config,
-                                                            arguments, primary_table, column_join_tables, i - 1)
-                else:
-                    having_columns = ["@and"]
-                    for having_expression in last_join_table["having_expressions"]:
-                        having_columns.append(self.compile_calculate(parse_calucate(having_expression, last_join_table), config,
-                                                                     arguments, primary_table, column_join_tables, i - 1))
-                join_columns = ["@db_join_value", ["#foreach", "$.*|array", [
-                    "#if", having_columns, join_columns, "#continue"
-                ]]]
+            if len(join_table["calculate_expressions"]) == 1:
+                join_columns = self.compile_calculate(join_table["calculate_expressions"][0], config, arguments,
+                                                      primary_table, column_join_tables, i)
             else:
-                if len(join_table["calculate_expressions"]) == 1:
-                    join_columns = self.compile_calculate(join_table["calculate_expressions"][0], config, arguments,
-                                                          primary_table, column_join_tables, i)
-                else:
-                    join_columns = [self.compile_calculate(calculate_expression, config, arguments, primary_table,
-                                                           column_join_tables, i)
-                                   for calculate_expression in join_table["calculate_expressions"]]
+                join_columns = [self.compile_calculate(calculate_expression, config, arguments, primary_table,
+                                                       column_join_tables, i)
+                                for calculate_expression in join_table["calculate_expressions"]]
+
 
             join_db_table = "&." + join_table["db"] + "." + join_table["table"] + "::" + (
                 "+".join(join_table["primary_keys"]) if join_table["primary_keys"] else (tuple(join_table["columns"])[0]
                                                                                          if join_table["columns"] else "id"))
             if join_table["querys"]:
                 join_db_table = [join_db_table, join_table["querys"]]
-            column = [join_columns, join_db_table, column] if join_columns else [join_db_table, column]
+
+            if join_table["having_expressions"]:
+                if len(join_table["having_expressions"]) == 1:
+                    having_columns = self.compile_calculate(join_table["having_expressions"][0], config, arguments,
+                                                            primary_table, column_join_tables, i - 1)
+                else:
+                    having_columns = ["@and"]
+                    for having_expression in join_table["having_expressions"]:
+                        having_columns.append(self.compile_calculate(having_expression, config, arguments,
+                                                                     primary_table, column_join_tables, i - 1))
+                column = [join_columns, join_db_table, having_columns, column] \
+                    if join_columns else [join_db_table, having_columns, column]
+            else:
+                column = [join_columns, join_db_table, column] if join_columns else [join_db_table, column]
         return column
 
     def compile_join_column_field(self, expression, config, arguments, primary_table, ci, join_column, column_join_tables):

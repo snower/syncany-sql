@@ -6,7 +6,6 @@ from syncany.calculaters import CALCULATERS, Calculater, TypeFormatCalculater, T
 from syncany.calculaters import register_calculater, find_calculater, CalculaterUnknownException
 from .mysql_calculater import MysqlCalculater
 from .aggregate_calculater import *
-from .db_join_calculater import DBJoinValueCalculater
 
 SQL_CALCULATERS = {
     "mysql": MysqlCalculater,
@@ -16,7 +15,6 @@ SQL_CALCULATERS = {
     "aggregate_max": AggregateMaxCalculater,
     "aggregate_min": AggregateMinCalculater,
     "aggregate_avg": AggregateAvgCalculater,
-    "db_join_value": DBJoinValueCalculater,
 }
 CALCULATERS.update(SQL_CALCULATERS)
 
