@@ -612,6 +612,10 @@ class Compiler(object):
                                          if column_join_name != primary_table["table_name"]], join_tables, column_join_tables)
 
     def compile_join_column(self, expression, config, arguments, primary_table, column, column_join_tables):
+        jit_define_name = None
+        if isinstance(column, list) and len(column) == 3 and column[0] == "#call" and column[1].startswith("jit_define_") and column[2] == "$.*":
+            jit_define_name, column = column[1], config["defines"][column[1]]
+
         if isinstance(column, str):
             column = ":" + column
         elif isinstance(column, list):
@@ -652,6 +656,10 @@ class Compiler(object):
                     if join_columns else [join_db_table, having_columns, column]
             else:
                 column = [join_columns, join_db_table, column] if join_columns else [join_db_table, column]
+
+        if jit_define_name:
+            config["defines"][jit_define_name] = column
+            return ["#call", jit_define_name, "$.*"]
         return column
 
     def compile_join_column_field(self, expression, config, arguments, primary_table, ci, join_column, column_join_tables):
@@ -826,15 +834,10 @@ class Compiler(object):
                     % self.to_sql(expression))
             return ["#if", ["@re::match", right_calculater[1].replace("%", ".*").replace(".*.*", "%"), left_calculater],
                     ["#const", True], ["#const", False]]
-        elif isinstance(expression, (sqlglot_expressions.Not, sqlglot_expressions.Is)):
-            return self.compile_calculate(parse_calucate(expression), config, arguments, primary_table, [])
-        elif isinstance(expression, sqlglot_expressions.Between):
-            return self.compile_calculate(parse_calucate(expression), config, arguments, primary_table, [])
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_where_condition(expression.args.get("this"), config, arguments, primary_table, join_tables, False)
         else:
-            raise SyncanySqlCompileException('unknown where condition, only "=,!=,>,>=,<,<=,in" operations are supported, related sql "%s"'
-                                             % self.to_sql(expression))
+            return self.compile_calculate(parse_calucate(expression), config, arguments, primary_table, [])
 
     def compile_query_condition(self, expression, config, arguments, primary_table, typing_filters):
         if isinstance(expression, sqlglot_expressions.Select):
@@ -1167,6 +1170,20 @@ class Compiler(object):
                         column.append(self.compile_calculate(arg_expression, config, arguments, primary_table, column_join_tables, join_index))
                 return column
 
+            if calculater_name == "jit":
+                if len(expression.args["expressions"]) != 1:
+                    raise SyncanySqlCompileException(
+                        'unknown calculate expression, jit run must by one expression related sql "%s"' % self.to_sql(expression))
+                define_name = "jit_define_" + str(str(expression).__hash__()).replace("-", "_")
+                if "defines" not in config:
+                    config["defines"] = {}
+                if self.is_const(expression.args["expressions"][0], config, arguments):
+                    config["defines"][define_name] = self.compile_const(expression.args["expressions"][0], config, arguments,
+                                                                        self.parse_const(expression.args["expressions"][0], config, arguments))
+                else:
+                    config["defines"][define_name] = self.compile_calculate(expression.args["expressions"][0], config, arguments, primary_table, column_join_tables, join_index)
+                return ["#call", define_name, "$.*"]
+
             if calculater_name == "yield_data":
                 column = ["#yield"]
                 for arg_expression in expression.args.get("expressions", []):
@@ -1428,14 +1445,10 @@ class Compiler(object):
                                                  % self.to_sql(expression))
             return ["#if", ["@re::match", right_calculater[1].replace("%", ".*").replace(".*.*", "%"), left_calculater],
                     ["#const", True], ["#const", False]]
-        elif isinstance(expression, (sqlglot_expressions.Not, sqlglot_expressions.Is)):
-            return self.compile_calculate(expression, config, arguments, primary_table, [])
-        elif isinstance(expression, sqlglot_expressions.Between):
-            return self.compile_calculate(expression, config, arguments, primary_table, [])
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_having_condition(expression.args.get("this"), config, arguments, primary_table)
         else:
-            raise SyncanySqlCompileException('unknown having condition, related sql "%s"' % self.to_sql(expression))
+            return self.compile_calculate(expression, config, arguments, primary_table, [])
 
     def compile_order(self, expression, config, arguments, primary_table):
         primary_sort_keys, sort_keys = [], []
@@ -1681,8 +1694,7 @@ class Compiler(object):
                 if condition_column["typing_name"] not in join_table["querys"]:
                     join_table["querys"][condition_column["typing_name"]] = {}
                 join_table["querys"][condition_column["typing_name"]]["in"] = value_column
-        elif isinstance(expression, (sqlglot_expressions.Like, sqlglot_expressions.Not, sqlglot_expressions.Is,
-                                     sqlglot_expressions.Between, sqlglot_expressions.Paren)):
+        else:
             calculate_fields = []
             self.parse_calculate(expression, config, arguments, primary_table, calculate_fields)
             for calculate_field in calculate_fields:
@@ -1691,9 +1703,6 @@ class Compiler(object):
                 else:
                     join_table["columns"].add(calculate_field["column_name"])
             join_table["having_expressions"].append(expression)
-        else:
-            raise SyncanySqlCompileException('error join on condition, only "=,!=,>,>=,<,<=,in" operations are supported, related sql "%s"'
-                                             % self.to_sql(expression))
 
     def parse_calculate(self, expression, config, arguments, primary_table, calculate_fields):
         if hasattr(expression, "syncany_valuer"):
