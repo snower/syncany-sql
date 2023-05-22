@@ -737,12 +737,12 @@ class Compiler(object):
             if self.is_column(left_expression, config, arguments):
                 left_column = self.parse_column(left_expression, config, arguments)
                 if is_query_condition and ((left_column["table_name"]
-                                            and primary_table["table_alias"] == left_column["table_name"]) or not left_column["table_name"]):
+                                            and primary_table["table_name"] == left_column["table_name"]) or not left_column["table_name"]):
                     is_query_column = True
             if not is_query_column and self.is_column(right_expression, config, arguments):
                 right_column = self.parse_column(right_expression, config, arguments)
                 if is_query_condition and ((right_column["table_name"]
-                                            and primary_table["table_alias"] == right_column["table_name"]) or not right_column["table_name"]):
+                                            and primary_table["table_name"] == right_column["table_name"]) or not right_column["table_name"]):
                     left_expression, right_expression, is_query_column, left_column = right_expression, left_expression, True, right_column
             if not is_query_column:
                 if not isinstance(config["schema"], dict):
@@ -1060,7 +1060,7 @@ class Compiler(object):
             if self.is_column(group_expression, config, arguments):
                 group_expression_column = self.parse_column(group_expression, config, arguments)
                 if isinstance(config["schema"], dict) and not group_expression_column["table_name"] \
-                        and primary_table["table_alias"] and group_expression_column["column_name"] in config["schema"]:
+                        and group_expression_column["column_name"] in config["schema"]:
                     group_column.append(config["schema"][group_expression_column["column_name"]])
                     continue
                 if not group_expression_column["table_name"] or group_expression_column["table_name"] == primary_table["table_name"]:
@@ -1480,7 +1480,7 @@ class Compiler(object):
         for order_expression in expression:
             column = self.parse_column(order_expression.args["this"], config, arguments)
             if not isinstance(config["schema"], dict) or \
-                    (column["table_name"] and primary_table["table_alias"] == column["table_name"]) or \
+                    (column["table_name"] and primary_table["table_name"] == column["table_name"]) or \
                     (not column["table_name"] and column["column_name"] in primary_table["columns"]):
                 primary_sort_keys.append([column["column_name"], True if order_expression.args["desc"] else False])
             sort_keys.append((column["column_name"], True if order_expression.args["desc"] else False))
@@ -1518,9 +1518,6 @@ class Compiler(object):
     def parse_joins(self, expression, config, arguments, primary_table, join_expressions):
         join_tables = {}
         for join_expression in join_expressions:
-            if "alias" not in join_expression.args["this"].args:
-                raise SyncanySqlCompileException('error join, table must be alias name, related sql "%s"' % self.to_sql(join_expression))
-            name = join_expression.args["this"].args["alias"].args["this"].name
             if isinstance(join_expression.args["this"], sqlglot_expressions.Table):
                 table_info = self.parse_table(join_expression.args["this"], config, arguments)
                 db, table, subquery_config = table_info["db"], table_info["name"], None
@@ -1530,6 +1527,10 @@ class Compiler(object):
                 config["dependencys"].append(subquery_config)
             else:
                 raise SyncanySqlCompileException('unknown join expression, related sql "%s"' % self.to_sql(join_expression))
+            if "alias" not in join_expression.args["this"].args:
+                name = db + "." + table
+            else:
+                name = join_expression.args["this"].args["alias"].args["this"].name
             if "on" not in join_expression.args:
                 raise SyncanySqlCompileException('error join, on condition is unknown, related sql "%s"'
                                                  % self.to_sql(join_expression))
@@ -1889,7 +1890,7 @@ class Compiler(object):
         return {
             "db": db_name,
             "name": table_name,
-            "table_name": table_alias if table_alias else table_name,
+            "table_name": table_alias if table_alias else ((db_name + "." + table_name if db_name else table_name)),
             "table_alias": table_alias,
             "origin_name": origin_name,
             "typing_options": typing_options,
@@ -1909,6 +1910,7 @@ class Compiler(object):
                 return column_expression
             expression = parse_dot(expression)
 
+        db_name = expression.args["db"].name if expression.args.get("db") else None
         table_name = expression.args["table"].name if "table" in expression.args else None
         column_name = expression.args["this"].name
         origin_name = self.mapping[column_name] if column_name in self.mapping else column_name
@@ -1932,7 +1934,7 @@ class Compiler(object):
         except ValueError:
             typing_options = []
         return {
-            "table_name": table_name,
+            "table_name": (db_name + "." + table_name) if db_name else table_name,
             "column_name": (column_name + "." + ".".join(dot_keys)) if dot_keys else column_name,
             "origin_name": origin_name,
             "typing_name": typing_name,
