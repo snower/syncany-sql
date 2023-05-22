@@ -733,11 +733,17 @@ class Compiler(object):
                 left_expression, right_expression = expression.args["this"], expression.args["query"]
             else:
                 left_expression, right_expression = expression.args["this"], expression.args["expression"]
+
             if self.is_column(left_expression, config, arguments):
                 left_column = self.parse_column(left_expression, config, arguments)
-                if is_query_condition and (left_column["table_name"] and primary_table["table_alias"] == left_column["table_name"]) \
-                        or not left_column["table_name"]:
+                if is_query_condition and ((left_column["table_name"]
+                                            and primary_table["table_alias"] == left_column["table_name"]) or not left_column["table_name"]):
                     is_query_column = True
+            if not is_query_column and self.is_column(right_expression, config, arguments):
+                right_column = self.parse_column(right_expression, config, arguments)
+                if is_query_condition and ((right_column["table_name"]
+                                            and primary_table["table_alias"] == right_column["table_name"]) or not right_column["table_name"]):
+                    left_expression, right_expression, is_query_column, left_column = right_expression, left_expression, True, right_column
             if not is_query_column:
                 if not isinstance(config["schema"], dict):
                     raise SyncanySqlCompileException(
@@ -1569,8 +1575,6 @@ class Compiler(object):
                 left_expression, right_expression = expression.args["this"], expression.args["expressions"]
             elif expression.args.get("query"):
                 left_expression, right_expression = expression.args["this"], expression.args["query"]
-            elif isinstance(expression.args["expression"], sqlglot_expressions.Subquery):
-                left_expression, right_expression = expression.args["this"], expression.args["expression"].args["this"]
             else:
                 left_expression, right_expression = expression.args["this"], expression.args["expression"]
 
