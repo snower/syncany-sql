@@ -62,7 +62,7 @@ class StateAggregateCalculater(AggregateCalculater):
 class AggregateCountCalculater(AggregateCalculater):
     def aggregate(self, state_value, data_value):
         if data_value is None:
-            return state_value
+            return state_value or 0
         try:
             return state_value + 1
         except:
@@ -80,7 +80,7 @@ class AggregateSumCalculater(AggregateCalculater):
             return state_value + data_value
         except:
             if data_value is None:
-                return state_value
+                return state_value or 0
             if state_value is None:
                 return data_value
             try:

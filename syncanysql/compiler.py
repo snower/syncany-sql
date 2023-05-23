@@ -169,7 +169,7 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Insert):
             self.compile_insert_into(expression, config, arguments)
         elif isinstance(expression, sqlglot_expressions.Select):
-            self.compile_select(expression, config, arguments)
+            self.compile_select(self.optimize_rewrite(expression, config, arguments), config, arguments)
         else:
             raise SyncanySqlCompileException('unknown sql "%s"' % self.to_sql(expression))
         return config
@@ -191,7 +191,10 @@ class Compiler(object):
         else:
             table_name = expression.args["alias"].args["this"].name if "alias" in expression.args \
                                                                        and expression.args["alias"] else "anonymous"
-        subquery_name = "__subquery_" + str(uuid.uuid1().int) + "_" + table_name
+        if table_name.startswith("__subquery_"):
+            subquery_name = table_name
+        else:
+            subquery_name = "__subquery_" + str(uuid.uuid1().int) + "_" + table_name
         subquery_arguments = {key: arguments[key] for key in CONST_CONFIG_KEYS if key in arguments}
         subquery_config = self.compile_query(expression if not isinstance(expression, sqlglot_expressions.Subquery)
                                              else expression.args["this"], subquery_arguments)
@@ -303,7 +306,7 @@ class Compiler(object):
 
     def compile_select(self, expression, config, arguments):
         primary_table = {"db": None, "name": None, "table_name": None, "table_alias": None, "seted_primary_keys": False,
-                         "loader_primary_keys": [], "outputer_primary_keys": [], "columns": {}, "subquery": None}
+                         "loader_primary_keys": [], "outputer_primary_keys": [], "columns": {}, "subquery": None, "select_columns": {}}
 
         from_expression = expression.args.get("from")
         if not from_expression:
@@ -570,6 +573,7 @@ class Compiler(object):
             config["schema"][column_alias] = self.compile_column(expression, config, arguments, column_info)
         if not column_info["table_name"] or column_info["table_name"] == primary_table["table_name"]:
             primary_table["columns"][column_info["column_name"]] = column_info
+        primary_table["select_columns"][column_alias] = expression
 
         if not column_info["column_name"].isidentifier() or not column_alias.isidentifier():
             return None
@@ -603,6 +607,7 @@ class Compiler(object):
                                                                       calculate_column, column_join_tables)
         else:
             config["schema"][column_alias] = self.compile_calculate(expression, config, arguments, primary_table, [])
+        primary_table["select_columns"][column_alias] = expression
         if parse_primary_key and not primary_table["seted_primary_keys"] and not primary_table["outputer_primary_keys"] \
                 and column_alias.isidentifier():
             loader_primary_keys = [calculate_field["column_name"] for calculate_field in calculate_fields
@@ -1050,6 +1055,7 @@ class Compiler(object):
         }, copy.deepcopy(aggregate_column["aggregate"])]
         config["aggregate"]["key"] = copy.deepcopy(aggregate_column["key"])
         config["aggregate"]["schema"][column_alias] = aggregate_column
+        primary_table["select_columns"][column_alias] = expression
 
     def compile_aggregate_key(self, expression, config, arguments, primary_table, join_tables):
         if not expression:
@@ -1478,6 +1484,21 @@ class Compiler(object):
     def compile_order(self, expression, config, arguments, primary_table):
         primary_sort_keys, sort_keys = [], []
         for order_expression in expression:
+            if not self.is_column(order_expression.args["this"], config, arguments):
+                if isinstance(config["schema"], dict):
+                    if str(order_expression.args["this"]) in config["schema"]:
+                        sort_keys.append((str(order_expression.args["this"]), True if order_expression.args["desc"] else False))
+                        continue
+                    has_column = False
+                    for column_alias, column_expression in primary_table["select_columns"].items():
+                        if str(order_expression.args["this"]).lower() == str(column_expression).lower():
+                            sort_keys.append((column_alias, True if order_expression.args["desc"] else False))
+                            has_column = True
+                            break
+                    if has_column:
+                        continue
+                raise SyncanySqlCompileException('unknown order by column, the order by field must appear in the select field, related sql "%s"'
+                                                 % self.to_sql(expression))
             column = self.parse_column(order_expression.args["this"], config, arguments)
             if not isinstance(config["schema"], dict) or \
                     (column["table_name"] and primary_table["table_name"] == column["table_name"]) or \
@@ -2102,6 +2123,112 @@ class Compiler(object):
                 return False
             return True
         return False
+
+    def optimize_rewrite(self, expression, config, arguments):
+        if not expression.args.get("joins"):
+            return expression
+        for join_expression in expression.args["joins"]:
+            if join_expression.side != "LEFT":
+                expression = self.optimize_rewrite_right_join(expression, config, arguments)
+                break
+        return self.optimize_rewrite_aggregate(expression, config, arguments)
+
+    def optimize_rewrite_right_join(self, expression, config, arguments):
+        return expression
+
+    def optimize_rewrite_aggregate(self, expression, config, arguments):
+        if not expression.args.get("expressions"):
+            return expression
+        aggregate_expressions = []
+        for select_expression in expression.args["expressions"]:
+            self.parse_aggregate(select_expression, config, arguments, aggregate_expressions)
+        if not aggregate_expressions:
+            return expression
+        from_expression = expression.args.get("from")
+        if not from_expression or not isinstance(from_expression, sqlglot_expressions.From) \
+                or not from_expression.expressions or len(from_expression.expressions) > 1:
+            return expression
+        primary_table = {"table_name": None, "columns": {}}
+        from_expression = from_expression.expressions[0]
+        if isinstance(from_expression, sqlglot_expressions.Table):
+            primary_table["table_name"] = self.parse_table(from_expression, config, arguments)["table_name"]
+        elif isinstance(from_expression, sqlglot_expressions.Subquery):
+            if "alias" not in from_expression.args:
+                return expression
+            primary_table["table_name"] = from_expression.args["alias"].args["this"].name \
+                if "alias" in from_expression.args and from_expression.args["alias"] else None
+        if not primary_table["table_name"]:
+            return expression
+        aggregate_calculate_fields = []
+        for aggregate_expression in aggregate_expressions:
+            self.parse_calculate(aggregate_expression, config, arguments, primary_table, aggregate_calculate_fields)
+        aggregate_calculate_fields = [calculate_field for calculate_field in aggregate_calculate_fields
+                                      if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]]
+        if not aggregate_calculate_fields:
+            return expression
+
+        sub_sql = ["SELECT"]
+        calculate_fields = []
+        for select_expression in expression.args["expressions"]:
+            self.parse_calculate(select_expression, config, arguments, primary_table, calculate_fields)
+        if expression.args.get("order"):
+            for order_expression in expression.args["order"].args["expressions"]:
+                self.parse_calculate(order_expression.args["this"], config, arguments, primary_table, calculate_fields)
+        sub_columns = []
+        for calculate_field in calculate_fields:
+            if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]:
+                sub_column = "yield_data(%s) as `%s`" % (str(calculate_field["expression"]), calculate_field["column_name"])
+            else:
+                sub_column = "%s as `%s`" % (str(calculate_field["expression"]), calculate_field["column_name"])
+            if sub_column not in sub_columns:
+                sub_columns.append(sub_column)
+        sub_sql.append(", ".join(sub_columns))
+        sub_sql.append("FROM " + str(from_expression))
+        for join_expression in expression.args["joins"]:
+            sub_sql.append(str(join_expression))
+        if expression.args.get("where"):
+            sub_sql.append(str(expression.args["where"]))
+
+        sql = ["SELECT"]
+        if expression.args.get("distinct"):
+            sql.append(str(expression.args["distinct"]))
+        sql.append(", ".join([str(self.optimize_rewrite_except_table(select_expression, config, arguments))
+                              for select_expression in expression.args["expressions"]]))
+        sql.append("FROM (%s) `__subquery_%s`" % (" ".join(sub_sql), str(uuid.uuid1().int)))
+        if expression.args.get("group"):
+            sql.append(str(self.optimize_rewrite_except_table(expression.args["group"], config, arguments)))
+        if expression.args.get("having"):
+            sql.append(str(expression.args["having"]))
+        if expression.args.get("order"):
+            sql.append(str(self.optimize_rewrite_except_table(expression.args["order"], config, arguments)))
+        if expression.args.get("offset"):
+            offset_expression, limit_expression = expression.args.get("limit"), expression.args.get("offset")
+        else:
+            offset_expression, limit_expression = None, expression.args.get("limit")
+        if limit_expression:
+            offset_value = max(int(offset_expression.args["expression"].args["this"]), 0) if offset_expression else 0
+            limit_value = max(int(limit_expression.args["expression"].args["this"]), 1)
+            sql.append(("LIMIT %d, %d" % (offset_value, limit_value)) if offset_value > 0 else ("LIMIT %d" % limit_value))
+        return maybe_parse(" ".join(sql), dialect=CompilerDialect)
+
+    def optimize_rewrite_except_table(self, expression, config, arguments):
+        def parse_except_table(arg_expression):
+            if not isinstance(arg_expression, sqlglot_expressions.Expression):
+                return arg_expression
+            if isinstance(arg_expression, sqlglot_expressions.Column):
+                if arg_expression.args.get("db"):
+                    arg_expression.args["db"] = None
+                if arg_expression.args.get("table"):
+                    arg_expression.args["table"] = None
+                return arg_expression
+            for child_arg_expression in arg_expression.args.values():
+                if isinstance(child_arg_expression, list):
+                    for child_item_arg_expression in child_arg_expression:
+                        parse_except_table(child_item_arg_expression)
+                else:
+                    parse_except_table(child_arg_expression)
+            return arg_expression
+        return parse_except_table(expression)
 
     def to_sql(self, expression_sql):
         if not isinstance(expression_sql, str):
