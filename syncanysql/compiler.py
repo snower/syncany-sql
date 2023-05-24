@@ -1784,6 +1784,8 @@ class Compiler(object):
         elif self.is_const(expression, config, arguments):
             pass
         else:
+            if not isinstance(expression, sqlglot_expressions.Expression):
+                return
             if "this" in expression.args and expression.args["this"]:
                 self.parse_calculate(expression.args["this"], config, arguments, primary_table, calculate_fields)
             if "expression" in expression.args and expression.args["expression"]:
@@ -2134,12 +2136,15 @@ class Compiler(object):
 
         optimize_rewrites = []
         for join_expression in expression.args["joins"]:
-            if join_expression.side != "LEFT":
+            if join_expression.side == "RIGHT":
                 optimize_rewrites.append((self.optimize_rewrite_right_join, {}))
                 break
         aggregate_expressions = []
         for select_expression in expression.args["expressions"]:
-            self.parse_aggregate(select_expression, config, arguments, aggregate_expressions)
+            if isinstance(select_expression, sqlglot_expressions.Alias):
+                self.parse_aggregate(select_expression.args["this"], config, arguments, aggregate_expressions)
+            else:
+                self.parse_aggregate(select_expression, config, arguments, aggregate_expressions)
         if aggregate_expressions:
             optimize_rewrites.append((self.optimize_rewrite_aggregate, {"aggregate_expressions": aggregate_expressions}))
         if not optimize_rewrites:
