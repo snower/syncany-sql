@@ -2125,29 +2125,26 @@ class Compiler(object):
         return False
 
     def optimize_rewrite(self, expression, config, arguments):
-        if not expression.args.get("joins"):
-            return expression
-        for join_expression in expression.args["joins"]:
-            if join_expression.side != "LEFT":
-                expression = self.optimize_rewrite_right_join(expression, config, arguments)
-                break
-        return self.optimize_rewrite_aggregate(expression, config, arguments)
-
-    def optimize_rewrite_right_join(self, expression, config, arguments):
-        return expression
-
-    def optimize_rewrite_aggregate(self, expression, config, arguments):
-        if not expression.args.get("expressions"):
-            return expression
-        aggregate_expressions = []
-        for select_expression in expression.args["expressions"]:
-            self.parse_aggregate(select_expression, config, arguments, aggregate_expressions)
-        if not aggregate_expressions:
+        if not expression.args.get("joins") or not expression.args.get("expressions"):
             return expression
         from_expression = expression.args.get("from")
         if not from_expression or not isinstance(from_expression, sqlglot_expressions.From) \
                 or not from_expression.expressions or len(from_expression.expressions) > 1:
             return expression
+
+        optimize_rewrites = []
+        for join_expression in expression.args["joins"]:
+            if join_expression.side != "LEFT":
+                optimize_rewrites.append((self.optimize_rewrite_right_join, {}))
+                break
+        aggregate_expressions = []
+        for select_expression in expression.args["expressions"]:
+            self.parse_aggregate(select_expression, config, arguments, aggregate_expressions)
+        if aggregate_expressions:
+            optimize_rewrites.append((self.optimize_rewrite_aggregate, {"aggregate_expressions": aggregate_expressions}))
+        if not optimize_rewrites:
+            return expression
+
         primary_table = {"table_name": None, "columns": {}}
         from_expression = from_expression.expressions[0]
         if isinstance(from_expression, sqlglot_expressions.Table):
@@ -2159,6 +2156,15 @@ class Compiler(object):
                 if "alias" in from_expression.args and from_expression.args["alias"] else None
         if not primary_table["table_name"]:
             return expression
+        for optimize_rewrite_func, optimize_rewrite_kwargs in optimize_rewrites:
+            expression = optimize_rewrite_func(expression, config, arguments,
+                                               primary_table=primary_table, **optimize_rewrite_kwargs)
+        return expression
+
+    def optimize_rewrite_right_join(self, expression, config, arguments, primary_table):
+        return expression
+
+    def optimize_rewrite_aggregate(self, expression, config, arguments, primary_table, aggregate_expressions):
         aggregate_calculate_fields = []
         for aggregate_expression in aggregate_expressions:
             self.parse_calculate(aggregate_expression, config, arguments, primary_table, aggregate_calculate_fields)
@@ -2171,19 +2177,22 @@ class Compiler(object):
         calculate_fields = []
         for select_expression in expression.args["expressions"]:
             self.parse_calculate(select_expression, config, arguments, primary_table, calculate_fields)
+        if expression.args.get("group"):
+            for group_expression in expression.args["group"].args["expressions"]:
+                self.parse_calculate(group_expression, config, arguments, primary_table, calculate_fields)
         if expression.args.get("order"):
             for order_expression in expression.args["order"].args["expressions"]:
                 self.parse_calculate(order_expression.args["this"], config, arguments, primary_table, calculate_fields)
-        sub_columns = []
+        sub_columns, aggregate_calculate_tables = [], {calculate_field["table_name"] for calculate_field in aggregate_calculate_fields}
         for calculate_field in calculate_fields:
-            if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]:
+            if calculate_field["table_name"] and calculate_field["table_name"] in aggregate_calculate_tables:
                 sub_column = "yield_data(%s) as `%s`" % (str(calculate_field["expression"]), calculate_field["column_name"])
             else:
                 sub_column = "%s as `%s`" % (str(calculate_field["expression"]), calculate_field["column_name"])
             if sub_column not in sub_columns:
                 sub_columns.append(sub_column)
         sub_sql.append(", ".join(sub_columns))
-        sub_sql.append("FROM " + str(from_expression))
+        sub_sql.append(str(expression.args["from"]))
         for join_expression in expression.args["joins"]:
             sub_sql.append(str(join_expression))
         if expression.args.get("where"):
