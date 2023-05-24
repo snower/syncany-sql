@@ -26,3 +26,6 @@ FROM
         status <= 0
     GROUP BY site_id) c ON a.site_id = c.site_id
 GROUP BY a.site_id;
+
+SELECT yield_data(a.sites) as site_id, b.name as site_name FROM `data/demo.json` a
+    JOIN `data/sites.json` b ON a.sites = b.site_id;
