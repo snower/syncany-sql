@@ -2167,7 +2167,129 @@ class Compiler(object):
         return expression
 
     def optimize_rewrite_right_join(self, expression, config, arguments, primary_table):
-        return expression
+        def parse_condition(condition_expression, table_name, related_tables, on_expressions, const_expressions, calcuate_expressions):
+            if isinstance(condition_expression, sqlglot_expressions.And):
+                parse_condition(condition_expression.args.get("this"), table_name, related_tables, on_expressions,
+                                const_expressions, calcuate_expressions)
+                parse_condition(condition_expression.args.get("expression"), table_name, related_tables, on_expressions,
+                                const_expressions, calcuate_expressions)
+            elif isinstance(condition_expression, (sqlglot_expressions.EQ, sqlglot_expressions.NEQ, sqlglot_expressions.GT,
+                                         sqlglot_expressions.GTE, sqlglot_expressions.LT, sqlglot_expressions.LTE,
+                                         sqlglot_expressions.In)):
+                if condition_expression.args.get("expressions"):
+                    left_expression, right_expression = condition_expression.args["this"], condition_expression.args["expressions"]
+                elif condition_expression.args.get("query"):
+                    left_expression, right_expression = condition_expression.args["this"], condition_expression.args["query"]
+                else:
+                    left_expression, right_expression = condition_expression.args["this"], condition_expression.args["expression"]
+
+                condition_column, value_expression = None, left_expression
+                if self.is_column(left_expression, config, arguments):
+                    left_column = self.parse_column(left_expression, config, arguments)
+                    if left_column["table_name"] == table_name:
+                        condition_column, value_expression = left_column, right_expression
+                if not condition_column and self.is_column(right_expression, config, arguments):
+                    right_column = self.parse_column(right_expression, config, arguments)
+                    if right_column["table_name"] == table_name:
+                        condition_column, value_expression = right_column, left_expression
+                if not condition_column or isinstance(value_expression, (sqlglot_expressions.Select,
+                                                                         sqlglot_expressions.Subquery, sqlglot_expressions.Union, list)):
+                    calcuate_expressions.append(condition_expression)
+                    return
+
+                calculate_fields = []
+                self.parse_calculate(value_expression, config, arguments, primary_table, calculate_fields)
+                if not calculate_fields:
+                    const_expressions.append(condition_expression)
+                    return
+                on_expressions.append(condition_expression)
+                for calculate_field in calculate_fields:
+                    related_tables.add(calculate_field["table_name"])
+            else:
+                calcuate_expressions.append(condition_expression)
+
+        def parse_join_table(join_expression):
+            join_table = {"table_name": self.parse_table(join_expression.args["this"], config, arguments)["table_name"],
+                          "related_tables": set([]), "on_expressions": [], "const_expressions": [], "calcuate_expressions": [],
+                          "join_expression": join_expression, "join_type": join_expression.side.lower(),
+                          "table_expression": join_expression.args["this"]}
+            if join_expression.args.get("on"):
+                parse_condition(join_expression.args["on"], join_table["table_name"], join_table["related_tables"],
+                                join_table["on_expressions"], join_table["const_expressions"],
+                                join_table["calcuate_expressions"])
+            return join_table
+
+        primary_table.update({"related_tables": set([]), "on_expressions": [], "const_expressions": [],
+                              "calcuate_expressions": [], "join_type": "primary",
+                              "table_expression": expression.args["from"].args["expressions"][0]})
+        if expression.args.get("where"):
+            parse_condition(expression.args["where"].args["this"], primary_table["table_name"], primary_table["related_tables"],
+                            primary_table["calcuate_expressions"], primary_table["calcuate_expressions"],
+                            primary_table["calcuate_expressions"])
+        join_tables = []
+        for join_expression in expression.args["joins"]:
+            join_tables.append(parse_join_table(join_expression))
+
+        selected_table = primary_table
+        while True:
+            new_primary_table_table = None
+            for join_table in join_tables:
+                if join_table["join_type"] == "right" and selected_table["table_name"] in join_table["related_tables"]:
+                    new_primary_table_table = join_table
+            if not new_primary_table_table:
+                break
+            selected_table = new_primary_table_table
+        if selected_table["join_type"] == "primary":
+            return expression
+        join_tables.remove(selected_table)
+        join_tables.append(primary_table)
+
+        def resort_join_tables(current_table, on_expressions, join_tables):
+            related_tables = []
+            for table_name in current_table["related_tables"]:
+                if table_name not in join_tables:
+                    continue
+                related_table = join_tables.pop(table_name)
+                related_tables.append(related_table)
+                if related_table["join_type"] == "right":
+                    related_tables.extend(resort_join_tables(related_table, related_table["on_expressions"], join_tables))
+                    related_table["on_expressions"] = on_expressions
+                else:
+                    related_table["on_expressions"].extend(on_expressions)
+            return related_tables
+        join_table_names = {join_table["table_name"]: join_table for join_table in join_tables}
+        join_tables = resort_join_tables(selected_table, selected_table["on_expressions"],
+                                         join_table_names) + list(join_table_names.values())
+
+        sql = ["SELECT"]
+        if expression.args.get("distinct"):
+            sql.append(str(expression.args["distinct"]))
+        sql.append(", ".join([str(select_expression) for select_expression in expression.args["expressions"]]))
+        sql.append("FROM " + str(selected_table["table_expression"]))
+        for join_table in join_tables:
+            sql.append("LEFT JOIN " + str(join_table["table_expression"]))
+            on_expressions = join_table["on_expressions"] + join_table["const_expressions"]
+            if on_expressions:
+                sql.append(" ON " + " AND ".join([str(on_expression) for on_expression in on_expressions]))
+
+        where_expressions = selected_table["const_expressions"] + primary_table["calcuate_expressions"] + selected_table["calcuate_expressions"]
+        if where_expressions:
+            sql.append("WHERE " + " AND ".join([str(where_expression) for where_expression in where_expressions]))
+        if expression.args.get("group"):
+            sql.append(str(expression.args["group"]))
+        if expression.args.get("having"):
+            sql.append(str(expression.args["having"]))
+        if expression.args.get("order"):
+            sql.append(str(expression.args["order"]))
+        if expression.args.get("offset"):
+            offset_expression, limit_expression = expression.args.get("limit"), expression.args.get("offset")
+        else:
+            offset_expression, limit_expression = None, expression.args.get("limit")
+        if limit_expression:
+            offset_value = max(int(offset_expression.args["expression"].args["this"]), 0) if offset_expression else 0
+            limit_value = max(int(limit_expression.args["expression"].args["this"]), 1)
+            sql.append(("LIMIT %d, %d" % (offset_value, limit_value)) if offset_value > 0 else ("LIMIT %d" % limit_value))
+        return maybe_parse(" ".join(sql), dialect=CompilerDialect)
 
     def optimize_rewrite_aggregate(self, expression, config, arguments, primary_table, aggregate_expressions):
         aggregate_calculate_fields = []
