@@ -2136,7 +2136,7 @@ class Compiler(object):
 
         optimize_rewrites = []
         for join_expression in expression.args["joins"]:
-            if join_expression.side == "RIGHT":
+            if join_expression.side and join_expression.side != "LEFT":
                 optimize_rewrites.append((self.optimize_rewrite_right_join, {}))
                 break
         aggregate_expressions = []
@@ -2145,7 +2145,7 @@ class Compiler(object):
                 self.parse_aggregate(select_expression.args["this"], config, arguments, aggregate_expressions)
             else:
                 self.parse_aggregate(select_expression, config, arguments, aggregate_expressions)
-        if aggregate_expressions:
+        if aggregate_expressions or expression.args.get("group"):
             optimize_rewrites.append((self.optimize_rewrite_aggregate, {"aggregate_expressions": aggregate_expressions}))
         if not optimize_rewrites:
             return expression
@@ -2176,7 +2176,15 @@ class Compiler(object):
         aggregate_calculate_fields = [calculate_field for calculate_field in aggregate_calculate_fields
                                       if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]]
         if not aggregate_calculate_fields:
-            return expression
+            if not expression.args.get("group"):
+                return expression
+            group_calculate_fields = []
+            for group_expression in expression.args["group"].args["expressions"]:
+                self.parse_calculate(group_expression, config, arguments, primary_table, aggregate_calculate_fields)
+            group_calculate_fields = [calculate_field for calculate_field in group_calculate_fields
+                                      if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]]
+            if not group_calculate_fields:
+                return expression
 
         sub_sql = ["SELECT"]
         calculate_fields = []
@@ -2188,12 +2196,9 @@ class Compiler(object):
         if expression.args.get("order"):
             for order_expression in expression.args["order"].args["expressions"]:
                 self.parse_calculate(order_expression.args["this"], config, arguments, primary_table, calculate_fields)
-        sub_columns, aggregate_calculate_tables = [], {calculate_field["table_name"] for calculate_field in aggregate_calculate_fields}
+        sub_columns = []
         for calculate_field in calculate_fields:
-            if calculate_field["table_name"] and calculate_field["table_name"] in aggregate_calculate_tables:
-                sub_column = "yield_data(%s) as `%s`" % (str(calculate_field["expression"]), calculate_field["column_name"])
-            else:
-                sub_column = "%s as `%s`" % (str(calculate_field["expression"]), calculate_field["column_name"])
+            sub_column = "%s as `%s`" % (str(calculate_field["expression"]), calculate_field["column_name"])
             if sub_column not in sub_columns:
                 sub_columns.append(sub_column)
         sub_sql.append(", ".join(sub_columns))
