@@ -655,10 +655,20 @@ class Compiler(object):
                     having_columns = self.compile_calculate(join_table["having_expressions"][0], config, arguments,
                                                             primary_table, column_join_tables, i - 1)
                 else:
-                    having_columns = ["@and"]
-                    for having_expression in join_table["having_expressions"]:
-                        having_columns.append(self.compile_calculate(having_expression, config, arguments,
-                                                                     primary_table, column_join_tables, i - 1))
+                    def compile_having_column(left_having_expression, right_having_expression):
+                        left_having_column = self.compile_calculate(left_having_expression, config, arguments,
+                                                                    primary_table, column_join_tables, i - 1)
+                        if isinstance(right_having_expression, list):
+                            if len(right_having_expression) > 1:
+                                right_having_column = compile_having_column(right_having_expression[0],
+                                                                            right_having_expression[1:])
+                                return ["#if", left_having_column, right_having_column, ["#const", False]]
+                            right_having_expression = right_having_expression[0]
+                        right_having_column = self.compile_calculate(right_having_expression, config, arguments,
+                                                                     primary_table, column_join_tables, i - 1)
+                        return ["#if", left_having_column, right_having_column, ["#const", False]]
+                    having_columns = compile_having_column(join_table["having_expressions"][0],
+                                                           join_table["having_expressions"][1:])
                 column = [join_columns, join_db_table, having_columns, column] \
                     if join_columns else [join_db_table, having_columns, column]
             else:
@@ -682,14 +692,14 @@ class Compiler(object):
             right_condition = self.compile_where_condition(expression.args.get("expression"), config, arguments,
                                                            primary_table, join_tables, is_query_condition)
             if left_condition and right_condition:
-                return ["@and", left_condition, right_condition]
+                return ["#if", left_condition, right_condition, ["#const", False]]
             return left_condition or right_condition or None
         if isinstance(expression, sqlglot_expressions.Or):
-            return [
-                "@or",
-                self.compile_where_condition(expression.args.get("this"), config, arguments, primary_table, join_tables, False),
-                self.compile_where_condition(expression.args.get("expression"), config, arguments, primary_table, join_tables, False)
-            ]
+            left_condition = self.compile_where_condition(expression.args.get("this"), config, arguments, primary_table,
+                                                          join_tables, False)
+            right_condition = self.compile_where_condition(expression.args.get("expression"), config, arguments,
+                                                           primary_table, join_tables, False)
+            return ["#if", left_condition, ["#const", True], right_condition]
 
         def parse_calucate(calculate_expression):
             if not isinstance(config.get("schema"), dict):
@@ -1358,14 +1368,16 @@ class Compiler(object):
     def compile_having_condition(self, expression, config, arguments, primary_table):
         if isinstance(expression, sqlglot_expressions.And):
             return [
-                "@and",
+                "#if",
                 self.compile_having_condition(expression.args.get("this"), config, arguments, primary_table),
-                self.compile_having_condition(expression.args.get("expression"), config, arguments, primary_table)
+                self.compile_having_condition(expression.args.get("expression"), config, arguments, primary_table),
+                ["#const", False]
             ]
         if isinstance(expression, sqlglot_expressions.Or):
             return [
-                "@or",
+                "#if",
                 self.compile_having_condition(expression.args.get("this"), config, arguments, primary_table),
+                ["#const", True],
                 self.compile_having_condition(expression.args.get("expression"), config, arguments, primary_table)
             ]
 
@@ -2132,18 +2144,18 @@ class Compiler(object):
         return False
 
     def optimize_rewrite(self, expression, config, arguments):
+        from_expression = expression.args.get("from")
+        if not from_expression or not from_expression.expressions:
+            return expression
+        if len(from_expression.expressions) > 1:
+            expression = self.optimize_rewrite_multi_select(expression, config, arguments, from_expression)
+
         if not expression.args.get("joins") or not expression.args.get("expressions"):
             return expression
-        from_expression = expression.args.get("from")
-        if not from_expression or not isinstance(from_expression, sqlglot_expressions.From) \
-                or not from_expression.expressions or len(from_expression.expressions) > 1:
-            return expression
-
         for join_expression in expression.args["joins"]:
             if join_expression.side and join_expression.side.lower() == "right":
                 expression = self.optimize_rewrite_right_join(expression, config, arguments)
                 break
-
         for join_expression in expression.args["joins"]:
             if join_expression.kind and join_expression.kind.lower() == "inner":
                 expression = self.optimize_rewrite_inner_join(expression, config, arguments)
@@ -2159,8 +2171,69 @@ class Compiler(object):
             expression = self.optimize_rewrite_aggregate(expression, config, arguments, aggregate_expressions)
         return expression
 
+    def optimize_rewrite_multi_select(self, expression, config, arguments, from_expression):
+        primary_table = self.optimize_rewrite_parse_table(expression, config, arguments,
+                                                          expression.args["from"].expressions[0])
+        if not primary_table["table_name"]:
+            return expression
+
+        join_tables = []
+        for from_table_expression in from_expression.expressions[1:]:
+            join_table = {"table_name": self.optimize_rewrite_parse_table(expression, config, arguments,
+                                                                          from_table_expression)["table_name"],
+                          "related_tables": set([]), "on_expressions": [], "const_expressions": [],
+                          "calcuate_expressions": [], "join_expression": from_table_expression, "join_type": "left",
+                          "table_expression": from_table_expression}
+            if expression.args.get("where"):
+                self.optimize_rewrite_parse_condition(expression, config, arguments, primary_table, expression.args["where"].args["this"],
+                                                      join_table["table_name"], join_table["related_tables"],
+                                                      join_table["on_expressions"], join_table["const_expressions"],
+                                                      join_table["calcuate_expressions"])
+            join_tables.append(join_table)
+
+        sql = ["SELECT"]
+        if expression.args.get("distinct"):
+            sql.append(str(expression.args["distinct"]))
+        sql.append(", ".join([str(select_expression) for select_expression in expression.args["expressions"]]))
+        sql.append("FROM " + str(expression.args["from"].expressions[0]))
+        for join_table in join_tables:
+            sql.append("LEFT JOIN " + str(join_table["table_expression"]))
+            if join_table["on_expressions"]:
+                sql.append("ON " + " AND ".join([str(on_expression) for on_expression in join_table["on_expressions"]]))
+
+        where_expressions = []
+        for join_table in join_tables:
+            for const_expression in join_table["const_expressions"]:
+                if const_expression not in where_expressions:
+                    where_expressions.append(const_expression)
+        for join_table in join_tables:
+            for calcuate_expression in join_table["calcuate_expressions"]:
+                if calcuate_expression not in where_expressions:
+                    where_expressions.append(calcuate_expression)
+        if where_expressions:
+            sql.append("WHERE " + " AND ".join([("(" + str(where_expression) + ")")
+                                                if isinstance(where_expression, sqlglot_expressions.Or)
+                                                else str(where_expression)
+                                                for where_expression in where_expressions]))
+        if expression.args.get("group"):
+            sql.append(str(expression.args["group"]))
+        if expression.args.get("having"):
+            sql.append(str(expression.args["having"]))
+        if expression.args.get("order"):
+            sql.append(str(expression.args["order"]))
+        if expression.args.get("offset"):
+            offset_expression, limit_expression = expression.args.get("limit"), expression.args.get("offset")
+        else:
+            offset_expression, limit_expression = None, expression.args.get("limit")
+        if limit_expression:
+            offset_value = max(int(offset_expression.args["expression"].args["this"]), 0) if offset_expression else 0
+            limit_value = max(int(limit_expression.args["expression"].args["this"]), 1)
+            sql.append(("LIMIT %d, %d" % (offset_value, limit_value)) if offset_value > 0 else ("LIMIT %d" % limit_value))
+        return maybe_parse(" ".join(sql), dialect=CompilerDialect)
+
     def optimize_rewrite_right_join(self, expression, config, arguments):
-        primary_table = self.optimize_rewrite_parse_primary_table(expression, config, arguments, expression.args["from"])
+        primary_table = self.optimize_rewrite_parse_table(expression, config, arguments,
+                                                          expression.args["from"].expressions[0])
         if not primary_table["table_name"]:
             return expression
         primary_table.update({"related_tables": set([]), "on_expressions": [], "const_expressions": [],
@@ -2173,10 +2246,10 @@ class Compiler(object):
                                                   primary_table["calcuate_expressions"], primary_table["calcuate_expressions"])
         join_tables = []
         for join_expression in expression.args["joins"]:
-            join_table = {"table_name": self.parse_table(join_expression.args["this"], config, arguments)["table_name"],
+            join_table = {"table_name": self.optimize_rewrite_parse_table(expression, config, arguments,
+                                                                          join_expression.args["this"])["table_name"],
                           "related_tables": set([]), "on_expressions": [], "const_expressions": [],
-                          "calcuate_expressions": [],
-                          "join_expression": join_expression, "join_type": join_expression.side.lower(),
+                          "calcuate_expressions": [], "join_expression": join_expression, "join_type": join_expression.side.lower(),
                           "table_expression": join_expression.args["this"]}
             if join_expression.args.get("on"):
                 self.optimize_rewrite_parse_condition(expression, config, arguments, primary_table, join_expression.args["on"],
@@ -2228,11 +2301,14 @@ class Compiler(object):
             sql.append("LEFT JOIN " + str(join_table["table_expression"]))
             on_expressions = join_table["on_expressions"] + join_table["const_expressions"]
             if on_expressions:
-                sql.append(" ON " + " AND ".join([str(on_expression) for on_expression in on_expressions]))
+                sql.append("ON " + " AND ".join([str(on_expression) for on_expression in on_expressions]))
 
         where_expressions = selected_table["const_expressions"] + primary_table["calcuate_expressions"] + selected_table["calcuate_expressions"]
         if where_expressions:
-            sql.append("WHERE " + " AND ".join([str(where_expression) for where_expression in where_expressions]))
+            sql.append("WHERE " + " AND ".join([("(" + str(where_expression) + ")")
+                                                if isinstance(where_expression, sqlglot_expressions.Or)
+                                                else str(where_expression)
+                                                for where_expression in where_expressions]))
         if expression.args.get("group"):
             sql.append(str(expression.args["group"]))
         if expression.args.get("having"):
@@ -2250,16 +2326,17 @@ class Compiler(object):
         return maybe_parse(" ".join(sql), dialect=CompilerDialect)
 
     def optimize_rewrite_inner_join(self, expression, config, arguments):
-        primary_table = self.optimize_rewrite_parse_primary_table(expression, config, arguments, expression.args["from"])
+        primary_table = self.optimize_rewrite_parse_table(expression, config, arguments,
+                                                          expression.args["from"].expressions[0])
         if not primary_table["table_name"]:
             return expression
 
         inner_calculate_fields = []
         for join_expression in expression.args["joins"]:
-            join_table = {"table_name": self.parse_table(join_expression.args["this"], config, arguments)["table_name"],
+            join_table = {"table_name": self.optimize_rewrite_parse_table(expression, config, arguments,
+                                                                          join_expression.args["this"])["table_name"],
                           "related_tables": set([]), "on_expressions": [], "const_expressions": [],
-                          "calcuate_expressions": [],
-                          "join_expression": join_expression, "join_kind": join_expression.kind.lower(),
+                          "calcuate_expressions": [], "join_expression": join_expression, "join_kind": join_expression.kind.lower(),
                           "table_expression": join_expression.args["this"]}
             if join_expression.args.get("on"):
                 self.optimize_rewrite_parse_condition(expression, config, arguments, primary_table,
@@ -2283,7 +2360,7 @@ class Compiler(object):
         for join_expression in expression.args["joins"]:
             sql.append("LEFT JOIN " + str(join_expression.args["this"]))
             if join_expression.args.get("on"):
-                sql.append(" ON " + str(join_expression.args["on"]))
+                sql.append("ON " + str(join_expression.args["on"]))
 
         inner_condition_sql = " AND ".join(["`%s`.`%s` IS NOT NULL" % (calculate_field["table_name"], calculate_field["column_name"])
                                             for calculate_field in inner_calculate_fields])
@@ -2312,7 +2389,8 @@ class Compiler(object):
         return maybe_parse(" ".join(sql), dialect=CompilerDialect)
 
     def optimize_rewrite_aggregate(self, expression, config, arguments, aggregate_expressions):
-        primary_table = self.optimize_rewrite_parse_primary_table(expression, config, arguments, expression.args["from"])
+        primary_table = self.optimize_rewrite_parse_table(expression, config, arguments,
+                                                          expression.args["from"].expressions[0])
         if not primary_table["table_name"]:
             return expression
         aggregate_calculate_fields = []
@@ -2375,17 +2453,16 @@ class Compiler(object):
             sql.append(("LIMIT %d, %d" % (offset_value, limit_value)) if offset_value > 0 else ("LIMIT %d" % limit_value))
         return maybe_parse(" ".join(sql), dialect=CompilerDialect)
 
-    def optimize_rewrite_parse_primary_table(self, expression, config, arguments, from_expression):
-        primary_table = {"table_name": None, "columns": {}}
-        from_expression = from_expression.expressions[0]
-        if isinstance(from_expression, sqlglot_expressions.Table):
-            primary_table["table_name"] = self.parse_table(from_expression, config, arguments)["table_name"]
-        elif isinstance(from_expression, sqlglot_expressions.Subquery):
-            if "alias" not in from_expression.args:
-                return expression
-            primary_table["table_name"] = from_expression.args["alias"].args["this"].name \
-                if "alias" in from_expression.args and from_expression.args["alias"] else None
-        return primary_table
+    def optimize_rewrite_parse_table(self, expression, config, arguments, table_expression):
+        table = {"table_name": None, "columns": {}}
+        if isinstance(table_expression, sqlglot_expressions.Table):
+            table["table_name"] = self.parse_table(table_expression, config, arguments)["table_name"]
+        elif isinstance(table_expression, sqlglot_expressions.Subquery):
+            if "alias" not in table_expression.args:
+                return table
+            table["table_name"] = table_expression.args["alias"].args["this"].name \
+                if table_expression.args.get("alias") else None
+        return table
 
     def optimize_rewrite_parse_condition(self, expression, config, arguments, primary_table, condition_expression,
                                          table_name, related_tables, on_expressions, const_expressions, calcuate_expressions):
