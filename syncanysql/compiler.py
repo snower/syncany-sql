@@ -26,21 +26,6 @@ from .taskers.use import UseCommandTasker
 from .taskers.show import ShowCommandTasker
 
 
-class EnvVariableGetter(object):
-    def __init__(self, env_variables, key):
-        self.env_variables = env_variables
-        self.key = key
-
-    def get(self, key):
-        return self.env_variables.get_value(key)
-
-    def __deepcopy__(self, memodict=None):
-        return self
-
-    def __copy__(self):
-        return self
-
-
 class CompilerDialect(Dialect):
     class Tokenizer(tokens.Tokenizer):
         QUOTES = ["'", '"']
@@ -1528,10 +1513,7 @@ class Compiler(object):
     
     def compile_const(self, expression, config, arguments, literal):
         if "value_getter" in literal and literal["value_getter"]:
-            if "imports" not in config:
-                config["imports"] = {}
-            config["imports"]["getter_" + str(id(literal["value_getter"]))] = literal["value_getter"]
-            return ["@getter_" + str(id(literal["value_getter"])) + "::get", ["#const", literal["value_getter"].key]]
+            return literal["value_getter"]
         return ["#const", literal["value"]]
 
     def parse_joins(self, expression, config, arguments, primary_table, join_expressions):
@@ -2030,7 +2012,7 @@ class Compiler(object):
                 value = self.env_variables.get_value("@" + name)
                 if isinstance(value, (int, float, bool)):
                     typing_filter = str(type(value).__name__)
-                value_getter = EnvVariableGetter(self.env_variables, "@" + name)
+                value_getter = ["@current_env_variable::get_value", ["#const", "@" + name]]
             except KeyError:
                 raise SyncanySqlCompileException('unkonw parameter variable, related sql "%s"' % self.to_sql(expression))
         else:

@@ -4,10 +4,12 @@
 
 from syncany.calculaters import CALCULATERS, Calculater, TypeFormatCalculater, TypingCalculater, MathematicalCalculater
 from syncany.calculaters import register_calculater, find_calculater, CalculaterUnknownException
+from .env_variable_calculater import CurrentEnvVariableCalculater
 from .mysql_calculater import MysqlCalculater
 from .aggregate_calculater import *
 
 SQL_CALCULATERS = {
+    "current_env_variable": CurrentEnvVariableCalculater,
     "mysql": MysqlCalculater,
     "aggregate_key": AggregateKeyCalculater,
     "aggregate_count": AggregateCountCalculater,

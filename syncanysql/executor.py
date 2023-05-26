@@ -120,6 +120,7 @@ class Executor(object):
         return sql
 
     def run(self, name, sqls):
+        self._thread_local.current_executor = self
         for sql in sqls:
             lineno = sql.lineno
             sql = self.compile_variable(str(sql))
@@ -134,6 +135,7 @@ class Executor(object):
             self.compile(name + "(" + str(lineno) + ")", sql)
 
     def compile(self, name, sql):
+        self._thread_local.current_executor = self
         config = self.session_config.get()
         config["name"] = name
         try:
@@ -149,6 +151,7 @@ class Executor(object):
         self.runners.extend(tasker.start(name, self, self.session_config, self.manager, arguments))
 
     def execute(self):
+        self._thread_local.current_executor = self
         while self.runners:
             self.tasker = self.runners.popleft()
             try:
