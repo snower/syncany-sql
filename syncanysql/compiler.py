@@ -2161,6 +2161,9 @@ class Compiler(object):
                 expression = self.optimize_rewrite_inner_join(expression, config, arguments)
                 break
 
+        if len(expression.args["expressions"]) == 1:
+            if isinstance(expression.args["expressions"][0], sqlglot_expressions.Star):
+                return expression
         aggregate_expressions = []
         for select_expression in expression.args["expressions"]:
             if isinstance(select_expression, sqlglot_expressions.Alias):
@@ -2410,16 +2413,19 @@ class Compiler(object):
                 return expression
 
         sub_sql = ["SELECT"]
-        calculate_fields = []
+        calculate_fields, sub_columns = [], []
         for select_expression in expression.args["expressions"]:
-            self.parse_calculate(select_expression, config, arguments, primary_table, calculate_fields)
+            if isinstance(select_expression, sqlglot_expressions.Column) \
+                    and isinstance(select_expression.args.get("this"), sqlglot_expressions.Star):
+                sub_columns.append(str(select_expression))
+            else:
+                self.parse_calculate(select_expression, config, arguments, primary_table, calculate_fields)
         if expression.args.get("group"):
             for group_expression in expression.args["group"].args["expressions"]:
                 self.parse_calculate(group_expression, config, arguments, primary_table, calculate_fields)
         if expression.args.get("order"):
             for order_expression in expression.args["order"].args["expressions"]:
                 self.parse_calculate(order_expression.args["this"], config, arguments, primary_table, calculate_fields)
-        sub_columns = []
         for calculate_field in calculate_fields:
             sub_column = "%s as `%s`" % (str(calculate_field["expression"]), calculate_field["column_name"])
             if sub_column not in sub_columns:
