@@ -5,6 +5,7 @@
 import os
 import copy
 import re
+import sys
 import uuid
 import logging.config
 import json
@@ -127,6 +128,8 @@ class GlobalConfig(object):
 
     def load(self, custom_config=None):
         home_config_path, cwd_config_path = self.get_home(), os.path.abspath(os.getcwd())
+        if home_config_path not in sys.path:
+            sys.path.append(home_config_path)
         for filename in {os.path.join(home_config_path, "config.json"), os.path.join(home_config_path, "config.yaml"),
                          os.path.join(cwd_config_path, "config.json"), os.path.join(cwd_config_path, "config.yaml")}:
             if not os.path.exists(filename):
@@ -138,6 +141,15 @@ class GlobalConfig(object):
         self.load_config()
         if custom_config and isinstance(custom_config, dict):
             self.merge_config(custom_config)
+        pypackage_paths = self.config.get("pypackage_paths")
+        if pypackage_paths:
+            if isinstance(pypackage_paths, str):
+                pypackage_paths = [pypackage_paths]
+            if isinstance(pypackage_paths, list):
+                for pypackage_path in pypackage_paths:
+                    if isinstance(pypackage_path, str) and os.path.exists(pypackage_path) \
+                            and os.path.isdir(pypackage_path) and pypackage_path not in sys.path:
+                        sys.path.append(pypackage_path)
 
         if "timezone" in self.config:
             timezone = self.config.get("timezone")
