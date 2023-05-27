@@ -153,14 +153,14 @@ def mysql_week(dt, mod=None):
         return None
     if isinstance(dt, (int, float, str)):
         dt = parse_datetime(str(dt), None, get_timezone())
-    return int(dt.strftime("%U"))
+    return int(dt.strftime("%W" if str(mod) == "1" else "%U"))
 
 def mysql_yearweek(dt, mod=None):
     if dt is None:
         return None
     if isinstance(dt, (int, float, str)):
         dt = parse_datetime(str(dt), None, get_timezone())
-    return int(dt.strftime("%Y%U"))
+    return int(dt.strftime("%Y%W" if str(mod) == "1" else "%Y%U"))
 
 def mysql_dayofyear(dt):
     if dt is None:
