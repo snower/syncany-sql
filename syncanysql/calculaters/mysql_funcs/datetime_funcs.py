@@ -155,6 +155,13 @@ def mysql_week(dt, mod=None):
         dt = parse_datetime(str(dt), None, get_timezone())
     return int(dt.strftime("%U"))
 
+def mysql_yearweek(dt, mod=None):
+    if dt is None:
+        return None
+    if isinstance(dt, (int, float, str)):
+        dt = parse_datetime(str(dt), None, get_timezone())
+    return int(dt.strftime("%Y%U"))
+
 def mysql_dayofyear(dt):
     if dt is None:
         return None
