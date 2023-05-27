@@ -2427,7 +2427,12 @@ class Compiler(object):
             for order_expression in expression.args["order"].args["expressions"]:
                 self.parse_calculate(order_expression.args["this"], config, arguments, primary_table, calculate_fields)
         for calculate_field in calculate_fields:
-            sub_column = "%s as `%s`" % (str(calculate_field["expression"]), calculate_field["column_name"])
+            if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]:
+                sub_column = "%s as `%s__%s`" % (str(calculate_field["expression"]),
+                                                 calculate_field["table_name"].replace(".", "__"),
+                                                 calculate_field["column_name"])
+            else:
+                sub_column = "%s as `%s`" % (str(calculate_field["expression"]), calculate_field["column_name"])
             if sub_column not in sub_columns:
                 sub_columns.append(sub_column)
         sub_sql.append(", ".join(sub_columns))
@@ -2437,18 +2442,34 @@ class Compiler(object):
         if expression.args.get("where"):
             sub_sql.append(str(expression.args["where"]))
 
+        subquery_name = "__subquery_" + str(uuid.uuid1().int)
         sql = ["SELECT"]
         if expression.args.get("distinct"):
             sql.append(str(expression.args["distinct"]))
-        sql.append(", ".join([str(self.optimize_rewrite_except_table(select_expression, config, arguments))
-                              for select_expression in expression.args["expressions"]]))
-        sql.append("FROM (%s) `__subquery_%s`" % (" ".join(sub_sql), str(uuid.uuid1().int)))
+        select_sql = []
+        for select_expression in expression.args["expressions"]:
+            if isinstance(select_expression, sqlglot_expressions.Alias):
+                select_sql.append(str(self.optimize_rewrite_except_table(select_expression, config, arguments, primary_table)))
+                continue
+            if isinstance(select_expression, sqlglot_expressions.Column):
+                if isinstance(select_expression.args.get("this"), sqlglot_expressions.Star):
+                    if (subquery_name + ".*") not in select_sql:
+                        select_sql.insert(0, subquery_name + ".*")
+                    continue
+                select_column_name = self.parse_column(select_expression, config, arguments)["column_name"]
+            else:
+                select_column_name = str(select_expression)
+            select_sql.append("%s as `%s`" %
+                              (str(self.optimize_rewrite_except_table(select_expression, config, arguments, primary_table)),
+                               select_column_name))
+        sql.append(", ".join(select_sql))
+        sql.append("FROM (%s) `%s`" % (" ".join(sub_sql), subquery_name))
         if expression.args.get("group"):
-            sql.append(str(self.optimize_rewrite_except_table(expression.args["group"], config, arguments)))
+            sql.append(str(self.optimize_rewrite_except_table(expression.args["group"], config, arguments, primary_table)))
         if expression.args.get("having"):
             sql.append(str(expression.args["having"]))
         if expression.args.get("order"):
-            sql.append(str(self.optimize_rewrite_except_table(expression.args["order"], config, arguments)))
+            sql.append(str(self.optimize_rewrite_except_table(expression.args["order"], config, arguments, primary_table)))
         if expression.args.get("offset"):
             offset_expression, limit_expression = expression.args.get("limit"), expression.args.get("offset")
         else:
@@ -2481,14 +2502,11 @@ class Compiler(object):
                                                sqlglot_expressions.GTE, sqlglot_expressions.LT, sqlglot_expressions.LTE,
                                                sqlglot_expressions.In)):
             if condition_expression.args.get("expressions"):
-                left_expression, right_expression = condition_expression.args["this"], condition_expression.args[
-                    "expressions"]
+                left_expression, right_expression = condition_expression.args["this"], condition_expression.args["expressions"]
             elif condition_expression.args.get("query"):
-                left_expression, right_expression = condition_expression.args["this"], condition_expression.args[
-                    "query"]
+                left_expression, right_expression = condition_expression.args["this"], condition_expression.args["query"]
             else:
-                left_expression, right_expression = condition_expression.args["this"], condition_expression.args[
-                    "expression"]
+                left_expression, right_expression = condition_expression.args["this"], condition_expression.args["expression"]
 
             condition_column, value_expression = None, left_expression
             if self.is_column(left_expression, config, arguments):
@@ -2516,11 +2534,15 @@ class Compiler(object):
         else:
             calcuate_expressions.append(condition_expression)
 
-    def optimize_rewrite_except_table(self, expression, config, arguments):
+    def optimize_rewrite_except_table(self, expression, config, arguments, primary_table):
         def parse_except_table(arg_expression):
             if not isinstance(arg_expression, sqlglot_expressions.Expression):
                 return arg_expression
             if isinstance(arg_expression, sqlglot_expressions.Column):
+                column = self.parse_column(arg_expression, config, arguments)
+                if column["table_name"] and column["table_name"] != primary_table["table_name"]:
+                    arg_expression.args["this"].args["this"] = "%s__%s" % (
+                        column["table_name"].replace(".", "__"), column["column_name"])
                 if arg_expression.args.get("db"):
                     arg_expression.args["db"] = None
                 if arg_expression.args.get("table"):
