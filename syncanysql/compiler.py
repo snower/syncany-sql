@@ -2445,7 +2445,8 @@ class Compiler(object):
         subquery_name = "__subquery_" + str(uuid.uuid1().int)
         sql = ["SELECT"]
         if expression.args.get("distinct"):
-            sql.append(str(expression.args["distinct"]))
+            sql.append(str(self.optimize_rewrite_except_table(expression.args["distinct"],
+                                                              config, arguments, primary_table)))
         select_sql = []
         for select_expression in expression.args["expressions"]:
             if isinstance(select_expression, sqlglot_expressions.Alias):
