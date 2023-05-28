@@ -65,10 +65,15 @@ class QueryTaskerTemporaryMemoryManager(object):
         if name not in self.collections:
             return True
         self.collections[name] -= 1
-        if self.collections[name] <= 0:
-            self.collections.pop(name, None)
+        return self.collections[name] <= 0
+
+    def free_collection(self, name):
+        if name not in self.collections:
             return True
-        return False
+        if self.collections[name] > 0:
+            return False
+        self.collections.pop(name, None)
+        return True
 
     def get_names(self):
         return list(self.collections.keys())
@@ -452,8 +457,14 @@ class QueryTasker(object):
                 return
             if hasattr(tasker.outputer, "name") and tasker.loader.name == tasker.outputer.name:
                 return
-            if self.temporary_memory_manager.unuse_collection(tasker.loader.name):
-                executor.clear_temporary_memory_collection([tasker.loader.name])
+            name = tasker.loader.name
+            if self.temporary_memory_manager.unuse_collection(name):
+                database = tasker.databases.instance("--")
+                if executor.runners and database.is_streaming(name):
+                    return
+                delete = database.delete(name, ["id"])
+                delete.commit()
+                self.temporary_memory_manager.free_collection(name)
         except:
             pass
 
