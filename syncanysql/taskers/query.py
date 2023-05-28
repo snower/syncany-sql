@@ -7,6 +7,7 @@ import copy
 import time
 import traceback
 import uuid
+from collections import defaultdict
 from syncany.logger import get_logger
 from syncany.taskers.core import CoreTasker
 from syncany.hook import Hooker
@@ -49,8 +50,32 @@ class ReduceHooker(Hooker):
         self.tasker.run_reduce(self.executor, self.session_config, self.manager, self.arguments, False)
 
 
+class QueryTaskerTemporaryMemoryManager(object):
+    def __init__(self):
+        self.collections = defaultdict(int)
+
+    def add_collection(self, name):
+        if name not in self.collections:
+            self.collections[name] = 0
+
+    def use_collection(self, name):
+        self.collections[name] += 1
+
+    def unuse_collection(self, name):
+        if name not in self.collections:
+            return True
+        self.collections[name] -= 1
+        if self.collections[name] <= 0:
+            self.collections.pop(name, None)
+            return True
+        return False
+
+    def get_names(self):
+        return list(self.collections.keys())
+
+
 class QueryTasker(object):
-    def __init__(self, config, sql_expression=None):
+    def __init__(self, config, sql_expression=None, temporary_memory_manager=None):
         self.name = config.get("name", "")
         self.config = config
         self.sql_expression = sql_expression
@@ -60,7 +85,7 @@ class QueryTasker(object):
         self.arguments = None
         self.tasker_generator = None
         self.updaters = []
-        self.temporary_memory_collections = set([])
+        self.temporary_memory_manager = temporary_memory_manager or QueryTaskerTemporaryMemoryManager()
         self.run_start_time = 0
 
     def start(self, name, executor, session_config, manager, arguments):
@@ -68,7 +93,7 @@ class QueryTasker(object):
         if aggregate and aggregate.get("distinct_keys"):
             self.config, distinct_config = self.compile_distinct_config(where_schema, aggregate), self.config
             distinct_config["name"] = distinct_config["name"] + "#select@distinct"
-            distinct_tasker = QueryTasker(distinct_config)
+            distinct_tasker = QueryTasker(distinct_config, temporary_memory_manager=self.temporary_memory_manager)
             distinct_tasker.start(name, executor, session_config, manager, copy.deepcopy(arguments))
             dependency_taskers.append(distinct_tasker)
             arguments["@limit"] = 0
@@ -81,7 +106,7 @@ class QueryTasker(object):
                     continue
                 dependency_arguments[key[knl:]] = value
                 dependency_arguments.pop(key, None)
-            dependency_tasker = QueryTasker(dependency_config)
+            dependency_tasker = QueryTasker(dependency_config, temporary_memory_manager=self.temporary_memory_manager)
             dependency_tasker.start(name, executor, session_config, manager, dependency_arguments)
             dependency_taskers.append(dependency_tasker)
 
@@ -345,9 +370,13 @@ class QueryTasker(object):
         if "@verbose" in compile_arguments and compile_arguments["@verbose"]:
             warp_database_logging(tasker)
 
+        if hasattr(tasker.loader, "name"):
+            if tasker.loader.name.startswith("--.__subquery_") or tasker.loader.name.startswith("--.__unionquery_"):
+                self.temporary_memory_manager.use_collection(tasker.loader.name)
+
         if hasattr(tasker.outputer, "name"):
             if tasker.outputer.name.startswith("--.__subquery_") or tasker.outputer.name.startswith("--.__unionquery_"):
-                self.temporary_memory_collections.add(tasker.outputer.name)
+                self.temporary_memory_manager.add_collection(tasker.outputer.name)
 
         loader_or_outputers = [tasker.loader, tasker.outputer] + list(tasker.join_loaders.values())
         for loader_or_outputer in loader_or_outputers:
@@ -383,18 +412,22 @@ class QueryTasker(object):
                         return exit_code
                     break
         except SystemError:
+            self.check_free_temporary_memory_collection(executor, tasker)
             tasker.close(False, "signal terminaled")
             get_logger().error("signal exited")
             return 130
         except KeyboardInterrupt:
+            self.check_free_temporary_memory_collection(executor, tasker)
             tasker.close(False, "user terminaled")
             get_logger().error("Crtl+C exited")
             return 130
         except Exception as e:
+            self.check_free_temporary_memory_collection(executor, tasker)
             tasker.close(False, "Error: " + repr(e), traceback.format_exc())
             get_logger().error("tasker %s error: %s\n%s", tasker.name, e, traceback.format_exc())
             return 1
         else:
+            self.check_free_temporary_memory_collection(executor, tasker)
             tasker.close()
         return 0
 
@@ -406,10 +439,23 @@ class QueryTasker(object):
             dependency_tasker.execute_updater(executor, session_config, manager)
 
     def get_temporary_memory_collections(self):
-        names = list(self.temporary_memory_collections)
+        names = self.temporary_memory_manager.get_names()
         for dependency_tasker in self.dependency_taskers:
             names.extend(dependency_tasker.get_temporary_memory_collections())
-        return names
+        return list(set(names))
+
+    def check_free_temporary_memory_collection(self, executor, tasker):
+        try:
+            if not hasattr(tasker.loader, "name"):
+                return
+            if not tasker.loader.name.startswith("--.__subquery_") and not tasker.loader.name.startswith("--.__unionquery_"):
+                return
+            if hasattr(tasker.outputer, "name") and tasker.loader.name == tasker.outputer.name:
+                return
+            if self.temporary_memory_manager.unuse_collection(tasker.loader.name):
+                executor.clear_temporary_memory_collection([tasker.loader.name])
+        except:
+            pass
 
     def is_local_memory_database(self, config, name="--"):
         try:

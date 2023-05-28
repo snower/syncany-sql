@@ -1263,7 +1263,7 @@ class Compiler(object):
                 return [
                     "#if",
                     self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
-                    self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index)
+                    self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index),
                     ["#const", False]
                 ]
             if isinstance(expression, sqlglot_expressions.Or):
