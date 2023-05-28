@@ -2427,6 +2427,8 @@ class Compiler(object):
             for order_expression in expression.args["order"].args["expressions"]:
                 self.parse_calculate(order_expression.args["this"], config, arguments, primary_table, calculate_fields)
         for calculate_field in calculate_fields:
+            if not calculate_field["table_name"] and primary_table["table_name"]:
+                continue
             if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]:
                 sub_column = "%s as `%s__%s`" % (str(calculate_field["expression"]),
                                                  calculate_field["table_name"].replace(".", "__"),
