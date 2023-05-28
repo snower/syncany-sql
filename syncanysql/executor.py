@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # 2023/2/13
 # create by: snower
+
 import datetime
 import os
 import sys
@@ -129,7 +130,8 @@ class Executor(object):
                 raw_name_info = raw_name.split(".")
                 if len(raw_name_info) != 2:
                     raise SyncanySqlCompileException("raw sql name error: %s", raw)
-                raw_sql = "set @config.databases." + raw_name_info[0] + ".virtual_views." + raw_name_info[1] + "='''\n" + raw_sql.strip() + "\n'''"
+                raw_sql = "set @config.databases." + raw_name_info[0] + ".virtual_views." \
+                          + raw_name_info[1] + "='''\n" + raw_sql.strip() + "\n'''"
                 self.compile(name + "(" + str(lineno) + ")#set_virtual_view", raw_sql)
                 sql = sql.replace(raw, raw_name)
             self.compile(name + "(" + str(lineno) + ")", sql)

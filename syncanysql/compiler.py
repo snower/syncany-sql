@@ -1259,6 +1259,20 @@ class Compiler(object):
                 return ["#if", ["#const", True], value_column, None, ":$.*|" + typing_filter]
             return value_column
         elif isinstance(expression, sqlglot_expressions.Binary):
+            if isinstance(expression, sqlglot_expressions.And):
+                return [
+                    "#if",
+                    self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
+                    self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index)
+                    ["#const", False]
+                ]
+            if isinstance(expression, sqlglot_expressions.Or):
+                return [
+                    "#if",
+                    self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
+                    ["#const", True],
+                    self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index)
+                ]
             func_name = expression.key.lower()
             if isinstance(expression.args["expression"], sqlglot_expressions.Interval):
                 func_name = "date" + func_name
@@ -1342,7 +1356,7 @@ class Compiler(object):
                 "key_value": self.compile_calculate(expression.args["this"], config, arguments, primary_table, []),
                 "low_value": self.compile_calculate(expression.args["low"], config, arguments, primary_table, []),
                 "high_value": self.compile_calculate(expression.args["high"], config, arguments, primary_table, [])
-            }, [":@and", ["@gte", "$.key_value", "$.low_value"], ["@lte", "$.key_value", "$.high_value"]]]
+            }, [":#if", ["@gte", "$.key_value", "$.low_value"], ["@lte", "$.key_value", "$.high_value"], ["#const", False]]]
         elif isinstance(expression, sqlglot_expressions.Not):
             return ["@not", self.compile_calculate(expression.args["this"], config, arguments, primary_table,
                                                    column_join_tables, join_index)]
