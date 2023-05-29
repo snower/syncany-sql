@@ -177,3 +177,25 @@ class AggregateAvgCalculater(StateAggregateCalculater):
         if state_value is None:
             return 0
         return state_value["sum_value"] / state_value["count_value"]
+
+
+class AggregateGroupConcatCalculater(StateAggregateCalculater):
+    def aggregate(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return [str(data_value)]
+        state_value.append(str(data_value))
+        return state_value
+
+    def reduce(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return data_value
+        return state_value + data_value
+
+    def final_value(self, state_value):
+        if not state_value:
+            return ""
+        return ",".join(state_value)

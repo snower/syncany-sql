@@ -1134,6 +1134,8 @@ class Compiler(object):
             return "@aggregate_max::aggregate", "@aggregate_max::reduce", None
         elif isinstance(expression, sqlglot_expressions.Avg):
             return "@aggregate_avg::aggregate", "@aggregate_avg::reduce", "@aggregate_avg::final_value"
+        elif isinstance(expression, sqlglot_expressions.GroupConcat):
+            return "@aggregate_group_concat::aggregate", "@aggregate_group_concat::reduce", "@aggregate_group_concat::final_value"
         elif isinstance(expression, sqlglot_expressions.Anonymous):
             calculater_name = expression.args["this"].lower()
             try:
@@ -2179,7 +2181,7 @@ class Compiler(object):
 
     def is_aggregate(self, expression, config, arguments):
         if isinstance(expression, (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Max,
-                                       sqlglot_expressions.Min, sqlglot_expressions.Avg)):
+                                   sqlglot_expressions.Min, sqlglot_expressions.Avg, sqlglot_expressions.GroupConcat)):
             return True
         if isinstance(expression, sqlglot_expressions.Anonymous):
             calculater_name = expression.args["this"].lower()

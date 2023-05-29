@@ -17,6 +17,7 @@ SQL_CALCULATERS = {
     "aggregate_max": AggregateMaxCalculater,
     "aggregate_min": AggregateMinCalculater,
     "aggregate_avg": AggregateAvgCalculater,
+    "aggregate_group_concat": AggregateGroupConcatCalculater,
 }
 CALCULATERS.update(SQL_CALCULATERS)
 
