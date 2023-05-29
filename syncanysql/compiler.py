@@ -1333,7 +1333,7 @@ class Compiler(object):
                 "key_value": self.compile_calculate(expression.args["this"], config, arguments, primary_table, []),
                 "low_value": self.compile_calculate(expression.args["low"], config, arguments, primary_table, []),
                 "high_value": self.compile_calculate(expression.args["high"], config, arguments, primary_table, [])
-            }, [":#if", ["@mysql::gte", "$.key_value", "$.low_value"], ["@lte", "$.key_value", "$.high_value"], ["#const", 0]]]
+            }, [":#if", ["@mysql::gte", "$.key_value", "$.low_value"], ["@mysql::lte", "$.key_value", "$.high_value"], ["#const", 0]]]
         elif self.is_column(expression, config, arguments):
             join_column = self.parse_column(expression, config, arguments)
             return self.compile_join_column_field(expression, config, arguments, primary_table, join_index, 
