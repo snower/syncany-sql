@@ -421,7 +421,7 @@ class Compiler(object):
             where_condition = self.compile_where_condition(where_expression.args["this"], config, arguments, primary_table, join_tables)
             if where_condition:
                 if not config["intercepts"]:
-                    config["intercepts"] = [["#const", True], ["#const", True]]
+                    config["intercepts"] = [["#const", 1], ["#const", 1]]
                 config["intercepts"][0] = where_condition
             self.parse_condition_typing_filter(expression, config, arguments)
 
@@ -435,7 +435,7 @@ class Compiler(object):
                         'error having condition, cannot contain the values before and after the aggregate calculation at the same time, related sql "%s"'
                         % self.to_sql(expression))
             if not config["intercepts"]:
-                config["intercepts"] = [["#const", True], ["#const", True]]
+                config["intercepts"] = [["#const", 1], ["#const", 1]]
             config["intercepts"][1] = having_condition
 
         order_expression = expression.args.get("order")
@@ -662,11 +662,11 @@ class Compiler(object):
                             if len(right_having_expression) > 1:
                                 right_having_column = compile_having_column(right_having_expression[0],
                                                                             right_having_expression[1:])
-                                return ["#if", left_having_column, right_having_column, ["#const", False]]
+                                return ["#if", left_having_column, right_having_column, ["#const", 0]]
                             right_having_expression = right_having_expression[0]
                         right_having_column = self.compile_calculate(right_having_expression, config, arguments,
                                                                      primary_table, column_join_tables, i - 1)
-                        return ["#if", left_having_column, right_having_column, ["#const", False]]
+                        return ["#if", left_having_column, right_having_column, ["#const", 0]]
                     having_columns = compile_having_column(join_table["having_expressions"][0],
                                                            join_table["having_expressions"][1:])
                 column = [join_columns, join_db_table, having_columns, column] \
@@ -692,14 +692,14 @@ class Compiler(object):
             right_condition = self.compile_where_condition(expression.args.get("expression"), config, arguments,
                                                            primary_table, join_tables, is_query_condition)
             if left_condition and right_condition:
-                return ["#if", left_condition, right_condition, ["#const", False]]
+                return ["#if", left_condition, right_condition, ["#const", 0]]
             return left_condition or right_condition or None
         if isinstance(expression, sqlglot_expressions.Or):
             left_condition = self.compile_where_condition(expression.args.get("this"), config, arguments, primary_table,
                                                           join_tables, False)
             right_condition = self.compile_where_condition(expression.args.get("expression"), config, arguments,
                                                            primary_table, join_tables, False)
-            return ["#if", left_condition, ["#const", True], right_condition]
+            return ["#if", left_condition, ["#const", 1], right_condition]
 
         def parse_calucate(calculate_expression):
             if not isinstance(config.get("schema"), dict):
@@ -799,7 +799,7 @@ class Compiler(object):
                     config["querys"][condition_column["typing_name"]] = {}
                 config["querys"][condition_column["typing_name"]]["=="] = right_calculater
                 return None
-            return ["@eq", left_calculater, right_calculater]
+            return ["@mysql::eq", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.NEQ):
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
             if is_query_condition and is_query_column:
@@ -807,7 +807,7 @@ class Compiler(object):
                     config["querys"][condition_column["typing_name"]] = {}
                 config["querys"][condition_column["typing_name"]]["!="] = right_calculater
                 return None
-            return ["@neq", left_calculater, right_calculater]
+            return ["@mysql::neq", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.GT):
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
             if is_query_condition and is_query_column:
@@ -815,7 +815,7 @@ class Compiler(object):
                     config["querys"][condition_column["typing_name"]] = {}
                 config["querys"][condition_column["typing_name"]][">"] = right_calculater
                 return None
-            return ["@gt", left_calculater, right_calculater]
+            return ["@mysql::gt", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.GTE):
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
             if is_query_condition and is_query_column:
@@ -823,7 +823,7 @@ class Compiler(object):
                     config["querys"][condition_column["typing_name"]] = {}
                 config["querys"][condition_column["typing_name"]][">="] = right_calculater
                 return None
-            return ["@gte", left_calculater, right_calculater]
+            return ["@mysql::gte", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.LT):
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
             if is_query_condition and is_query_column:
@@ -831,7 +831,7 @@ class Compiler(object):
                     config["querys"][condition_column["typing_name"]] = {}
                 config["querys"][condition_column["typing_name"]]["<"] = right_calculater
                 return None
-            return ["@lt", left_calculater, right_calculater]
+            return ["@mysql::lt", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.LTE):
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
             if is_query_condition and is_query_column:
@@ -839,7 +839,7 @@ class Compiler(object):
                     config["querys"][condition_column["typing_name"]] = {}
                 config["querys"][condition_column["typing_name"]]["<="] = right_calculater
                 return None
-            return ["@lte", left_calculater, right_calculater]
+            return ["@mysql::lte", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.In):
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
             if is_query_condition and is_query_column:
@@ -847,7 +847,7 @@ class Compiler(object):
                     config["querys"][condition_column["typing_name"]] = {}
                 config["querys"][condition_column["typing_name"]]["in"] = ["@convert_array", right_calculater]
                 return None
-            return ["@in", left_calculater, ["@convert_array", right_calculater]]
+            return ["@mysql::in", left_calculater, ["@convert_array", right_calculater]]
         elif isinstance(expression, sqlglot_expressions.Like):
             is_query_condition = False
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
@@ -856,7 +856,7 @@ class Compiler(object):
                     'error having condition, like condition value must be const, related sql "%s"'
                     % self.to_sql(expression))
             return ["#if", ["@re::match", right_calculater[1].replace("%", ".*").replace(".*.*", "%"), left_calculater],
-                    ["#const", True], ["#const", False]]
+                    ["#const", 1], ["#const", 0]]
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_where_condition(expression.args.get("this"), config, arguments, primary_table, join_tables, False)
         else:
@@ -1256,31 +1256,8 @@ class Compiler(object):
                 typing_filter = None
             value_column = self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
             if typing_filter:
-                return ["#if", ["#const", True], value_column, None, ":$.*|" + typing_filter]
+                return ["#if", ["#const", 1], value_column, None, ":$.*|" + typing_filter]
             return value_column
-        elif isinstance(expression, sqlglot_expressions.Binary):
-            if isinstance(expression, sqlglot_expressions.And):
-                return [
-                    "#if",
-                    self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
-                    self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index),
-                    ["#const", False]
-                ]
-            if isinstance(expression, sqlglot_expressions.Or):
-                return [
-                    "#if",
-                    self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
-                    ["#const", True],
-                    self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index)
-                ]
-            func_name = expression.key.lower()
-            if isinstance(expression.args["expression"], sqlglot_expressions.Interval):
-                func_name = "date" + func_name
-            return [
-                ("@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name),
-                self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
-                self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index)
-            ]
         elif isinstance(expression, sqlglot_expressions.BitwiseNot):
             func_name = expression.key.lower()
             return [
@@ -1317,7 +1294,7 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Case):
             cases = {}
             cases["#case"] = self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index) \
-                                 if expression.args.get("this") else ["#const", True]
+                                 if expression.args.get("this") else ["#const", 1]
             if expression.args.get("ifs"):
                 for case_expression in expression.args["ifs"]:
                     if not isinstance(case_expression, sqlglot_expressions.If) or not self.is_const(case_expression.args["this"], config, arguments):
@@ -1356,10 +1333,7 @@ class Compiler(object):
                 "key_value": self.compile_calculate(expression.args["this"], config, arguments, primary_table, []),
                 "low_value": self.compile_calculate(expression.args["low"], config, arguments, primary_table, []),
                 "high_value": self.compile_calculate(expression.args["high"], config, arguments, primary_table, [])
-            }, [":#if", ["@gte", "$.key_value", "$.low_value"], ["@lte", "$.key_value", "$.high_value"], ["#const", False]]]
-        elif isinstance(expression, sqlglot_expressions.Not):
-            return ["@not", self.compile_calculate(expression.args["this"], config, arguments, primary_table,
-                                                   column_join_tables, join_index)]
+            }, [":#if", ["@mysql::gte", "$.key_value", "$.low_value"], ["@lte", "$.key_value", "$.high_value"], ["#const", 0]]]
         elif self.is_column(expression, config, arguments):
             join_column = self.parse_column(expression, config, arguments)
             return self.compile_join_column_field(expression, config, arguments, primary_table, join_index, 
@@ -1376,6 +1350,52 @@ class Compiler(object):
             return ["#const", {"value": expression.args["this"].args["this"], "unit": expression.args["unit"].args["this"]}]
         elif self.is_const(expression, config, arguments):
             return self.compile_const(expression, config, arguments, self.parse_const(expression, config, arguments))
+        elif isinstance(expression, (sqlglot_expressions.Binary, sqlglot_expressions.Condition)):
+            if isinstance(expression, sqlglot_expressions.And):
+                return [
+                    "#if",
+                    self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
+                    self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index),
+                    ["#const", 0]
+                ]
+            if isinstance(expression, sqlglot_expressions.Or):
+                return [
+                    "#if",
+                    self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
+                    ["#const", 1],
+                    self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index)
+                ]
+            if isinstance(expression, sqlglot_expressions.Like):
+                return [
+                    "#if",
+                    [
+                        "@re::match",
+                        self.parse_const(expression.args["this"], config, arguments)["value"].replace("%", ".*").replace(".*.*", "%"),
+                        self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index)
+                    ],
+                    ["#const", 1], ["#const", 0]
+                ]
+
+            func_name = expression.key.lower()
+            if expression.args.get("expressions"):
+                return [
+                    ("@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name),
+                    self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
+                    ["#make", [self.compile_calculate(item_expression, config, arguments, primary_table, column_join_tables, join_index)
+                               for item_expression in expression.args["expressions"]]]
+                ]
+            if not expression.args.get("expression"):
+                return [
+                    ("@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name),
+                    self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
+                ]
+            if isinstance(expression.args["expression"], sqlglot_expressions.Interval):
+                func_name = "date" + func_name
+            return [
+                ("@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name),
+                self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
+                self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index)
+            ]
         else:
             raise SyncanySqlCompileException('unknown calculate expression, related sql "%s"' % self.to_sql(expression))
 
@@ -1385,13 +1405,13 @@ class Compiler(object):
                 "#if",
                 self.compile_having_condition(expression.args.get("this"), config, arguments, primary_table),
                 self.compile_having_condition(expression.args.get("expression"), config, arguments, primary_table),
-                ["#const", False]
+                ["#const", 0]
             ]
         if isinstance(expression, sqlglot_expressions.Or):
             return [
                 "#if",
                 self.compile_having_condition(expression.args.get("this"), config, arguments, primary_table),
-                ["#const", True],
+                ["#const", 1],
                 self.compile_having_condition(expression.args.get("expression"), config, arguments, primary_table)
             ]
 
@@ -1459,32 +1479,32 @@ class Compiler(object):
 
         if isinstance(expression, sqlglot_expressions.EQ):
             left_calculater, right_calculater = parse(expression)
-            return ["@eq", left_calculater, right_calculater]
+            return ["@mysql::eq", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.NEQ):
             left_calculater, right_calculater = parse(expression)
-            return ["@neq", left_calculater, right_calculater]
+            return ["@mysql::neq", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.GT):
             left_calculater, right_calculater = parse(expression)
-            return ["@gt", left_calculater, right_calculater]
+            return ["@mysql::gt", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.GTE):
             left_calculater, right_calculater = parse(expression)
-            return ["@gte", left_calculater, right_calculater]
+            return ["@mysql::gte", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.LT):
             left_calculater, right_calculater = parse(expression)
-            return ["@lt", left_calculater, right_calculater]
+            return ["@mysql::lt", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.LTE):
             left_calculater, right_calculater = parse(expression)
-            return ["@lte", left_calculater, right_calculater]
+            return ["@mysql::lte", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.In):
             left_calculater, right_calculater = parse(expression)
-            return ["@in", left_calculater, ["@convert_array", right_calculater]]
+            return ["@mysql::in", left_calculater, ["@convert_array", right_calculater]]
         elif isinstance(expression, sqlglot_expressions.Like):
             left_calculater, right_calculater = parse(expression)
             if not isinstance(right_calculater, list) or len(right_calculater) != 2 or right_calculater[0] != "#const":
                 raise SyncanySqlCompileException('error having condition, like condition value must be const, related sql "%s"'
                                                  % self.to_sql(expression))
             return ["#if", ["@re::match", right_calculater[1].replace("%", ".*").replace(".*.*", "%"), left_calculater],
-                    ["#const", True], ["#const", False]]
+                    ["#const", 1], ["#const", 0]]
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_having_condition(expression.args.get("this"), config, arguments, primary_table)
         else:
@@ -2140,9 +2160,14 @@ class Compiler(object):
                                        sqlglot_expressions.ByteString, sqlglot_expressions.Parameter))
 
     def is_calculate(self, expression, config, arguments):
-        return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Anonymous, sqlglot_expressions.Binary, sqlglot_expressions.Func,
-                                       sqlglot_expressions.Select, sqlglot_expressions.Subquery, sqlglot_expressions.Union, sqlglot_expressions.Between,
-                                       sqlglot_expressions.Not, sqlglot_expressions.BitwiseNot, sqlglot_expressions.Tuple))
+        if isinstance(expression, sqlglot_expressions.Condition):
+            return isinstance(expression, (sqlglot_expressions.EQ, sqlglot_expressions.NEQ, sqlglot_expressions.GT, sqlglot_expressions.GTE,
+                                           sqlglot_expressions.LT, sqlglot_expressions.LTE, sqlglot_expressions.In, sqlglot_expressions.Not,
+                                           sqlglot_expressions.Between, sqlglot_expressions.Like, sqlglot_expressions.Func,
+                                           sqlglot_expressions.Binary))
+        return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Binary, sqlglot_expressions.Select,
+                                       sqlglot_expressions.Subquery, sqlglot_expressions.Union,
+                                       sqlglot_expressions.BitwiseNot, sqlglot_expressions.Tuple))
 
     def is_aggregate(self, expression, config, arguments):
         if isinstance(expression, (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Max,
