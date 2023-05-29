@@ -1514,7 +1514,7 @@ class Compiler(object):
         else:
             left_calculater, right_calculater = parse(expression)
             func_name = expression.key.lower()
-            if isinstance(expression.args["expression"], sqlglot_expressions.Interval):
+            if expression.args.get("expression") and isinstance(expression.args["expression"], sqlglot_expressions.Interval):
                 func_name = "date" + func_name
             if right_calculater is None:
                 return [("@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name), left_calculater]
@@ -1839,31 +1839,28 @@ class Compiler(object):
             if not column["table_name"] or primary_table["table_name"] == column["table_name"]:
                 primary_table["columns"][column["column_name"]] = column
             calculate_fields.append(column)
-        elif isinstance(expression, (sqlglot_expressions.Select, sqlglot_expressions.Star, sqlglot_expressions.Interval,
-                                     sqlglot_expressions.DataType)):
+        elif isinstance(expression, (sqlglot_expressions.Select, sqlglot_expressions.Union, sqlglot_expressions.Subquery,
+                                     sqlglot_expressions.Star, sqlglot_expressions.Interval, sqlglot_expressions.DataType)):
             pass
         elif self.is_const(expression, config, arguments):
             pass
         else:
             if not isinstance(expression, sqlglot_expressions.Expression):
                 return
-            if expression.args.get("this"):
-                self.parse_calculate(expression.args["this"], config, arguments, primary_table, calculate_fields)
-            if expression.args.get("expression"):
-                self.parse_calculate(expression.args["expression"], config, arguments, primary_table, calculate_fields)
-            if expression.args.get("expressions") and isinstance(expression.args["expressions"], list):
-                for arg_expression in expression.args["expressions"]:
-                    self.parse_calculate(arg_expression, config, arguments, primary_table, calculate_fields)
-            for arg_type in expression.arg_types:
-                if arg_type in ("this", "expression", "expressions"):
-                    continue
-                if arg_type not in expression.args or not expression.args[arg_type]:
-                    continue
-                if isinstance(expression.args[arg_type], list):
-                    for arg_expression in expression.args.get(arg_type, []):
-                        self.parse_calculate(arg_expression, config, arguments, primary_table, calculate_fields)
+            for arg_expression in expression.args.values():
+                if isinstance(arg_expression, list):
+                    for item_arg_expression in expression.args["expressions"]:
+                        if not isinstance(item_arg_expression, sqlglot_expressions.Expression):
+                            continue
+                        if self.is_const(item_arg_expression, config, arguments):
+                            continue
+                        self.parse_calculate(item_arg_expression, config, arguments, primary_table, calculate_fields)
                 else:
-                    self.parse_calculate(expression.args[arg_type], config, arguments, primary_table, calculate_fields)
+                    if not isinstance(arg_expression, sqlglot_expressions.Expression):
+                        continue
+                    if self.is_const(arg_expression, config, arguments):
+                        continue
+                    self.parse_calculate(arg_expression, config, arguments, primary_table, calculate_fields)
 
     def parse_aggregate(self, expression, config, arguments, aggregate_expressions):
         if self.is_aggregate(expression, config, arguments):
