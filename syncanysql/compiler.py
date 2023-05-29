@@ -1424,7 +1424,7 @@ class Compiler(object):
             elif expression.args.get("query"):
                 left_expression, right_expression = expression.args["this"], expression.args["query"]
             else:
-                left_expression, right_expression = expression.args["this"], expression.args["expression"]
+                left_expression, right_expression = expression.args["this"], expression.args.get("expression")
             if self.is_column(left_expression, config, arguments):
                 left_column = self.parse_column(left_expression, config, arguments)
                 if isinstance(config["schema"], dict) and left_column["column_name"] not in config["schema"]:
@@ -1444,6 +1444,8 @@ class Compiler(object):
                         continue
                     config["aggregate"]["having_columns"].add(calculate_field["column_name"])
                 left_calculater = self.compile_calculate(left_expression, config, arguments, primary_table, [])
+            if not right_expression:
+                return left_calculater, None
 
             if isinstance(right_expression, list):
                 value_items = []
@@ -1508,7 +1510,13 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_having_condition(expression.args.get("this"), config, arguments, primary_table)
         else:
-            return self.compile_calculate(expression, config, arguments, primary_table, [])
+            left_calculater, right_calculater = parse(expression)
+            func_name = expression.key.lower()
+            if isinstance(expression.args["expression"], sqlglot_expressions.Interval):
+                func_name = "date" + func_name
+            if right_calculater is None:
+                return [("@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name), left_calculater]
+            return [("@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name), left_calculater, right_calculater]
 
     def compile_order(self, expression, config, arguments, primary_table):
         primary_sort_keys, sort_keys = [], []
