@@ -68,8 +68,28 @@ def ensure_float(x):
 def ensure_number(x):
     if isinstance(x, (int, float)):
         return x
-    if isinstance(x, str) and "." in x:
-        return ensure_float(x)
+    if x is None:
+        raise ValueError('value is None')
+    if not x:
+        return 0
+    if x is True:
+        return 1
+    if isinstance(x, str):
+        if "." in x:
+            try:
+                return float(x)
+            except:
+                return ensure_float(x)
+        try:
+            return int(x)
+        except:
+            return ensure_int(x)
+    if isinstance(x, datetime.date):
+        if isinstance(x, datetime.datetime):
+            return int(x.strftime("%Y%m%d%H%M%S"))
+        return int(x.strftime("%Y%m%d"))
+    if isinstance(x, datetime.time):
+        return int(x.strftime("%H%M%S"))
     return ensure_int(x)
 
 def mysql_add(x, y):

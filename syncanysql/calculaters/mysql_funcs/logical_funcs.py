@@ -6,6 +6,8 @@ from .number_funcs import ensure_number
 from .string_funcs import ensure_str
 
 def mysql_eq(a, b):
+    if a is None or b is None:
+        return None
     if isinstance(a, (int, float, bool)) or isinstance(b, (int, float, bool)):
         return 1 if ensure_number(a) == ensure_number(b) else 0
     if isinstance(a, str) or isinstance(b, str):
@@ -13,6 +15,8 @@ def mysql_eq(a, b):
     return 1 if a == b else 0
 
 def mysql_neq(a, b):
+    if a is None or b is None:
+        return None
     if isinstance(a, (int, float, bool)) or isinstance(b, (int, float, bool)):
         return 1 if ensure_number(a) != ensure_number(b) else 0
     if isinstance(a, str) or isinstance(b, str):
@@ -20,6 +24,8 @@ def mysql_neq(a, b):
     return 1 if a != b else 0
 
 def mysql_gt(a, b):
+    if a is None or b is None:
+        return None
     if isinstance(a, (int, float, bool)) or isinstance(b, (int, float, bool)):
         return 1 if ensure_number(a) > ensure_number(b) else 0
     if isinstance(a, str) or isinstance(b, str):
@@ -27,6 +33,8 @@ def mysql_gt(a, b):
     return 1 if a > b else 0
 
 def mysql_gte(a, b):
+    if a is None or b is None:
+        return None
     if isinstance(a, (int, float, bool)) or isinstance(b, (int, float, bool)):
         return 1 if ensure_number(a) >= ensure_number(b) else 0
     if isinstance(a, str) or isinstance(b, str):
@@ -34,6 +42,8 @@ def mysql_gte(a, b):
     return 1 if a >= b else 0
 
 def mysql_lt(a, b):
+    if a is None or b is None:
+        return None
     if isinstance(a, (int, float, bool)) or isinstance(b, (int, float, bool)):
         return 1 if ensure_number(a) < ensure_number(b) else 0
     if isinstance(a, str) or isinstance(b, str):
@@ -41,6 +51,8 @@ def mysql_lt(a, b):
     return 1 if a < b else 0
 
 def mysql_lte(a, b):
+    if a is None or b is None:
+        return None
     if isinstance(a, (int, float, bool)) or isinstance(b, (int, float, bool)):
         return 1 if ensure_number(a) <= ensure_number(b) else 0
     if isinstance(a, str) or isinstance(b, str):
