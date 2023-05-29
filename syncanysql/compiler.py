@@ -2473,7 +2473,7 @@ class Compiler(object):
             for order_expression in expression.args["order"].args["expressions"]:
                 self.parse_calculate(order_expression.args["this"], config, arguments, primary_table, calculate_fields)
         for calculate_field in calculate_fields:
-            if not calculate_field["table_name"] and primary_table["table_name"]:
+            if not calculate_field["table_name"] and primary_table["table_name"] and primary_table["table_alias"]:
                 continue
             if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]:
                 sub_column = "%s as `%s__%s`" % (str(calculate_field["expression"]),
@@ -2530,14 +2530,15 @@ class Compiler(object):
         return maybe_parse(" ".join(sql), dialect=CompilerDialect)
 
     def optimize_rewrite_parse_table(self, expression, config, arguments, table_expression):
-        table = {"table_name": None, "columns": {}}
+        table = {"table_name": None, "table_alias": None, "columns": {}}
         if isinstance(table_expression, sqlglot_expressions.Table):
-            table["table_name"] = self.parse_table(table_expression, config, arguments)["table_name"]
+            table.update(self.parse_table(table_expression, config, arguments))
         elif isinstance(table_expression, sqlglot_expressions.Subquery):
             if "alias" not in table_expression.args:
                 return table
-            table["table_name"] = table_expression.args["alias"].args["this"].name \
+            table["table_alias"] = table_expression.args["alias"].args["this"].name \
                 if table_expression.args.get("alias") else None
+            table["table_name"] = table["table_alias"]
         return table
 
     def optimize_rewrite_parse_condition(self, expression, config, arguments, primary_table, condition_expression,
