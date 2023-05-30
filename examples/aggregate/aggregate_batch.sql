@@ -30,6 +30,10 @@ select distinct b.name, c.goods_name from `data/orders.json` a join `data/users.
 select b.name, c.goods_name, count(distinct b.name) as cnt from `data/orders.json` a join `data/users.json` b on a.uid=b.uid
     join `data/goodses.json` c on a.goods_id=c.goods_id where a.status=0 group by c.goods_name;
 
+select uid, group_concat(goods_id) as cgoods_ids, group_array(goods_id) as agoods_ids, group_uniq_array(goods_id) as uagoods_ids from `data/orders.json` where status=0 group by uid;
+
+select uid, group_bit_and(goods_id) as goods_id_and, group_bit_or(goods_id) as goods_id_or, group_bit_xor(goods_id) as goods_id_xor from `data/orders.json` where status=0 group by uid;
+
 -- 自定义聚合计算函数
 select aggregate_unique(uid) as uids, aggregate_join(order_id) as order_ids from `data/orders.json` where status=0;
 

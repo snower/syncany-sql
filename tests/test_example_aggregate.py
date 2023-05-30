@@ -47,18 +47,24 @@ class AggregateExampleTestCase(ExampleTestCase):
                          [{'name': '李四', 'goods_name': '青菜', 'cnt': 2}, {'name': '李四', 'goods_name': '白菜', 'cnt': 1}],
                          "data error")
 
-        self.assert_data(34, [{'uids': {1, 2}, 'order_ids': '1,2,3,4,5,6'}], "data error")
+        self.assert_data(33, [{'uid': 2, 'cgoods_ids': '1,2,1,2', 'agoods_ids': [1, 2, 1, 2], 'uagoods_ids': [1, 2]},
+                              {'uid': 1, 'cgoods_ids': '1,1', 'agoods_ids': [1, 1], 'uagoods_ids': [1]}], "data error")
 
-        self.assert_data(36, [{'uid': 2, 'goods_ids': {1, 2}, 'order_ids': '1,3,5,6'},
+        self.assert_data(35, [{'uid': 2, 'goods_id_and': 0, 'goods_id_or': 3, 'goods_id_xor': 0},
+                              {'uid': 1, 'goods_id_and': 1, 'goods_id_or': 1, 'goods_id_xor': 0}], "data error")
+
+        self.assert_data(38, [{'uids': {1, 2}, 'order_ids': '1,2,3,4,5,6'}], "data error")
+
+        self.assert_data(40, [{'uid': 2, 'goods_ids': {1, 2}, 'order_ids': '1,3,5,6'},
                               {'uid': 1, 'goods_ids': {1}, 'order_ids': '2,4'}], "data error")
 
-        self.assert_data(38, [{'uid': 2, 'avg_amount': 0.07}, {'uid': 1, 'avg_amount': 0.03}], "data error")
+        self.assert_data(42, [{'uid': 2, 'avg_amount': 0.07}, {'uid': 1, 'avg_amount': 0.03}], "data error")
 
-        self.assert_data(40, [
+        self.assert_data(44, [
             {'name': '李四', 'goods_name': '青菜', 'names': {'李四', '王五'}, 'goods_namees': '青菜,青菜,白菜,青菜,青菜,白菜'}],
                          "data error")
 
-        self.assert_data(44, [{'name': '李四', 'goods_name': '青菜', 'names': {'李四'}, 'goods_namees': '青菜,青菜'},
+        self.assert_data(48, [{'name': '李四', 'goods_name': '青菜', 'names': {'李四'}, 'goods_namees': '青菜,青菜'},
                               {'name': '王五', 'goods_name': '青菜', 'names': {'王五'}, 'goods_namees': '青菜,青菜'},
                               {'name': '李四', 'goods_name': '白菜', 'names': {'李四'}, 'goods_namees': '白菜,白菜'}],
                          "data error")
@@ -102,18 +108,24 @@ class AggregateExampleTestCase(ExampleTestCase):
                          [{'name': '李四', 'goods_name': '青菜', 'cnt': 2}, {'name': '李四', 'goods_name': '白菜', 'cnt': 1}],
                          "data error")
 
-        self.assert_data(34, [{'uids': {1, 2}, 'order_ids': '1,2,3,4,5,6'}], "data error")
+        self.assert_data(33, [{'uid': 2, 'cgoods_ids': '1,2,1,2', 'agoods_ids': [1, 2, 1, 2], 'uagoods_ids': [1, 2]},
+                              {'uid': 1, 'cgoods_ids': '1,1', 'agoods_ids': [1, 1], 'uagoods_ids': [1]}], "data error")
 
-        self.assert_data(36, [{'uid': 2, 'goods_ids': {1, 2}, 'order_ids': '1,3,5,6'},
+        self.assert_data(35, [{'uid': 2, 'goods_id_and': 0, 'goods_id_or': 3, 'goods_id_xor': 0},
+                              {'uid': 1, 'goods_id_and': 1, 'goods_id_or': 1, 'goods_id_xor': 0}], "data error")
+
+        self.assert_data(38, [{'uids': {1, 2}, 'order_ids': '1,2,3,4,5,6'}], "data error")
+
+        self.assert_data(40, [{'uid': 2, 'goods_ids': {1, 2}, 'order_ids': '1,3,5,6'},
                               {'uid': 1, 'goods_ids': {1}, 'order_ids': '2,4'}], "data error")
 
-        self.assert_data(38, [{'uid': 2, 'avg_amount': 0.07}, {'uid': 1, 'avg_amount': 0.03}], "data error")
+        self.assert_data(42, [{'uid': 2, 'avg_amount': 0.07}, {'uid': 1, 'avg_amount': 0.03}], "data error")
 
-        self.assert_data(40, [
-            {'name': '李四', 'goods_name': '青菜', 'names': {'李四', '王五'}, 'goods_namees': '青菜,青菜,白菜,青菜,青菜,白菜'}],
+        self.assert_data(44, [
+            {'name': '李四', 'goods_name': '青菜', 'names': {'王五', '李四'}, 'goods_namees': '青菜,青菜,白菜,青菜,青菜,白菜'}],
                          "data error")
 
-        self.assert_data(44, [{'name': '李四', 'goods_name': '青菜', 'names': {'李四'}, 'goods_namees': '青菜,青菜'},
+        self.assert_data(48, [{'name': '李四', 'goods_name': '青菜', 'names': {'李四'}, 'goods_namees': '青菜,青菜'},
                               {'name': '王五', 'goods_name': '青菜', 'names': {'王五'}, 'goods_namees': '青菜,青菜'},
                               {'name': '李四', 'goods_name': '白菜', 'names': {'李四'}, 'goods_namees': '白菜,白菜'}],
                          "data error")

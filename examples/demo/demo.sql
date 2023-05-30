@@ -8,7 +8,7 @@ SELECT
     MAX(a.vip_timeout_at) AS vip_timeout_at
 FROM
     (SELECT
-        YIELD_DATA(sites) AS site_id,
+        YIELD_ARRAY(sites) AS site_id,
             IF(vip_type = '2', GET_VALUE(rules, 0, 'timeout_time'), '') AS timeout_at,
             IF(vip_type = '1', GET_VALUE(rules, 0, 'timeout_time'), '') AS vip_timeout_at
     FROM
@@ -27,5 +27,5 @@ FROM
     GROUP BY site_id) c ON a.site_id = c.site_id
 GROUP BY a.site_id;
 
-SELECT yield_data(a.sites) as site_id, b.name as site_name FROM `data/demo.json` a
+SELECT yield_array(a.sites) as site_id, b.name as site_name FROM `data/demo.json` a
     JOIN `data/sites.json` b ON a.sites = b.site_id;

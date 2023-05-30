@@ -13,7 +13,7 @@ from sqlglot.dialects import Dialect
 from sqlglot import tokens
 from syncany.taskers.core import CoreTasker
 from .errors import SyncanySqlCompileException
-from .calculaters import is_mysql_func, find_aggregate_calculater, CalculaterUnknownException
+from .calculaters import is_mysql_func, find_generate_calculater, find_aggregate_calculater, CalculaterUnknownException
 from .config import CONST_CONFIG_KEYS
 from .parser import SqlParser
 from .taskers.delete import DeleteTasker
@@ -1135,9 +1135,15 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Avg):
             return "@aggregate_avg::aggregate", "@aggregate_avg::reduce", "@aggregate_avg::final_value"
         elif isinstance(expression, sqlglot_expressions.GroupConcat):
-            return "@aggregate_group_concat::aggregate", "@aggregate_group_concat::reduce", "@aggregate_group_concat::final_value"
+            return "@group_concat::aggregate", "@group_concat::reduce", "@group_concat::final_value"
+        elif isinstance(expression, sqlglot_expressions.GroupUniqArray):
+            return "@group_uniq_array::aggregate", "@group_uniq_array::reduce", "@group_uniq_array::final_value"
         elif isinstance(expression, sqlglot_expressions.Anonymous):
+            aggregate_funcs = {"grouparray": "group_array", "groupuniqarray": "group_uniq_array", "groupbitand": "group_bit_and",
+                               "groupbitor": "group_bit_or", "groupbitxor": "group_bit_xor"}
             calculater_name = expression.args["this"].lower()
+            if calculater_name in aggregate_funcs:
+                calculater_name = aggregate_funcs[calculater_name]
             try:
                 aggregate_calculater = find_aggregate_calculater(calculater_name)
                 return ("@" + calculater_name + "::aggregate",
@@ -1210,17 +1216,6 @@ class Compiler(object):
                     config["defines"][define_name] = self.compile_calculate(expression.args["expressions"][0], config, arguments, primary_table, column_join_tables, join_index)
                 return ["#call", define_name, "$.*"]
 
-            if calculater_name == "yield_data":
-                column = ["#yield"]
-                for arg_expression in expression.args.get("expressions", []):
-                    if self.is_const(arg_expression, config, arguments):
-                        column.append(self.compile_const(arg_expression, config, arguments,
-                                                         self.parse_const(arg_expression, config, arguments)))
-                    else:
-                        column.append(self.compile_calculate(arg_expression, config, arguments, primary_table, 
-                                                             column_join_tables, join_index))
-                return column
-
             if calculater_name not in ("add", "sub", "mul", "div", "mod") and is_mysql_func(calculater_name):
                 column = ["@mysql::" + calculater_name]
             else:
@@ -1235,6 +1230,12 @@ class Compiler(object):
                                                      self.parse_const(arg_expression, config, arguments)))
                 else:
                     column.append(self.compile_calculate(arg_expression, config, arguments, primary_table, column_join_tables, join_index))
+
+            try:
+                find_generate_calculater(calculater_name)
+                return ["#yield", column]
+            except CalculaterUnknownException:
+                pass
             return column
         elif isinstance(expression, sqlglot_expressions.JSONExtract):
             return [
@@ -2177,9 +2178,17 @@ class Compiler(object):
                                        sqlglot_expressions.BitwiseNot, sqlglot_expressions.Tuple))
 
     def is_aggregate(self, expression, config, arguments):
+        if isinstance(expression, (sqlglot_expressions.Column, sqlglot_expressions.Literal)):
+            return False
         if isinstance(expression, (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Max,
-                                   sqlglot_expressions.Min, sqlglot_expressions.Avg, sqlglot_expressions.GroupConcat)):
+                                   sqlglot_expressions.Min, sqlglot_expressions.Avg, sqlglot_expressions.GroupConcat,
+                                   sqlglot_expressions.GroupUniqArray)):
             return True
+        if isinstance(expression, sqlglot_expressions.Anonymous):
+            aggregate_funcs = {"group_array", "grouparray", "group_uniq_array", "groupuniqarray", "group_bit_and", "groupbitand",
+                               "group_bit_or", "groupbitor", "group_bit_xor", "groupbitxor"}
+            if expression.args["this"].lower() in aggregate_funcs:
+                return True
         if isinstance(expression, sqlglot_expressions.Anonymous):
             calculater_name = expression.args["this"].lower()
             try:

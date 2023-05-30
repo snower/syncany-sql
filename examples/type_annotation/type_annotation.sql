@@ -19,7 +19,7 @@ select `orderAt`, type(`orderAt[int]`) as t, `orderAt[int]` as v from (
 
 -- ObjectId，如和mongo进行join查询时需要为转换对应类型
 select type(`goods.goodsId[objectid]`) as t, `goods.goodsId[objectid]` as v from (
-    select yield_data(`order.goodses`) as goods from orders
+    select yield_array(`order.goodses`) as goods from orders
 ) a;
 
 -- UUID

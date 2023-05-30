@@ -45,7 +45,7 @@ SELECT
     now() as `created_at?`
 FROM
     (SELECT
-        YIELD_DATA(sites) AS site_id,
+        YIELD_ARRAY(sites) AS site_id,
             IF(vip_type = '2', GET_VALUE(rules, 0, 'timeout_time'), '') AS timeout_at,
             IF(vip_type = '1', GET_VALUE(rules, 0, 'timeout_time'), '') AS vip_timeout_at
     FROM

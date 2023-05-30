@@ -199,3 +199,95 @@ class AggregateGroupConcatCalculater(StateAggregateCalculater):
         if not state_value:
             return ""
         return ",".join(state_value)
+
+
+class AggregateGroupArrayCalculater(StateAggregateCalculater):
+    def aggregate(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return [data_value]
+        state_value.append(data_value)
+        return state_value
+
+    def reduce(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return data_value
+        return state_value + data_value
+
+    def final_value(self, state_value):
+        if state_value is None:
+            return []
+        return state_value
+
+
+class AggregateGroupUniqArrayCalculater(StateAggregateCalculater):
+    def aggregate(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return {data_value}
+        state_value.add(data_value)
+        return state_value
+
+    def reduce(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return data_value
+        return state_value | data_value
+
+    def final_value(self, state_value):
+        if state_value is None:
+            return []
+        return list(state_value)
+
+
+class AggregateGroupBitAndCalculater(AggregateCalculater):
+    def aggregate(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return data_value
+        return state_value & data_value
+
+    def reduce(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return data_value
+        return state_value & data_value
+
+
+class AggregateGroupBitOrCalculater(AggregateCalculater):
+    def aggregate(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return data_value
+        return state_value | data_value
+
+    def reduce(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return data_value
+        return state_value | data_value
+
+
+class AggregateGroupBitXorCalculater(AggregateCalculater):
+    def aggregate(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return data_value
+        return state_value ^ data_value
+
+    def reduce(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return data_value
+        return state_value ^ data_value
