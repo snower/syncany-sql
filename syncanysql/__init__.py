@@ -21,7 +21,7 @@ from .version import version, version_info
 from .parser import SqlParser, SqlSegment
 from .config import GlobalConfig
 from .executor import Executor
-from .calculaters import AggregateCalculater, StateAggregateCalculater
+from .calculaters import GenerateCalculater, AggregateCalculater, StateAggregateCalculater
 
 
 class ExecuterError(Exception):
