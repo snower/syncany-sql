@@ -41,7 +41,7 @@ class Compiler(object):
     TYPE_FILTERS = {"int": "int", "float": "float", "str": "str", "bytes": "bytes", 'bool': 'bool', 'array': 'array', 'set': 'set',
                    'map': 'map', "objectid": "objectid", "uuid": "uuid", "datetime": "datetime", "date": "date", "time": "time",
                    "char": "str", "varchar": "str", "nchar": "str", "text": "str", "mediumtext": "str", "tinytext": "str",
-                   "bigint": "int", "mediumint": "int", "SMALLINT": "int", "tinyint": "int", "decimal": "float", "double": "float",
+                   "bigint": "int", "mediumint": "int", "smallint": "int", "tinyint": "int", "decimal": "float", "double": "float",
                    "boolean": "bool", "binary": "bytes", "varbinary": "bytes", "blob": "bytes", "timestamp": "datetime"}
 
     def __init__(self, config, env_variables):
@@ -2187,10 +2187,9 @@ class Compiler(object):
         if isinstance(expression, sqlglot_expressions.Anonymous):
             aggregate_funcs = {"group_array", "grouparray", "group_uniq_array", "groupuniqarray", "group_bit_and", "groupbitand",
                                "group_bit_or", "groupbitor", "group_bit_xor", "groupbitxor"}
-            if expression.args["this"].lower() in aggregate_funcs:
-                return True
-        if isinstance(expression, sqlglot_expressions.Anonymous):
             calculater_name = expression.args["this"].lower()
+            if calculater_name in aggregate_funcs:
+                return True
             try:
                 find_aggregate_calculater(calculater_name)
             except CalculaterUnknownException:
