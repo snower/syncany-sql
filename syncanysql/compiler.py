@@ -233,7 +233,7 @@ class Compiler(object):
             if isinstance(select_expression, sqlglot_expressions.Union):
                 self.compile_union(select_expression, config, arguments)
             else:
-                self.compile_select(select_expression, config, arguments)
+                self.compile_select(self.optimize_rewrite(select_expression, config, arguments), config, arguments)
         elif isinstance(expression.args["expression"], sqlglot_expressions.Values):
             values_expression = expression.args["expression"]
             if not values_expression.args.get("expressions"):
