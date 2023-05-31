@@ -752,13 +752,13 @@ class Compiler(object):
                                                          primary_table, [])
 
             if isinstance(right_expression, list):
-                value_items = []
-                for value_expression_item in right_expression:
-                    if not self.is_const(value_expression_item, config, arguments):
-                        raise SyncanySqlCompileException('error where condition, array must be const value, related sql "%s"'
-                                                         % self.to_sql(expression))
-                    value_items.append(self.parse_const(value_expression_item, config, arguments)["value"])
-                return is_query_column, left_column, left_calculater, value_items
+                if all([self.is_const(value_expression_item, config, arguments) for value_expression_item in right_expression]):
+                    value_items = [self.parse_const(value_expression_item, config, arguments)["value"]
+                                   for value_expression_item in right_expression]
+                    return is_query_column, left_column, left_calculater, ["#const", value_items]
+                value_items = [self.compile_calculate(parse_calucate(value_expression_item), config, arguments, primary_table, [])
+                               for value_expression_item in right_expression]
+                return is_query_column, left_column, left_calculater, ["#make", value_items]
             if self.is_column(right_expression, config, arguments):
                 if not isinstance(config["schema"], dict):
                     raise SyncanySqlCompileException(
@@ -1344,11 +1344,13 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Star):
             return "$.*"
         elif isinstance(expression, sqlglot_expressions.Tuple):
-            tuple_column = ["#make"]
-            for tuple_expression in expression.args["expressions"]:
-                tuple_column.append(self.compile_calculate(tuple_expression, config, arguments, primary_table,
-                                                   column_join_tables, join_index))
-            return ["@convert_array", tuple_column]
+            if all([self.is_const(tuple_expression, config, arguments) for tuple_expression in expression.args["expressions"]]):
+                value_columns = [self.parse_const(tuple_expression, config, arguments)["value"]
+                                 for tuple_expression in expression.args["expressions"]]
+                return ["#const", value_columns]
+            value_columns = [self.compile_calculate(tuple_expression, config, arguments, primary_table, column_join_tables, join_index)
+                             for tuple_expression in expression.args["expressions"]]
+            return ["#make", value_columns]
         elif isinstance(expression, sqlglot_expressions.Interval):
             return ["#const", {"value": expression.args["this"].args["this"], "unit": expression.args["unit"].args["this"]}]
         elif self.is_const(expression, config, arguments):
