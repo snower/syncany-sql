@@ -2463,7 +2463,7 @@ class Compiler(object):
                 return expression
             group_calculate_fields = []
             for group_expression in expression.args["group"].args["expressions"]:
-                self.parse_calculate(group_expression, config, arguments, primary_table, aggregate_calculate_fields)
+                self.parse_calculate(group_expression, config, arguments, primary_table, group_calculate_fields)
             group_calculate_fields = [calculate_field for calculate_field in group_calculate_fields
                                       if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]]
             if not group_calculate_fields:
