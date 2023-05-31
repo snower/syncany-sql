@@ -1272,9 +1272,9 @@ class Compiler(object):
                 "#if",
                 self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
                 self.compile_calculate(expression.args["true"], config, arguments, primary_table, column_join_tables, 
-                                       join_index) if expression.args.get("true") else False,
+                                       join_index) if expression.args.get("true") else ["#const", 1],
                 self.compile_calculate(expression.args["false"], config, arguments, primary_table, column_join_tables, 
-                                       join_index) if expression.args.get("false") else False,
+                                       join_index) if expression.args.get("false") else ["#const", 0],
             ]
         elif isinstance(expression, (sqlglot_expressions.IfNull, sqlglot_expressions.Coalesce)):
             condition_column = self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
@@ -1295,19 +1295,35 @@ class Compiler(object):
                 value_column = self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index)
             return ["#if", ["@is_null", condition_column], value_column, condition_column]
         elif isinstance(expression, sqlglot_expressions.Case):
-            cases = {}
-            cases["#case"] = self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index) \
-                                 if expression.args.get("this") else ["#const", 1]
-            if expression.args.get("ifs"):
-                for case_expression in expression.args["ifs"]:
-                    if not isinstance(case_expression, sqlglot_expressions.If) or not self.is_const(case_expression.args["this"], config, arguments):
-                        raise SyncanySqlCompileException('unknown calculate function, related sql "%s"' % self.to_sql(expression))
-                    case_value = self.parse_const(case_expression.args["this"], config, arguments)["value"]
-                    cases[(":" + str(case_value)) if isinstance(case_value, (int, float)) and not isinstance(case_value, bool) else case_value] = \
-                        self.compile_calculate(case_expression.args["true"], config, arguments, primary_table, column_join_tables, join_index)
-            cases["#end"] = self.compile_calculate(expression.args["default"], config, arguments, primary_table, column_join_tables, join_index) \
-                                if expression.args.get("default") else None
-            return cases
+            if expression.args.get("this") and all([self.is_const(case_expression.args["this"], config, arguments)
+                                                    for case_expression in expression.args.get("ifs", [])]):
+                cases = {}
+                cases["#case"] = self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
+                if expression.args.get("ifs"):
+                    for case_expression in expression.args["ifs"]:
+                        case_value = self.parse_const(case_expression.args["this"], config, arguments)["value"]
+                        cases[(":" + str(case_value)) if isinstance(case_value, (int, float)) and not isinstance(case_value, bool) else case_value] = \
+                            self.compile_calculate(case_expression.args["true"], config, arguments, primary_table, column_join_tables, join_index)
+                cases["#end"] = self.compile_calculate(expression.args["default"], config, arguments, primary_table, column_join_tables, join_index) \
+                    if expression.args.get("default") else None
+                return cases
+
+            value_column = self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index) \
+                if expression.args.get("this") else None
+            defaul_column = self.compile_calculate(expression.args["default"], config, arguments, primary_table, column_join_tables, join_index) \
+                if expression.args.get("default") else ["#const", 0]
+            if not expression.args.get("ifs"):
+                return defaul_column
+            def build_if(if_expression, case_expressions):
+                if_value_column = self.compile_calculate(if_expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
+                return [
+                    "#if",
+                    if_value_column if value_column is None else ["@mysql::eq", value_column, if_value_column],
+                    self.compile_calculate(if_expression.args["true"], config, arguments, primary_table, column_join_tables,
+                                           join_index) if expression.args.get("true") else ["#const", 1],
+                    build_if(case_expressions[0], case_expressions[1:]) if case_expressions else defaul_column,
+                ]
+            return build_if(expression.args["ifs"][0], expression.args["ifs"][1:])
         elif isinstance(expression, sqlglot_expressions.Func):
             func_args = {
                 "substring": ["this", "start", "length"],
@@ -2359,7 +2375,7 @@ class Compiler(object):
             if join_table["join_type"] == "right":
                 return expression
             sql.append("LEFT JOIN " + str(join_table["table_expression"]))
-            on_expressions = join_table["on_expressions"] + join_table["const_expressions"]
+            on_expressions = join_table["on_expressions"] + join_table["const_expressions"] + join_table["calcuate_expressions"]
             if on_expressions:
                 sql.append("ON " + " AND ".join([str(on_expression) for on_expression in on_expressions]))
 
@@ -2422,7 +2438,7 @@ class Compiler(object):
             if join_expression.args.get("on"):
                 sql.append("ON " + str(join_expression.args["on"]))
 
-        inner_condition_sql = " AND ".join(["`%s`.`%s` IS NOT NULL" % (calculate_field["table_name"], calculate_field["column_name"])
+        inner_condition_sql = " AND ".join(["%s.%s IS NOT NULL" % (calculate_field["table_name"], calculate_field["column_name"])
                                             for calculate_field in inner_calculate_fields])
         if expression.args.get("where"):
             if isinstance(expression.args["where"].args["this"], sqlglot_expressions.Or):
@@ -2523,7 +2539,7 @@ class Compiler(object):
                               (str(self.optimize_rewrite_except_table(select_expression, config, arguments, primary_table)),
                                select_column_name))
         sql.append(", ".join(select_sql))
-        sql.append("FROM (%s) `%s`" % (" ".join(sub_sql), subquery_name))
+        sql.append("FROM (%s) %s" % (" ".join(sub_sql), subquery_name))
         if expression.args.get("group"):
             sql.append(str(self.optimize_rewrite_except_table(expression.args["group"], config, arguments, primary_table)))
         if expression.args.get("having"):
