@@ -1344,7 +1344,7 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Star):
             return "$.*"
         elif isinstance(expression, sqlglot_expressions.Tuple):
-            tuple_column = ["@make"]
+            tuple_column = ["#make"]
             for tuple_expression in expression.args["expressions"]:
                 tuple_column.append(self.compile_calculate(tuple_expression, config, arguments, primary_table,
                                                    column_join_tables, join_index))
@@ -1451,12 +1451,13 @@ class Compiler(object):
                 return left_calculater, None
 
             if isinstance(right_expression, list):
-                value_items = []
-                for value_expression_item in right_expression:
-                    if not self.is_const(value_expression_item, config, arguments):
-                        raise SyncanySqlCompileException('error having condition, array must be const value, related sql "%s"' % self.to_sql(expression))
-                    value_items.append(self.parse_const(value_expression_item, config, arguments)["value"])
-                return left_calculater, value_items
+                if all([self.is_const(value_expression_item, config, arguments) for value_expression_item in right_expression]):
+                    value_items = [self.parse_const(value_expression_item, config, arguments)["value"]
+                                   for value_expression_item in right_expression]
+                    return left_calculater, ["#const", value_items]
+                value_items = [self.compile_calculate(value_expression_item, config, arguments, primary_table, [])
+                               for value_expression_item in right_expression]
+                return left_calculater, ["#make", value_items]
             if self.is_column(right_expression, config, arguments):
                 right_column = self.parse_column(right_expression, config, arguments)
                 if isinstance(config["schema"], dict) and right_column["column_name"] not in config["schema"]:
@@ -1732,13 +1733,13 @@ class Compiler(object):
                     value_column = ["@convert_array", value_column, ":$.:0"]
                 return False, condition_column, value_column
             if isinstance(value_expression, list):
-                value_items = []
-                for value_expression_item in value_expression:
-                    if not self.is_const(value_expression_item, config, arguments):
-                        raise SyncanySqlCompileException('error join on condition, array must be const value, related sql "%s"'
-                                                         % self.to_sql(expression))
-                    value_items.append(self.parse_const(value_expression_item, config, arguments)["value"])
-                return False, condition_column, value_items
+                if all([self.is_const(value_expression_item, config, arguments) for value_expression_item in value_expression]):
+                    value_items = [self.parse_const(value_expression_item, config, arguments)["value"]
+                                   for value_expression_item in value_expression]
+                    return False, condition_column, ["#const", value_items]
+                value_items = [self.compile_calculate(value_expression_item, config, arguments, primary_table, [])
+                               for value_expression_item in value_expression]
+                return False, condition_column, ["#make", value_items]
             return False, condition_column, self.compile_calculate(value_expression, config, arguments, primary_table, [])
 
         if isinstance(expression, sqlglot_expressions.EQ):
