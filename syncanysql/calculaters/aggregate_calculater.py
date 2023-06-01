@@ -55,7 +55,7 @@ class StateAggregateCalculater(AggregateCalculater):
     
     def calculate(self, *args):
         if self.name.endswith("::final_value"):
-            return self.reduce(*args)
+            return self.final_value(*args)
         return super(StateAggregateCalculater, self).calculate(*args)
 
 

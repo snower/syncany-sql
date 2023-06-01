@@ -15,7 +15,7 @@ from syncany.taskers.tasker import _thread_local
 from syncany.main import TaskerYieldNext, warp_database_logging
 
 
-DEAULT_AGGREGATE = {"key": None, "schema": {}, "having_columns": set([]),
+DEAULT_AGGREGATE = {"key": None, "schema": {}, "window_schema": {}, "having_columns": set([]),
                     "distinct_keys": [], "distinct_aggregates": set([])}
 
 
@@ -124,10 +124,13 @@ class QueryTasker(object):
                     require_reduce, reduce_intercept = True, True
             if (batch > 0 or limit > 0 or sorted_limit):
                 require_reduce = True
-        if aggregate and aggregate.get("schema"):
+        if aggregate and (aggregate.get("schema") or aggregate["window_schema"]):
             if batch > 0 or limit > 0 or sorted_limit:
                 require_reduce = True
             elif [aggregate_column["final_value"] for aggregate_column in aggregate["schema"].values()
+                  if aggregate_column["final_value"]]:
+                require_reduce = True
+            elif [aggregate_column["final_value"] for aggregate_column in aggregate["window_schema"].values()
                   if aggregate_column["final_value"]]:
                 require_reduce = True
         if where_schema:
@@ -334,6 +337,11 @@ class QueryTasker(object):
                     config["schema"][key] = aggregate["schema"][key]["final_value"]
                 else:
                     config["schema"][key] = "$." + key
+            for key, column in aggregate["window_schema"].items():
+                if isinstance(column["aggregate"], dict):
+                    for window_aggregate_key in column["aggregate"]:
+                        config["schema"].pop(window_aggregate_key, None)
+                    config["schema"][key] = column["final_value"]
             config["name"] = config["name"] + "#select@final"
         else:
             config["output"] = config["input"] + " use DI"

@@ -10,6 +10,7 @@ from .env_variable_calculater import CurrentEnvVariableCalculater
 from .mysql_calculater import MysqlCalculater
 from .generate_calculater import *
 from .aggregate_calculater import *
+from .window_calculater import *
 
 SQL_CALCULATERS = {
     "current_env_variable": CurrentEnvVariableCalculater,
@@ -28,6 +29,8 @@ SQL_CALCULATERS = {
     "group_bit_and": AggregateGroupBitAndCalculater,
     "group_bit_or": AggregateGroupBitOrCalculater,
     "group_bit_xor": AggregateGroupBitXorCalculater,
+    "window_aggregate_count": WindowAggregateCountCalculater,
+    "window_aggregate_distinct_count": WindowAggregateDistinctCountCalculater,
 }
 CALCULATERS.update(SQL_CALCULATERS)
 
