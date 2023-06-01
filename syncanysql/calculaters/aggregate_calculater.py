@@ -74,6 +74,45 @@ class AggregateCountCalculater(AggregateCalculater):
                 return state_value
 
 
+class AggregateDistinctCountCalculater(StateAggregateCalculater):
+    def aggregate(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            try:
+                return {data_value}
+            except:
+                if isinstance(data_value, list):
+                    try:
+                        return {tuple(data_value)}
+                    except:
+                        return {str(data_value)}
+                return {str(data_value)}
+        try:
+            state_value.add(data_value)
+        except:
+            if isinstance(data_value, list):
+                try:
+                    state_value.add(tuple(data_value))
+                except:
+                    state_value.add(str(data_value))
+            else:
+                state_value.add(str(data_value))
+        return state_value
+
+    def reduce(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return data_value
+        return state_value | data_value
+
+    def final_value(self, state_value):
+        if state_value is None:
+            return 0
+        return len(state_value)
+
+
 class AggregateSumCalculater(AggregateCalculater):
     def aggregate(self, state_value, data_value):
         try:
@@ -228,8 +267,19 @@ class AggregateGroupUniqArrayCalculater(StateAggregateCalculater):
         if data_value is None:
             return state_value
         if state_value is None:
-            return {data_value}
-        state_value.add(data_value)
+            try:
+                return {data_value}
+            except Exception as e:
+                if isinstance(data_value, list):
+                    return {tuple(data_value)}
+                raise e
+        try:
+            state_value.add(data_value)
+        except Exception as e:
+            if isinstance(data_value, list):
+                state_value.add(tuple(data_value))
+            else:
+                raise e
         return state_value
 
     def reduce(self, state_value, data_value):

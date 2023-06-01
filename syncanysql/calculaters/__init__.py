@@ -16,6 +16,7 @@ SQL_CALCULATERS = {
     "mysql": MysqlCalculater,
     "aggregate_key": AggregateKeyCalculater,
     "aggregate_count": AggregateCountCalculater,
+    "aggregate_distinct_count": AggregateDistinctCountCalculater,
     "aggregate_sum": AggregateSumCalculater,
     "aggregate_max": AggregateMaxCalculater,
     "aggregate_min": AggregateMinCalculater,

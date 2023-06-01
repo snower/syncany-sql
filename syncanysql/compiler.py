@@ -956,25 +956,21 @@ class Compiler(object):
     def compile_aggregate_column(self, expression, config, arguments, primary_table, column_alias, group_expression,
                                  aggregate_expressions, join_tables):
         group_column = self.compile_aggregate_key(group_expression, config, arguments, primary_table, join_tables)
-        aggregate_value_expressions, distinct_column_index = [], -1
+        aggregate_value_expressions = []
         for i in range(len(aggregate_expressions)):
             aggregate_expression = aggregate_expressions[i]
             if isinstance(aggregate_expression, sqlglot_expressions.Anonymous):
                 if aggregate_expression.args.get("expressions") and isinstance(aggregate_expression.args["expressions"][0],
                                                                                sqlglot_expressions.Distinct):
-                    if distinct_column_index >= 0:
-                        raise SyncanySqlCompileException('error aggregate distinct, only one distinct calculation is allowed, related sql "%s"' %
-                                                         self.to_sql(expression))
-                    distinct_column_index = i
-                    value_expressions = aggregate_expression.args["expressions"][0].args.get("expressions")
+                    raise SyncanySqlCompileException('error aggregate distinct, only be used for the count function, related sql "%s"' %
+                                                     self.to_sql(expression))
                 else:
                     value_expressions = aggregate_expression.args.get("expressions")
             else:
                 if isinstance(aggregate_expression.args["this"], sqlglot_expressions.Distinct):
-                    if distinct_column_index >= 0:
-                        raise SyncanySqlCompileException('error aggregate distinct, only one distinct calculation is allowed, related sql "%s"' %
+                    if not isinstance(aggregate_expression, sqlglot_expressions.Count):
+                        raise SyncanySqlCompileException('error aggregate distinct, only be used for the count function, related sql "%s"' %
                                                          self.to_sql(expression))
-                    distinct_column_index = i
                     value_expressions = aggregate_expression.args.get("this").args.get("expressions")
                 else:
                     value_expressions = [aggregate_expression.args.get("this")]
@@ -985,14 +981,6 @@ class Compiler(object):
         if len(aggregate_expressions) == 1 and aggregate_expressions[0] is expression:
             value_column = self.compile_aggregate_value(aggregate_expressions[0], config, arguments, primary_table, join_tables,
                                                         aggregate_value_expressions[0])
-            if distinct_column_index == 0 and value_column:
-                aggregate_distinct_keys = [copy.deepcopy(value_column[1])] if len(value_column) == 2 else copy.deepcopy(value_column[1:])
-                if not config["aggregate"]["distinct_keys"]:
-                    config["aggregate"]["distinct_keys"].extend(aggregate_distinct_keys)
-                elif config["aggregate"]["distinct_keys"] != aggregate_distinct_keys:
-                    raise SyncanySqlCompileException(
-                        'error aggregate distinct, only one distinct calculation is allowed, related sql "%s"' % self.to_sql(expression))
-                config["aggregate"]["distinct_aggregates"].add(column_alias)
             if value_column and len(value_column) == 2:
                 value_column = value_column[1]
             aggregate_calculate, reduce_calculate, final_calculate = self.compile_aggregate_calculate(aggregate_expressions[0])
@@ -1009,25 +997,15 @@ class Compiler(object):
             for i in range(len(aggregate_expressions)):
                 aggregate_value_key = "value_%d" % id(aggregate_expressions[i])
                 aggregate_value_column = self.compile_aggregate_value(aggregate_expressions[i], config, arguments, primary_table,
-                                                                                 join_tables, aggregate_value_expressions[i])
-                if distinct_column_index == i and aggregate_value_column:
-                    aggregate_distinct_keys = [copy.deepcopy(aggregate_value_column[1])] if len(aggregate_value_column) == 2 \
-                        else copy.deepcopy(aggregate_value_column[1:])
-                    if not config["aggregate"]["distinct_keys"]:
-                        config["aggregate"]["distinct_keys"].extend(aggregate_distinct_keys)
-                    elif config["aggregate"]["distinct_keys"] != aggregate_distinct_keys:
-                        raise SyncanySqlCompileException(
-                            'error aggregate distinct, only one distinct calculation is allowed, related sql "%s"' % self.to_sql(expression))
-                    config["aggregate"]["distinct_aggregates"].add(column_alias)
+                                                                      join_tables, aggregate_value_expressions[i])
                 if aggregate_value_column and len(aggregate_value_column) == 2:
                     aggregate_value_column = aggregate_value_column[1]
                 aggregate_calculate, reduce_calculate, final_calculate = self.compile_aggregate_calculate(aggregate_expressions[i])
                 value_column[1][aggregate_value_key] = aggregate_value_column
                 calculate_column[1][aggregate_value_key] = [aggregate_calculate, "$." + column_alias + "." + aggregate_value_key,
-                                                                      "$$.value." + aggregate_value_key]
-                reduce_column[1][aggregate_value_key] = [reduce_calculate,
-                                                                   "$." + column_alias + "." + aggregate_value_key,
-                                                                   "$$." + column_alias + "." + aggregate_value_key]
+                                                            "$$.value." + aggregate_value_key]
+                reduce_column[1][aggregate_value_key] = [reduce_calculate, "$." + column_alias + "." + aggregate_value_key,
+                                                         "$$." + column_alias + "." + aggregate_value_key]
                 setattr(aggregate_expressions[i], "syncany_valuer",
                         [final_calculate, "$." + column_alias + "." + aggregate_value_key]
                         if final_calculate else ("$." + column_alias + "." + aggregate_value_key))
@@ -1125,6 +1103,8 @@ class Compiler(object):
 
     def compile_aggregate_calculate(self, expression):
         if isinstance(expression, sqlglot_expressions.Count):
+            if isinstance(expression.args.get("this"), sqlglot_expressions.Distinct):
+                return "@aggregate_distinct_count::aggregate", "@aggregate_distinct_count::reduce", "@aggregate_distinct_count::final_value"
             return "@aggregate_count::aggregate", "@aggregate_count::reduce", None
         elif isinstance(expression, sqlglot_expressions.Sum):
             return "@aggregate_sum::aggregate", "@aggregate_sum::reduce", None
@@ -1371,6 +1351,17 @@ class Compiler(object):
             return ["#const", {"value": expression.args["this"].args["this"], "unit": expression.args["unit"].args["this"]}]
         elif self.is_const(expression, config, arguments):
             return self.compile_const(expression, config, arguments, self.parse_const(expression, config, arguments))
+        elif isinstance(expression, sqlglot_expressions.Not):
+            if isinstance(expression.args["this"], sqlglot_expressions.Is):
+                return [
+                    "@mysql::is_not",
+                    self.compile_calculate(expression.args["this"].args["this"], config, arguments, primary_table,
+                                           column_join_tables, join_index),
+                    self.compile_calculate(expression.args["this"].args["expression"], config, arguments, primary_table,
+                                           column_join_tables, join_index)
+                ]
+            return ["@mysql::not", self.compile_calculate(expression.args["this"], config, arguments, primary_table,
+                                                          column_join_tables, join_index)]
         elif isinstance(expression, (sqlglot_expressions.Binary, sqlglot_expressions.Condition)):
             if isinstance(expression, sqlglot_expressions.And):
                 return [
@@ -2190,7 +2181,7 @@ class Compiler(object):
         if isinstance(expression, sqlglot_expressions.Condition):
             return isinstance(expression, (sqlglot_expressions.EQ, sqlglot_expressions.NEQ, sqlglot_expressions.GT, sqlglot_expressions.GTE,
                                            sqlglot_expressions.LT, sqlglot_expressions.LTE, sqlglot_expressions.In, sqlglot_expressions.Not,
-                                           sqlglot_expressions.Between, sqlglot_expressions.Like, sqlglot_expressions.Func,
+                                           sqlglot_expressions.Is, sqlglot_expressions.Between, sqlglot_expressions.Like, sqlglot_expressions.Func,
                                            sqlglot_expressions.Binary))
         return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Binary, sqlglot_expressions.Select,
                                        sqlglot_expressions.Subquery, sqlglot_expressions.Union,

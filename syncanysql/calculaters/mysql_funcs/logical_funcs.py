@@ -81,4 +81,9 @@ def mysql_is(a, b):
         return 1 if a is b else 0
     return mysql_eq(a, b)
 
+def mysql_is_not(a, b):
+    if a is None or b is None:
+        return 0 if a is b else 1
+    return mysql_neq(a, b)
+
 funcs = {key[6:]: value for key, value in globals().items() if key.startswith("mysql_")}
