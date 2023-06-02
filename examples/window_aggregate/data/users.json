@@ -1,0 +1,14 @@
+[
+  {
+    "uid": 1,
+    "name": "王五",
+    "gender": "男",
+    "status": 0
+  },
+  {
+    "uid": 2,
+    "name": "李四",
+    "gender": "女",
+    "status": 0
+  }
+]

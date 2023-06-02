@@ -1,0 +1,20 @@
+[
+  {
+    "uid": 1,
+    "goods_id": 1,
+    "goods_name": "青菜",
+    "status": 0
+  },
+  {
+    "uid": 1,
+    "goods_id": 2,
+    "goods_name": "白菜",
+    "status": 0
+  },
+  {
+    "uid": 2,
+    "goods_id": 3,
+    "goods_name": "萝卜",
+    "status": 0
+  }
+]

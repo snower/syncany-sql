@@ -2057,7 +2057,7 @@ class Compiler(object):
                 return
             for arg_expression in expression.args.values():
                 if isinstance(arg_expression, list):
-                    for item_arg_expression in expression.args["expressions"]:
+                    for item_arg_expression in arg_expression:
                         if not isinstance(item_arg_expression, sqlglot_expressions.Expression):
                             continue
                         if self.is_const(item_arg_expression, config, arguments):

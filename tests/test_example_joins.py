@@ -5,7 +5,7 @@
 from .example import ExampleTestCase
 
 
-class JsonExampleTestCase(ExampleTestCase):
+class JoinsExampleTestCase(ExampleTestCase):
     example_name = "joins"
 
     def test_left_join(self):
