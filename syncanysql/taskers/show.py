@@ -17,7 +17,7 @@ class ShowCommandTasker(object):
         return []
 
     def run(self, executor, session_config, manager):
-        return 0
+        pass
 
     def terminate(self):
         pass

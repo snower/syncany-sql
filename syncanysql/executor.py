@@ -157,12 +157,9 @@ class Executor(object):
         while self.runners:
             self.tasker = self.runners.popleft()
             try:
-                exit_code = self.tasker.run(self, self.session_config, self.manager)
-                if exit_code is not None and exit_code != 0:
-                    return exit_code
+                self.tasker.run(self, self.session_config, self.manager)
             finally:
                 self.tasker = None
-        return 0
 
     def terminate(self):
         if not self.tasker:

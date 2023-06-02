@@ -25,13 +25,6 @@ from .calculaters import GenerateCalculater, AggregateCalculater, StateAggregate
     WindowAggregateCalculater, WindowStateAggregateCalculater
 
 
-class ExecuterError(Exception):
-    def __init__(self, exit_code, *args):
-        super(ExecuterError, self).__init__(*args)
-
-        self.exit_code = exit_code
-
-
 class ExecuterContext(object):
     _execute_index = 0
     _thread_local = threading.local()
@@ -65,10 +58,7 @@ class ExecuterContext(object):
         self.__class__._execute_index += 1
         with self.executor as executor:
             executor.run("execute[%d]" % self._execute_index, sqls)
-            exit_code = executor.execute()
-            if exit_code is not None and exit_code != 0:
-                raise ExecuterError(exit_code)
-        return 0
+            executor.execute()
 
     def get_database(self, db=None):
         return self.engine.get_database(db)
@@ -127,10 +117,7 @@ class ScriptEngine(object):
             self.executor.run("init", [SqlSegment("execute `%s`" % init_execute_files[i], i + 1) for i in
                                        range(len(init_execute_files))])
             with self.executor as executor:
-                exit_code = executor.execute()
-                if exit_code is not None and exit_code != 0:
-                    raise ExecuterError(exit_code)
-        return 0
+                executor.execute()
 
     def get_variable(self, name, default=None):
         if self.executor is None:

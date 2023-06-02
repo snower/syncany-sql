@@ -35,7 +35,7 @@ class ExecuteTasker(object):
 
     def run(self, executor, session_config, manager):
         if not self.executor:
-            return 0
+            return
         with self.executor as executor:
             return executor.execute()
 

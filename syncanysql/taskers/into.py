@@ -27,9 +27,7 @@ class IntoTasker(object):
                 return 1
             name = core_tasker.outputer.name
             schema_keys = tuple(core_tasker.schema.keys()) if isinstance(core_tasker.schema, dict) else None
-            exit_code = self.tasker.run(executor, session_config, manager)
-            if exit_code is not None and exit_code != 0:
-                return exit_code
+            self.tasker.run(executor, session_config, manager)
 
             try:
                 database_config = dict(**[database for database in session_config.get()["databases"]
@@ -77,7 +75,6 @@ class IntoTasker(object):
                             executor.env_variables[self.config["variables"][i]] = value[schema_keys[i]]
                         else:
                             executor.env_variables[self.config["variables"][i]] = [v[schema_keys[i]] for v in value]
-                return exit_code
             finally:
                 database.close()
         finally:

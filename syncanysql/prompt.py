@@ -218,7 +218,7 @@ class CliPrompt(object):
                 if not text:
                     continue
                 if text.lower()[:4] == "exit":
-                    return 0
+                    return
                 if text[0] == "!":
                     self.run_system_cmd(text[1:])
                     continue
@@ -228,6 +228,8 @@ class CliPrompt(object):
                 self.executor.run("cli", [SqlSegment(text, lineno)])
                 try:
                     self.executor.execute()
+                except Exception as e:
+                    print(e.__class__.__name__ + ": " + str(e))
                 finally:
                     lineno += 1
                     self.executor.runners.clear()
@@ -237,7 +239,6 @@ class CliPrompt(object):
                 return 130
             except Exception as e:
                 print(e.__class__.__name__ + ": " + str(e))
-        return 0
 
     def check_complete(self, content):
         content = content.strip()

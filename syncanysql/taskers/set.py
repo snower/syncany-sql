@@ -65,7 +65,7 @@ class SetCommandTasker(object):
         raise ValueError("unknown value: %s" % value)
 
     def run(self, executor, session_config, manager):
-        return 0
+        pass
 
     def terminate(self):
         pass

@@ -172,21 +172,24 @@ class QueryTasker(object):
                     value = self.tasker_generator.send(None)
                     if isinstance(value, TaskerYieldNext):
                         executor.add_runner(self)
-                        return 0
-                except StopIteration as e:
-                    exit_code = e.value
-                    if exit_code is not None and exit_code != 0:
-                        if self.sql_expression:
-                            get_logger().info("execute SQL %s finish with code %s %.2fms", self.name, exit_code,
-                                              (time.time() - self.run_start_time) * 1000)
-                        return exit_code
+                        return
+                except StopIteration:
                     break
+                except Exception as e:
+                    if self.sql_expression:
+                        get_logger().info("execute SQL %s finish with Exception %s:%s %.2fms", self.name, e.__class__.__name__, e,
+                                          (time.time() - self.run_start_time) * 1000)
+                    raise e
             if self.reduce_config:
-                exit_code = self.run_reduce(executor, session_config, manager, self.arguments, True)
-            if self.sql_expression:
-                get_logger().info("execute SQL %s finish with code %s %.2fms", self.name, exit_code,
-                                  (time.time() - self.run_start_time) * 1000)
-            return exit_code
+                try:
+                    self.run_reduce(executor, session_config, manager, self.arguments, True)
+                except Exception as e:
+                    if self.sql_expression:
+                        get_logger().info("execute SQL %s finish with Exception %s:%s %.2fms", self.name, e.__class__.__name__, e,
+                                          (time.time() - self.run_start_time) * 1000)
+                    raise e
+                if self.sql_expression:
+                    get_logger().info("execute SQL %s finish %.2fms", self.name, (time.time() - self.run_start_time) * 1000)
         finally:
             names = self.get_temporary_memory_collections()
             if names:
@@ -202,10 +205,7 @@ class QueryTasker(object):
                 try:
                     _thread_local.current_tasker = dependency_tasker.tasker
                     dependency_tasker_generator.send(None)
-                except StopIteration as e:
-                    exit_code = e.value
-                    if exit_code is not None and exit_code != 0:
-                        return exit_code
+                except StopIteration:
                     if dependency_tasker.reduce_config:
                         dependency_tasker.run_reduce(executor, session_config, manager, dependency_tasker.arguments, True)
                     dependency_tasker_generators.remove((dependency_tasker, dependency_tasker_generator))
@@ -360,14 +360,10 @@ class QueryTasker(object):
         while True:
             try:
                 tasker_generator.send(None)
-            except StopIteration as e:
-                exit_code = e.value
-                if exit_code is not None and exit_code != 0:
-                    return exit_code
+            except StopIteration:
                 break
         if not final_reduce:
             self.tasker.status["store_count"] = tasker.status["store_count"]
-        return 0
 
     def compile_tasker(self, arguments, tasker):
         tasker.load()
@@ -420,30 +416,26 @@ class QueryTasker(object):
                     value = tasker_generator.send(None)
                     if isinstance(value, TaskerYieldNext):
                         yield value
-                except StopIteration as e:
-                    exit_code = e.value
-                    if exit_code is not None and exit_code != 0:
-                        return exit_code
+                except StopIteration:
                     break
-        except SystemError:
+        except SystemError as e:
             self.check_free_temporary_memory_collection(executor, tasker)
             tasker.close(False, "signal terminaled")
             get_logger().error("signal exited")
-            return 130
-        except KeyboardInterrupt:
+            raise e
+        except KeyboardInterrupt as e:
             self.check_free_temporary_memory_collection(executor, tasker)
             tasker.close(False, "user terminaled")
             get_logger().error("Crtl+C exited")
-            return 130
+            raise e
         except Exception as e:
             self.check_free_temporary_memory_collection(executor, tasker)
             tasker.close(False, "Error: " + repr(e), traceback.format_exc())
             get_logger().error("tasker %s error: %s\n%s", tasker.name, e, traceback.format_exc())
-            return 1
+            raise e
         else:
             self.check_free_temporary_memory_collection(executor, tasker)
             tasker.close()
-        return 0
 
     def execute_updater(self, executor, session_config, manager):
         for updater in self.updaters:
