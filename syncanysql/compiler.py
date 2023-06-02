@@ -1734,18 +1734,29 @@ class Compiler(object):
                 raise SyncanySqlCompileException('unknown order by column, the order by field must appear in the select field, related sql "%s"'
                                                  % self.to_sql(expression))
             column = self.parse_column(order_expression.args["this"], config, arguments)
-            if not isinstance(config["schema"], dict) or \
-                    (column["table_name"] and primary_table["table_name"] == column["table_name"]) or \
-                    (not column["table_name"] and (not primary_table["table_alias"] or column["column_name"] in primary_table["columns"])):
-                if not config.get("aggregate") or (column["column_name"] not in config["aggregate"]["schema"]
-                                              and column["column_name"] not in config["aggregate"]["window_schema"]):
-                    primary_sort_keys.append([column["column_name"], True if order_expression.args["desc"] else False])
+            if not isinstance(config["schema"], dict) or (column["table_name"] and primary_table["table_name"] == column["table_name"]):
+                primary_sort_keys.append([column["column_name"], True if order_expression.args["desc"] else False])
+            elif not column["table_name"] and not primary_table["table_alias"]:
+                if not config.get("aggregate"):
+                    if column["column_name"] in primary_table["columns"] or column["column_name"] not in config["schema"]:
+                        primary_sort_keys.append([column["column_name"], True if order_expression.args["desc"] else False])
+                elif column["column_name"] not in config["aggregate"]["schema"] and column["column_name"] not in config["aggregate"]["window_schema"]:
+                    if column["column_name"] in primary_table["columns"] or column["column_name"] not in config["schema"]:
+                        primary_sort_keys.append([column["column_name"], True if order_expression.args["desc"] else False])
+            elif not column["table_name"] and primary_table["table_alias"]:
+                if not config.get("aggregate"):
+                    if column["column_name"] in primary_table["columns"] and column["column_name"] not in config["schema"]:
+                        primary_sort_keys.append([column["column_name"], True if order_expression.args["desc"] else False])
+                elif column["column_name"] not in config["aggregate"]["schema"] and column["column_name"] not in config["aggregate"]["window_schema"]:
+                    if column["column_name"] in primary_table["columns"] and column["column_name"] not in config["schema"]:
+                        primary_sort_keys.append([column["column_name"], True if order_expression.args["desc"] else False])
             sort_keys.append((column["column_name"], True if order_expression.args["desc"] else False))
         if sort_keys and len(primary_sort_keys) < len(sort_keys):
             if isinstance(config["schema"], dict):
                 for sort_key, _ in sort_keys:
-                    if sort_key not in config["schema"]:
-                        raise SyncanySqlCompileException('unknown order by column, related sql "%s"' % self.to_sql(expression))
+                    if sort_key in config["schema"]:
+                        continue
+                    raise SyncanySqlCompileException('unknown order by column, related sql "%s"' % self.to_sql(expression))
             config["pipelines"].append([">>@sort", "$.*|array", False, sort_keys])
         if primary_sort_keys:
             config["orders"].extend(primary_sort_keys)
