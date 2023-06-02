@@ -3,6 +3,7 @@
 # create by: snower
 
 from syncany.calculaters.calculater import Calculater
+from ..errors import SyncanySqlExecutorException
 
 
 class WindowAggregateCalculater(Calculater):
@@ -14,11 +15,11 @@ class WindowAggregateCalculater(Calculater):
         elif self.name.endswith("::order_aggregate"):
             self.calculate = self.order_aggregate
 
-    def aggregate(self, state_value, data_value, datas):
-        return len(datas)
+    def aggregate(self, state_value, data_value, context):
+        raise SyncanySqlExecutorException("window caculate require order by")
 
-    def order_aggregate(self, state_value, data_value, datas, current_index=None, start_index=None, end_index=None):
-        return current_index + 1
+    def order_aggregate(self, state_value, data_value, context):
+        return context.current_index + 1
 
     def calculate(self, *args):
         if self.name.endswith("::aggregate"):
@@ -44,44 +45,62 @@ class WindowStateAggregateCalculater(WindowAggregateCalculater):
         return super(WindowStateAggregateCalculater, self).calculate(*args)
 
 
-class WindowAggregateCountCalculater(WindowAggregateCalculater):
-    def aggregate(self, state_value, data_value, datas):
-        return len(datas)
-
-    def order_aggregate(self, state_value, data_value, datas, current_index=None, start_index=None, end_index=None):
-        return current_index + 1
+class WindowStateAggregateRowNumberCalculater(WindowAggregateCalculater):
+    def order_aggregate(self, state_value, data_value, context):
+        return context.current_index + 1
 
 
-class WindowAggregateDistinctCountCalculater(WindowStateAggregateCalculater):
-    def aggregate(self, state_value, data_value, datas):
-        if data_value is None:
-            return state_value
+class WindowStateAggregateRankCalculater(WindowStateAggregateCalculater):
+    def order_aggregate(self, state_value, data_value, context):
+        order_value = context.order_value
         if state_value is None:
-            try:
-                return {data_value}
-            except:
-                if isinstance(data_value, list):
-                    try:
-                        return {tuple(data_value)}
-                    except:
-                        return {str(data_value)}
-                return {str(data_value)}
-        try:
-            state_value.add(data_value)
-        except:
-            if isinstance(data_value, list):
-                try:
-                    state_value.add(tuple(data_value))
-                except:
-                    state_value.add(str(data_value))
-            else:
-                state_value.add(str(data_value))
+            return {"order_value": order_value, "rank": 1, "row_number": 1}
+        state_value["row_number"] += 1
+        if order_value != state_value["order_value"]:
+            state_value["rank"] += 1
         return state_value
-
-    def order_aggregate(self, state_value, data_value, datas, current_index=None, start_index=None, end_index=None):
-        return self.aggregate(state_value, data_value, datas)
 
     def final_value(self, state_value):
         if state_value is None:
+            return 1
+        return state_value["rank"]
+
+
+class WindowStateAggregateDenseRankCalculater(WindowStateAggregateCalculater):
+    def order_aggregate(self, state_value, data_value, context):
+        order_value = context.order_value
+        if state_value is None:
+            return {"order_value": order_value, "rank": 1}
+        if order_value != state_value["order_value"]:
+            state_value["rank"] += 1
+        return state_value
+
+    def final_value(self, state_value):
+        if state_value is None:
+            return 1
+        return state_value["rank"]
+
+
+class WindowStateAggregatePercentRankCalculater(WindowStateAggregateCalculater):
+    def order_aggregate(self, state_value, data_value, context):
+        order_value = context.order_value
+        if state_value is None:
+            return {"order_value": order_value, "rank": 1, "row_number": 1}
+        state_value["row_number"] += 1
+        if order_value != state_value["order_value"]:
+            state_value["rank"] += 1
+        return state_value
+
+    def final_value(self, state_value):
+        if state_value is None:
+            return 1
+        if state_value["row_number"] <= 1:
             return 0
-        return len(state_value)
+        return state_value["rank"] - 1 / state_value["row_number"] - 1
+
+
+class WindowStateAggregateCumeDistCalculater(WindowAggregateCalculater):
+    def order_aggregate(self, state_value, data_value, context):
+        if not context.datas:
+            return 0
+        return context.current_index + 1 / len(context.datas) + 1

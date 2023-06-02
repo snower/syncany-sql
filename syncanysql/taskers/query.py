@@ -117,15 +117,16 @@ class QueryTasker(object):
 
         where_schema = self.config.pop("where_schema", None)
         limit, batch = int(arguments.get("@limit", 0)), int(arguments.get("@batch", 0))
-        require_reduce, reduce_intercept, sorted_limit = False, False, len(self.config.get("pipelines", [])) == 2
+        require_reduce, reduce_intercept = False, False
         if self.config.get("intercepts"):
             if aggregate and aggregate.get("schema") and aggregate.get("having_columns"):
-                if [having_column for having_column in aggregate["having_columns"] if having_column in aggregate["schema"]]:
+                if [having_column for having_column in aggregate["having_columns"]
+                    if having_column in aggregate["schema"] or having_column in aggregate["window_schema"]]:
                     require_reduce, reduce_intercept = True, True
-            if (batch > 0 or limit > 0 or sorted_limit):
+            if batch > 0:
                 require_reduce = True
         if aggregate and (aggregate.get("schema") or aggregate["window_schema"]):
-            if batch > 0 or limit > 0 or sorted_limit:
+            if batch > 0:
                 require_reduce = True
             elif [aggregate_column["final_value"] for aggregate_column in aggregate["schema"].values()
                   if aggregate_column["final_value"]]:

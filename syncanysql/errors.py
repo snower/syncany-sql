@@ -9,3 +9,6 @@ class SyncanySqlException(SyncanyException):
 
 class SyncanySqlCompileException(SyncanySqlException):
     pass
+
+class SyncanySqlExecutorException(SyncanySqlException):
+    pass

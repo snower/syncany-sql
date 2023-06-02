@@ -13,7 +13,7 @@ from sqlglot.dialects import Dialect
 from sqlglot import tokens
 from syncany.taskers.core import CoreTasker
 from .errors import SyncanySqlCompileException
-from .calculaters import is_mysql_func, find_generate_calculater, find_aggregate_calculater, CalculaterUnknownException
+from .calculaters import is_mysql_func, find_generate_calculater, find_aggregate_calculater, find_window_aggregate_calculater, CalculaterUnknownException
 from .config import CONST_CONFIG_KEYS
 from .parser import SqlParser
 from .taskers.delete import DeleteTasker
@@ -445,7 +445,7 @@ class Compiler(object):
         if having_expression:
             having_condition = self.compile_having_condition(having_expression.args["this"], config, arguments, primary_table)
             if config.get("aggregate") and config["aggregate"]["having_columns"]:
-                if len({True if having_column in config["aggregate"]["schema"] else False
+                if len({True if having_column in config["aggregate"]["schema"] or having_column in config["aggregate"]["window_schema"] else False
                         for having_column in config["aggregate"]["having_columns"]}) != 1:
                     raise SyncanySqlCompileException(
                         'error having condition, cannot contain the values before and after the aggregate calculation at the same time, related sql "%s"'
@@ -1163,55 +1163,59 @@ class Compiler(object):
                 else:
                     value_expressions = aggregate_expression.args.get("expressions")
             else:
-                if isinstance(aggregate_expression.args["this"], sqlglot_expressions.Distinct):
+                if isinstance(aggregate_expression.args.get("this"), sqlglot_expressions.Distinct):
                     if not isinstance(aggregate_expression, sqlglot_expressions.Count):
                         raise SyncanySqlCompileException('error window distinct, only be used for the count function, related sql "%s"' %
                                                          self.to_sql(expression))
                     value_expressions = aggregate_expression.args.get("this").args.get("expressions")
                 else:
-                    value_expressions = [aggregate_expression.args.get("this")]
+                    if aggregate_expression.args.get("this"):
+                        value_expressions = [aggregate_expression.args.get("this")]
+                    else:
+                        value_expressions = []
 
             partition_column = self.compile_window_key(window_expressions[i].args["partition_by"], config, arguments,
                                                        primary_table, join_tables) if window_expressions[i].args.get("partition_by") else None
             order_column = self.compile_window_order(window_expressions[i].args["order"], config, arguments,
                                                      primary_table, join_tables) if window_expressions[i].args.get("order") else None
             value_column = self.compile_window_value(window_expressions[i].args["this"], config, arguments, primary_table,
-                                                     join_tables, value_expressions)
+                                                     join_tables, value_expressions) if value_expressions else None
             if value_column and len(value_column) == 2:
                 value_column = value_column[1]
-            aggregate_calculate, final_calculate = self.compile_window_calculate(window_expressions[i])
-            if order_column is None:
-                aggregate_calculate = [aggregate_calculate, "$.state", "$.value", "$.datas"]
+            is_window_aggregate_calculate, aggregate_calculate, final_calculate = self.compile_window_calculate(window_expressions[i])
+            partition_calculate = "$.partition_key" if partition_column is not None else None
+            order_calculate = {"valuer": "$.order_key", "orders": order_column["orders"]} if order_column is not None else None
+            value_calculate = "$.value" if value_column is not None else None
+            if is_window_aggregate_calculate:
+                aggregate_calculate = [":#partition", partition_calculate, order_calculate, value_calculate,
+                                       [aggregate_calculate, "$.state", "$.value", "$.context"]]
             else:
-                aggregate_calculate = [aggregate_calculate, "$.state", "$.value", "$.datas", "$.current_index", "$.start_index", "$.end_index"]
-            aggregate_calculate = [":#partition", "$.partition_key", {"valuer": "$.order_key", "orders": order_column["orders"]} \
-                if order_column is not None else None, "$.value", aggregate_calculate]
+                aggregate_calculate = [":#partition", partition_calculate, order_calculate, value_calculate,
+                                       [aggregate_calculate, "$.state", "$.value"]]
             if final_calculate:
                 aggregate_calculate.append([":" + final_calculate, "$.*"])
+            window_aggregate_column = ["#make", {}, aggregate_calculate]
+            if partition_column is not None:
+                window_aggregate_column[1]["partition_key"] = partition_column
+            if order_column is not None:
+                window_aggregate_column[1]["order_key"] = order_column["valuer"]
+            if value_column is not None:
+                window_aggregate_column[1]["value"] = value_column
 
             if len(window_expressions) > 1:
                 aggregate_column_alias = "__window_aggregate_value_%d__" % id(window_expressions[i])
-                config["schema"][aggregate_column_alias] = ["#make", {
-                    "partition_key": partition_column,
-                    "order_key": order_column["valuer"] if order_column is not None else ["#const", None],
-                    "value": value_column,
-                }, aggregate_calculate]
+                config["schema"][aggregate_column_alias] = window_aggregate_column
                 setattr(window_expressions[i], "syncany_valuer", "$." + aggregate_column_alias)
                 if not isinstance(config["aggregate"]["window_schema"][column_alias]["aggregate"], dict):
                     config["aggregate"]["window_schema"][column_alias]["aggregate"] = {}
-                config["aggregate"]["window_schema"][column_alias]["aggregate"][aggregate_column_alias] = copy.deepcopy(config["schema"][aggregate_column_alias])
+                config["aggregate"]["window_schema"][column_alias]["aggregate"][aggregate_column_alias] = copy.deepcopy(window_aggregate_column)
             else:
-                config["schema"][column_alias] = ["#make", {
-                    "partition_key": partition_column,
-                    "order_key": order_column["valuer"] if order_column is not None else ["#const", None],
-                    "value": value_column,
-                }, aggregate_calculate]
-                config["aggregate"]["window_schema"][column_alias]["aggregate"] = copy.deepcopy(config["schema"][column_alias])
+                config["schema"][column_alias] = window_aggregate_column
+                config["aggregate"]["window_schema"][column_alias]["aggregate"] = copy.deepcopy(window_aggregate_column)
 
         if len(window_expressions) > 1:
-            self.compile_select_calculate_column(expression, config, arguments, primary_table, column_alias,
-                                                 join_tables, False)
-            config["aggregate"]["window_schema"][column_alias]["final_value"] = config["schema"].pop(column_alias)
+            self.compile_select_calculate_column(expression, config, arguments, primary_table, column_alias, join_tables, False)
+            config["aggregate"]["window_schema"][column_alias]["final_value"] = config["schema"].pop(column_alias, None)
         primary_table["select_columns"][column_alias] = expression
 
     def compile_window_key(self, expressions, config, arguments, primary_table, join_tables):
@@ -1296,55 +1300,23 @@ class Compiler(object):
         return value_column
 
     def compile_window_calculate(self, expression):
-        if isinstance(expression.args["this"], sqlglot_expressions.Count):
-            if isinstance(expression.args["this"].args.get("this"), sqlglot_expressions.Distinct):
-                if expression.args.get("order"):
-                    return "@window_aggregate_distinct_count::order_aggregate", "@window_aggregate_distinct_count::final_value"
-                return "@window_aggregate_distinct_count::aggregate", "@window_aggregate_distinct_count::final_value"
-            if expression.args.get("order"):
-                return "@window_aggregate_count::order_aggregate", None
-            return "@window_aggregate_count::aggregate", None
-        elif isinstance(expression.args["this"], sqlglot_expressions.Sum):
-            if expression.args.get("order"):
-                return "@window_aggregate_sum::order_aggregate", None
-            return "@window_aggregate_sum::aggregate", None
-        elif isinstance(expression.args["this"], sqlglot_expressions.Min):
-            if expression.args.get("order"):
-                return "@window_aggregate_min::order_aggregate", None
-            return "@window_aggregate_min::aggregate", None
-        elif isinstance(expression.args["this"], sqlglot_expressions.Max):
-            if expression.args.get("order"):
-                return "@window_aggregate_max::order_aggregate", None
-            return "@window_aggregate_max::aggregate", None
-        elif isinstance(expression.args["this"], sqlglot_expressions.Avg):
-            if expression.args.get("order"):
-                return "@window_aggregate_avg::order_aggregate", None
-            return "@window_aggregate_avg::aggregate", "@aggregate_avg::final_value"
-        elif isinstance(expression.args["this"], sqlglot_expressions.GroupConcat):
-            if expression.args.get("order"):
-                return "@window_group_concat::order_aggregate", None
-            return "@window_group_concat::aggregate", "@group_concat::final_value"
-        elif isinstance(expression.args["this"], sqlglot_expressions.GroupUniqArray):
-            if expression.args.get("order"):
-                return "@window_group_uniq_array::order_aggregate", None
-            return "@window_group_uniq_array::aggregate", "@group_uniq_array::final_value"
+        if isinstance(expression.args["this"], sqlglot_expressions.RowNumber):
+            return True, "@row_number::order_aggregate", None
         elif isinstance(expression.args["this"], sqlglot_expressions.Anonymous):
-            aggregate_funcs = {"grouparray": "group_array", "groupuniqarray": "group_uniq_array", "groupbitand": "group_bit_and",
-                               "groupbitor": "group_bit_or", "groupbitxor": "group_bit_xor"}
             calculater_name = expression.args["this"].args["this"].lower()
-            if calculater_name in aggregate_funcs:
-                calculater_name = aggregate_funcs[calculater_name]
             try:
-                aggregate_calculater = find_aggregate_calculater(calculater_name)
+                aggregate_calculater = find_window_aggregate_calculater(calculater_name)
                 if expression.args.get("order"):
-                    return ("@" + calculater_name + "::order_aggregate",
+                    return (True, "@" + calculater_name + "::order_aggregate",
                             ("@" + calculater_name + "::final_value" if hasattr(aggregate_calculater, "final_value") else None))
-                return ("@" + calculater_name + "::aggregate",
+                return (True, "@" + calculater_name + "::aggregate",
                         ("@" + calculater_name + "::final_value" if hasattr(aggregate_calculater, "final_value") else None))
             except CalculaterUnknownException:
-                raise SyncanySqlCompileException('unknown aggregate calculate, related sql "%s"' % self.to_sql(expression))
+                aggregate_calculate, reduce_calculate, final_calculate = self.compile_aggregate_calculate(expression.args["this"])
+                return False, aggregate_calculate, final_calculate
         else:
-            raise SyncanySqlCompileException('unknown aggregate calculate, related sql "%s"' % self.to_sql(expression))
+            aggregate_calculate, reduce_calculate, final_calculate = self.compile_aggregate_calculate(expression.args["this"])
+            return False, aggregate_calculate, final_calculate
         
     def compile_calculate(self, expression, config, arguments, primary_table, column_join_tables, join_index=-1):
         if hasattr(expression, "syncany_valuer"):
@@ -1764,8 +1736,10 @@ class Compiler(object):
             column = self.parse_column(order_expression.args["this"], config, arguments)
             if not isinstance(config["schema"], dict) or \
                     (column["table_name"] and primary_table["table_name"] == column["table_name"]) or \
-                    (not column["table_name"] and column["column_name"] in primary_table["columns"]):
-                primary_sort_keys.append([column["column_name"], True if order_expression.args["desc"] else False])
+                    (not column["table_name"] and (not primary_table["table_alias"] or column["column_name"] in primary_table["columns"])):
+                if not config.get("aggregate") or (column["column_name"] not in config["aggregate"]["schema"]
+                                              and column["column_name"] not in config["aggregate"]["window_schema"]):
+                    primary_sort_keys.append([column["column_name"], True if order_expression.args["desc"] else False])
             sort_keys.append((column["column_name"], True if order_expression.args["desc"] else False))
         if sort_keys and len(primary_sort_keys) < len(sort_keys):
             if isinstance(config["schema"], dict):
@@ -2459,8 +2433,10 @@ class Compiler(object):
         for select_expression in expression.args["expressions"]:
             if isinstance(select_expression, sqlglot_expressions.Alias):
                 self.parse_aggregate(select_expression.args["this"], config, arguments, aggregate_expressions)
+                self.parse_window_aggregate(select_expression.args["this"], config, arguments, aggregate_expressions)
             else:
                 self.parse_aggregate(select_expression, config, arguments, aggregate_expressions)
+                self.parse_window_aggregate(select_expression, config, arguments, aggregate_expressions)
         if aggregate_expressions or expression.args.get("group"):
             expression = self.optimize_rewrite_aggregate(expression, config, arguments, aggregate_expressions)
         return expression

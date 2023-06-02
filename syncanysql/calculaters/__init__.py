@@ -29,8 +29,11 @@ SQL_CALCULATERS = {
     "group_bit_and": AggregateGroupBitAndCalculater,
     "group_bit_or": AggregateGroupBitOrCalculater,
     "group_bit_xor": AggregateGroupBitXorCalculater,
-    "window_aggregate_count": WindowAggregateCountCalculater,
-    "window_aggregate_distinct_count": WindowAggregateDistinctCountCalculater,
+    "row_number": WindowStateAggregateRowNumberCalculater,
+    "rank": WindowStateAggregateRankCalculater,
+    "dense_rank": WindowStateAggregateDenseRankCalculater,
+    "percent_rank": WindowStateAggregatePercentRankCalculater,
+    "cume_dist": WindowStateAggregateCumeDistCalculater,
 }
 CALCULATERS.update(SQL_CALCULATERS)
 
@@ -63,3 +66,9 @@ def find_aggregate_calculater(name):
         raise CalculaterUnknownException("%s is unknown aggregate calculater" % name)
     return calculater
 
+
+def find_window_aggregate_calculater(name):
+    calculater = find_calculater(name)
+    if not issubclass(calculater, WindowAggregateCalculater):
+        raise CalculaterUnknownException("%s is unknown window aggregate calculater" % name)
+    return calculater
