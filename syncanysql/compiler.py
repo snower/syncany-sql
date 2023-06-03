@@ -956,7 +956,7 @@ class Compiler(object):
         if "aggregate" not in config:
             config["aggregate"] = copy.deepcopy(DEAULT_AGGREGATE)
         aggregate_column = {
-            "key": group_column[0] if group_column and len(group_column) == 1 else ["#make", group_column, [":@aggregate_key", "$.*"]],
+            "key": group_column[0] if len(group_column) == 1 else ["#make", group_column, [":@aggregate_key", "$.*"]],
             "value": config["schema"][column_alias],
             "calculate": "$$.value",
             "aggregate": [":#aggregate", "$.key", "$$.value"],
@@ -964,10 +964,10 @@ class Compiler(object):
             "final_value": None
         }
         config["schema"][column_alias] = ["#make", {
-            "key": copy.deepcopy(group_column),
-            "value": copy.deepcopy(config["schema"][column_alias])
+            "key": copy.deepcopy(aggregate_column["key"]),
+            "value": copy.deepcopy(aggregate_column["value"])
         }, [":#aggregate", "$.key", "$$.value"]]
-        config["aggregate"]["key"] = copy.deepcopy(group_column)
+        config["aggregate"]["key"] = copy.deepcopy(aggregate_column["key"])
         config["aggregate"]["schema"][column_alias] = aggregate_column
 
     def compile_aggregate_column(self, expression, config, arguments, primary_table, column_alias, group_expression,
@@ -1000,8 +1000,8 @@ class Compiler(object):
                                                         aggregate_value_expressions[0])
             aggregate_calculate, reduce_calculate, final_calculate = self.compile_aggregate_calculate(aggregate_expressions[0])
             aggregate_column = {
-                "key": group_column[0] if group_column and len(group_column) == 1 else ["#make", group_column, [":@aggregate_key", "$.*"]],
-                "value": value_column[0] if value_column and len(value_column) == 1 else ["#make", value_column],
+                "key": group_column[0] if len(group_column) == 1 else ["#make", group_column, [":@aggregate_key", "$.*"]],
+                "value": value_column[0] if len(value_column) == 1 else ["#make", value_column],
                 "calculate": [aggregate_calculate, "$." + column_alias, "$$.value"],
                 "aggregate": [":#aggregate", "$.key", [aggregate_calculate, "$." + column_alias, "$$.value"]],
                 "reduce": [reduce_calculate, "$." + column_alias, "$$." + column_alias],
@@ -1014,8 +1014,7 @@ class Compiler(object):
                 aggregate_value_column = self.compile_aggregate_value(aggregate_expressions[i], config, arguments, primary_table,
                                                                       join_tables, aggregate_value_expressions[i])
                 aggregate_calculate, reduce_calculate, final_calculate = self.compile_aggregate_calculate(aggregate_expressions[i])
-                value_column[1][aggregate_value_key] = aggregate_value_column[0] \
-                    if aggregate_value_column and len(aggregate_value_column) == 1 else ["#make", aggregate_value_column]
+                value_column[1][aggregate_value_key] = aggregate_value_column[0] if len(aggregate_value_column) == 1 else ["#make", aggregate_value_column]
                 calculate_column[1][aggregate_value_key] = [aggregate_calculate, "$." + column_alias + "." + aggregate_value_key,
                                                             "$$.value." + aggregate_value_key]
                 reduce_column[1][aggregate_value_key] = [reduce_calculate, "$." + column_alias + "." + aggregate_value_key,
@@ -1026,7 +1025,7 @@ class Compiler(object):
             self.compile_select_calculate_column(expression, config, arguments, primary_table, column_alias,
                                                  join_tables, False)
             aggregate_column = {
-                "key": group_column[0] if group_column and len(group_column) == 1 else ["#make", group_column, [":@aggregate_key", "$.*"]],
+                "key": group_column[0] if len(group_column) == 1 else ["#make", group_column, [":@aggregate_key", "$.*"]],
                 "value": value_column,
                 "calculate": calculate_column,
                 "aggregate": [":#aggregate", "$.key", copy.deepcopy(calculate_column)],
