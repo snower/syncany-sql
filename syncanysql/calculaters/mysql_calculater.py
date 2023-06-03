@@ -24,11 +24,6 @@ class MysqlCalculater(Calculater):
 
     def calculate(self, *args):
         try:
-            if len(args) == 1 and isinstance(args[0], list) and args[0] and isinstance(args[0][0], dict):
-                try:
-                    self.func(*tuple(args[0]))
-                except TypeError:
-                    pass
             return self.func(*args)
         except (ValueError, KeyError) as e:
             return None
