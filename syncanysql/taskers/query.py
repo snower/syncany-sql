@@ -241,24 +241,37 @@ class QueryTasker(object):
             "states": [],
         })
 
-        group_column = ["@aggregate_key"] if not aggregate["key"] else copy.deepcopy(aggregate["key"])
-        group_column.extend(aggregate["distinct_keys"])
+        is_multi_group_key = True
+        if not aggregate["key"]:
+            if len(aggregate["distinct_keys"]) == 1:
+                group_column, is_multi_group_key = aggregate["distinct_keys"][0], False
+            else:
+                group_column = ["#make", aggregate["distinct_keys"], [":@aggregate_key", "$.*"]]
+        elif isinstance(aggregate["key"], list) and aggregate["key"][0] == "#make":
+            group_column = copy.deepcopy(aggregate["key"])
+            group_column[1].extend(aggregate["distinct_keys"])
+        else:
+            group_column = ["#make", [copy.deepcopy(aggregate["key"])] + aggregate["distinct_keys"], [":@aggregate_key", "$.*"]]
         distinct_aggregate = copy.deepcopy(DEAULT_AGGREGATE)
         for key, column in tuple(self.config["schema"].items()):
             if key in aggregate["distinct_aggregates"]:
                 config["schema"][key] = ["#make", {
-                    "key": "$._aggregate_distinct_key_",
+                    "key": ["@aggregate_key", "$._aggregate_distinct_key_"] if is_multi_group_key else "$._aggregate_distinct_key_",
                     "value": "$." + key
                 }, aggregate["schema"][key]["aggregate"]]
                 self.config["schema"][key] = aggregate["schema"][key]["value"]
             elif key in aggregate["schema"]:
                 self.config["schema"][key] = ["#make", {
-                    "key": group_column,
+                    "key": copy.deepcopy(group_column),
                     "value": aggregate["schema"][key]["value"]
                 }, aggregate["schema"][key]["aggregate"]]
                 distinct_aggregate["schema"][key] = copy.deepcopy(aggregate["schema"][key])
                 distinct_aggregate["schema"][key]["final_value"] = None
-                config["schema"][key] = ["#aggregate", "$._aggregate_distinct_key_", aggregate["schema"][key]["reduce"]]
+                if is_multi_group_key:
+                    config["schema"][key] = ["#aggregate", ["@aggregate_key", "$._aggregate_distinct_key_"],
+                                             aggregate["schema"][key]["reduce"]]
+                else:
+                    config["schema"][key] = ["#aggregate", "$._aggregate_distinct_key_", aggregate["schema"][key]["reduce"]]
             elif where_schema and key in where_schema:
                 continue
             else:
@@ -266,9 +279,12 @@ class QueryTasker(object):
 
         if aggregate["key"]:
             self.config["schema"]["_aggregate_distinct_key_"] = aggregate["key"]
-            aggregate["key"] = "$._aggregate_distinct_key_"
-        self.config["schema"]["_aggregate_distinct_aggregate_key_"] = ["#aggregate", group_column, ["#const", 0]]
-        distinct_aggregate["key"] = group_column
+            if is_multi_group_key:
+                aggregate["key"] = ["@aggregate_key", "$._aggregate_distinct_key_"]
+            else:
+                aggregate["key"] = "$._aggregate_distinct_key_"
+        self.config["schema"]["_aggregate_distinct_aggregate_key_"] = ["#aggregate", copy.deepcopy(group_column), ["#const", 0]]
+        distinct_aggregate["key"] = copy.deepcopy(group_column)
         distinct_aggregate["schema"]["_aggregate_distinct_aggregate_key_"] = {
             "key": group_column,
             "value": ["#const", 0],
@@ -310,9 +326,19 @@ class QueryTasker(object):
             "dependencys": [],
             "states": [],
         })
+
+        is_multi_group_key = False
+        if isinstance(aggregate["key"], list):
+            if aggregate["key"] and aggregate["key"][0] == "@aggregate_key":
+                is_multi_group_key = True
+            elif len(aggregate["key"]) == 3 and aggregate["key"][0] == "#make" and aggregate["key"][2][0] == ":@aggregate_key":
+                is_multi_group_key = True
         for key, column in self.config["schema"].items():
             if key in aggregate["schema"]:
-                config["schema"][key] = ["#aggregate", "$._aggregate_key_", aggregate["schema"][key]["reduce"]]
+                if is_multi_group_key:
+                    config["schema"][key] = ["#aggregate", ["@aggregate_key", "$._aggregate_key_"], aggregate["schema"][key]["reduce"]]
+                else:
+                    config["schema"][key] = ["#aggregate", "$._aggregate_key_", aggregate["schema"][key]["reduce"]]
             else:
                 config["schema"][key] = "$." + key
         if aggregate["key"]:

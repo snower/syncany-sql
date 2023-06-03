@@ -956,7 +956,7 @@ class Compiler(object):
         if "aggregate" not in config:
             config["aggregate"] = copy.deepcopy(DEAULT_AGGREGATE)
         aggregate_column = {
-            "key": group_column,
+            "key": group_column[0] if group_column and len(group_column) == 1 else ["#make", group_column, [":@aggregate_key", "$.*"]],
             "value": config["schema"][column_alias],
             "calculate": "$$.value",
             "aggregate": [":#aggregate", "$.key", "$$.value"],
@@ -998,12 +998,10 @@ class Compiler(object):
         if len(aggregate_expressions) == 1 and aggregate_expressions[0] is expression:
             value_column = self.compile_aggregate_value(aggregate_expressions[0], config, arguments, primary_table, join_tables,
                                                         aggregate_value_expressions[0])
-            if value_column and len(value_column) == 2:
-                value_column = value_column[1]
             aggregate_calculate, reduce_calculate, final_calculate = self.compile_aggregate_calculate(aggregate_expressions[0])
             aggregate_column = {
-                "key": group_column,
-                "value": value_column,
+                "key": group_column[0] if group_column and len(group_column) == 1 else ["#make", group_column, [":@aggregate_key", "$.*"]],
+                "value": value_column[0] if value_column and len(value_column) == 1 else ["#make", value_column],
                 "calculate": [aggregate_calculate, "$." + column_alias, "$$.value"],
                 "aggregate": [":#aggregate", "$.key", [aggregate_calculate, "$." + column_alias, "$$.value"]],
                 "reduce": [reduce_calculate, "$." + column_alias, "$$." + column_alias],
@@ -1015,10 +1013,9 @@ class Compiler(object):
                 aggregate_value_key = "value_%d" % id(aggregate_expressions[i])
                 aggregate_value_column = self.compile_aggregate_value(aggregate_expressions[i], config, arguments, primary_table,
                                                                       join_tables, aggregate_value_expressions[i])
-                if aggregate_value_column and len(aggregate_value_column) == 2:
-                    aggregate_value_column = aggregate_value_column[1]
                 aggregate_calculate, reduce_calculate, final_calculate = self.compile_aggregate_calculate(aggregate_expressions[i])
-                value_column[1][aggregate_value_key] = aggregate_value_column
+                value_column[1][aggregate_value_key] = aggregate_value_column[0] \
+                    if aggregate_value_column and len(aggregate_value_column) == 1 else ["#make", aggregate_value_column]
                 calculate_column[1][aggregate_value_key] = [aggregate_calculate, "$." + column_alias + "." + aggregate_value_key,
                                                             "$$.value." + aggregate_value_key]
                 reduce_column[1][aggregate_value_key] = [reduce_calculate, "$." + column_alias + "." + aggregate_value_key,
@@ -1029,7 +1026,7 @@ class Compiler(object):
             self.compile_select_calculate_column(expression, config, arguments, primary_table, column_alias,
                                                  join_tables, False)
             aggregate_column = {
-                "key": group_column,
+                "key": group_column[0] if group_column and len(group_column) == 1 else ["#make", group_column, [":@aggregate_key", "$.*"]],
                 "value": value_column,
                 "calculate": calculate_column,
                 "aggregate": [":#aggregate", "$.key", copy.deepcopy(calculate_column)],
@@ -1038,8 +1035,8 @@ class Compiler(object):
             }
 
         config["schema"][column_alias] = ["#make", {
-            "key": copy.deepcopy(group_column),
-            "value": copy.deepcopy(value_column),
+            "key": copy.deepcopy(aggregate_column["key"]),
+            "value": copy.deepcopy(aggregate_column["value"]),
         }, copy.deepcopy(aggregate_column["aggregate"])]
         config["aggregate"]["key"] = copy.deepcopy(aggregate_column["key"])
         config["aggregate"]["schema"][column_alias] = aggregate_column
@@ -1047,9 +1044,9 @@ class Compiler(object):
 
     def compile_aggregate_key(self, expression, config, arguments, primary_table, join_tables):
         if not expression:
-            return ["@aggregate_key", ["#const", "__k_g__"]]
+            return [["#const", "__k_g__"]]
 
-        group_column = ["@aggregate_key"]
+        group_column = []
         for group_expression in expression.args["expressions"]:
             if self.is_column(group_expression, config, arguments):
                 group_expression_column = self.parse_column(group_expression, config, arguments)
@@ -1088,11 +1085,11 @@ class Compiler(object):
     def compile_aggregate_value(self, expression, config, arguments, primary_table, join_tables, value_expressions):
         if isinstance(expression, sqlglot_expressions.Count) and isinstance(expression.args["this"],
                                                                             sqlglot_expressions.Star):
-            return ["@make", ["#const", 0]]
+            return [["#const", 0]]
         if not value_expressions:
-            return ["@make", ["#const", None]]
+            return [["#const", None]]
 
-        value_column = ["@make"]
+        value_column = []
         for value_expression in value_expressions:
             calculate_fields = []
             self.parse_calculate(value_expression, config, arguments, primary_table, calculate_fields)
@@ -1181,8 +1178,6 @@ class Compiler(object):
                                                      primary_table, join_tables) if window_expressions[i].args.get("order") else None
             value_column = self.compile_window_value(window_expressions[i].args["this"], config, arguments, primary_table,
                                                      join_tables, value_expressions) if value_expressions else None
-            if value_column and len(value_column) == 2:
-                value_column = value_column[1]
             is_window_aggregate_calculate, aggregate_calculate, final_calculate = self.compile_window_calculate(window_expressions[i])
             partition_calculate = "$.partition_key" if partition_column is not None else None
             order_calculate = {"valuer": "$.order_key", "orders": order_column["orders"]} if order_column is not None else None
@@ -1197,11 +1192,13 @@ class Compiler(object):
                 aggregate_calculate.append([":" + final_calculate, "$.*"])
             window_aggregate_column = ["#make", {}, aggregate_calculate]
             if partition_column is not None:
-                window_aggregate_column[1]["partition_key"] = partition_column
+                window_aggregate_column[1]["partition_key"] = partition_column[0] \
+                    if len(partition_column) == 1 else ["#make", partition_column, [":@aggregate_key", "$.*"]]
             if order_column is not None:
-                window_aggregate_column[1]["order_key"] = order_column["valuer"]
+                window_aggregate_column[1]["order_key"] = order_column["valuer"][0] \
+                    if len(order_column["valuer"]) == 1 else ["#make", order_column["valuer"], [":@aggregate_key", "$.*"]]
             if value_column is not None:
-                window_aggregate_column[1]["value"] = value_column
+                window_aggregate_column[1]["value"] = value_column[0] if len(value_column) == 1 else ["#make", value_column]
 
             if len(window_expressions) > 1:
                 aggregate_column_alias = "__window_aggregate_value_%d__" % id(window_expressions[i])
@@ -1221,9 +1218,9 @@ class Compiler(object):
 
     def compile_window_key(self, expressions, config, arguments, primary_table, join_tables):
         if not expressions:
-            return ["@aggregate_key", ["#const", "__k_g__"]]
+            return [["#const", "__k_g__"]]
 
-        key_column = ["@aggregate_key"]
+        key_column = []
         for expression in expressions:
             if self.is_column(expression, config, arguments):
                 key_expression_column = self.parse_column(expression, config, arguments)
@@ -1270,11 +1267,11 @@ class Compiler(object):
     def compile_window_value(self, expression, config, arguments, primary_table, join_tables, value_expressions):
         if isinstance(expression, sqlglot_expressions.Count) and isinstance(expression.args["this"],
                                                                             sqlglot_expressions.Star):
-            return ["@make", ["#const", 0]]
+            return [["#const", 0]]
         if not value_expressions:
-            return ["@make", ["#const", None]]
+            return [["#const", None]]
 
-        value_column = ["@make"]
+        value_column = []
         for value_expression in value_expressions:
             calculate_fields = []
             self.parse_calculate(value_expression, config, arguments, primary_table, calculate_fields)
@@ -2437,20 +2434,6 @@ class Compiler(object):
             if join_expression.kind and join_expression.kind.lower() == "inner":
                 expression = self.optimize_rewrite_inner_join(expression, config, arguments)
                 break
-
-        if len(expression.args["expressions"]) == 1:
-            if isinstance(expression.args["expressions"][0], sqlglot_expressions.Star):
-                return expression
-        aggregate_expressions = []
-        for select_expression in expression.args["expressions"]:
-            if isinstance(select_expression, sqlglot_expressions.Alias):
-                self.parse_aggregate(select_expression.args["this"], config, arguments, aggregate_expressions)
-                self.parse_window_aggregate(select_expression.args["this"], config, arguments, aggregate_expressions)
-            else:
-                self.parse_aggregate(select_expression, config, arguments, aggregate_expressions)
-                self.parse_window_aggregate(select_expression, config, arguments, aggregate_expressions)
-        if aggregate_expressions or expression.args.get("group"):
-            expression = self.optimize_rewrite_aggregate(expression, config, arguments, aggregate_expressions)
         return expression
 
     def optimize_rewrite_multi_select(self, expression, config, arguments, from_expression):
@@ -2670,98 +2653,6 @@ class Compiler(object):
                 ("LIMIT %d, %d" % (offset_value, limit_value)) if offset_value > 0 else ("LIMIT %d" % limit_value))
         return maybe_parse(" ".join(sql), dialect=CompilerDialect)
 
-    def optimize_rewrite_aggregate(self, expression, config, arguments, aggregate_expressions):
-        primary_table = self.optimize_rewrite_parse_table(expression, config, arguments,
-                                                          expression.args["from"].expressions[0])
-        if not primary_table["table_name"]:
-            return expression
-        aggregate_calculate_fields = []
-        for aggregate_expression in aggregate_expressions:
-            self.parse_calculate(aggregate_expression, config, arguments, primary_table, aggregate_calculate_fields)
-        aggregate_calculate_fields = [calculate_field for calculate_field in aggregate_calculate_fields
-                                      if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]]
-        if not aggregate_calculate_fields:
-            if not expression.args.get("group"):
-                return expression
-            group_calculate_fields = []
-            for group_expression in expression.args["group"].args["expressions"]:
-                self.parse_calculate(group_expression, config, arguments, primary_table, group_calculate_fields)
-            group_calculate_fields = [calculate_field for calculate_field in group_calculate_fields
-                                      if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]]
-            if not group_calculate_fields:
-                return expression
-
-        sub_sql = ["SELECT"]
-        calculate_fields, sub_columns = [], []
-        for select_expression in expression.args["expressions"]:
-            if isinstance(select_expression, sqlglot_expressions.Column) \
-                    and isinstance(select_expression.args.get("this"), sqlglot_expressions.Star):
-                sub_columns.append(str(select_expression))
-            else:
-                self.parse_calculate(select_expression, config, arguments, primary_table, calculate_fields)
-        if expression.args.get("group"):
-            for group_expression in expression.args["group"].args["expressions"]:
-                self.parse_calculate(group_expression, config, arguments, primary_table, calculate_fields)
-        if expression.args.get("order"):
-            for order_expression in expression.args["order"].args["expressions"]:
-                self.parse_calculate(order_expression.args["this"], config, arguments, primary_table, calculate_fields)
-        for calculate_field in calculate_fields:
-            if not calculate_field["table_name"] and primary_table["table_name"] and primary_table["table_alias"]:
-                continue
-            if calculate_field["table_name"] and calculate_field["table_name"] != primary_table["table_name"]:
-                sub_column = "%s as `%s__%s`" % (str(calculate_field["expression"]),
-                                                 calculate_field["table_name"].replace(".", "__"),
-                                                 calculate_field["column_name"])
-            else:
-                sub_column = "%s as `%s`" % (str(calculate_field["expression"]), calculate_field["column_name"])
-            if sub_column not in sub_columns:
-                sub_columns.append(sub_column)
-        sub_sql.append(", ".join(sub_columns))
-        sub_sql.append(str(expression.args["from"]))
-        for join_expression in expression.args["joins"]:
-            sub_sql.append(str(join_expression))
-        if expression.args.get("where"):
-            sub_sql.append(str(expression.args["where"]))
-
-        subquery_name = "__subquery_" + str(uuid.uuid1().int)
-        sql = ["SELECT"]
-        if expression.args.get("distinct"):
-            sql.append(str(self.optimize_rewrite_except_table(expression.args["distinct"],
-                                                              config, arguments, primary_table)))
-        select_sql = []
-        for select_expression in expression.args["expressions"]:
-            if isinstance(select_expression, sqlglot_expressions.Alias):
-                select_sql.append(str(self.optimize_rewrite_except_table(select_expression, config, arguments, primary_table)))
-                continue
-            if isinstance(select_expression, sqlglot_expressions.Column):
-                if isinstance(select_expression.args.get("this"), sqlglot_expressions.Star):
-                    if (subquery_name + ".*") not in select_sql:
-                        select_sql.insert(0, subquery_name + ".*")
-                    continue
-                select_column_name = self.parse_column(select_expression, config, arguments)["column_name"]
-            else:
-                select_column_name = str(select_expression)
-            select_sql.append("%s as `%s`" %
-                              (str(self.optimize_rewrite_except_table(select_expression, config, arguments, primary_table)),
-                               select_column_name))
-        sql.append(", ".join(select_sql))
-        sql.append("FROM (%s) %s" % (" ".join(sub_sql), subquery_name))
-        if expression.args.get("group"):
-            sql.append(str(self.optimize_rewrite_except_table(expression.args["group"], config, arguments, primary_table)))
-        if expression.args.get("having"):
-            sql.append(str(expression.args["having"]))
-        if expression.args.get("order"):
-            sql.append(str(self.optimize_rewrite_except_table(expression.args["order"], config, arguments, primary_table)))
-        if expression.args.get("offset"):
-            offset_expression, limit_expression = expression.args.get("limit"), expression.args.get("offset")
-        else:
-            offset_expression, limit_expression = None, expression.args.get("limit")
-        if limit_expression:
-            offset_value = max(int(offset_expression.args["expression"].args["this"]), 0) if offset_expression else 0
-            limit_value = max(int(limit_expression.args["expression"].args["this"]), 1)
-            sql.append(("LIMIT %d, %d" % (offset_value, limit_value)) if offset_value > 0 else ("LIMIT %d" % limit_value))
-        return maybe_parse(" ".join(sql), dialect=CompilerDialect)
-
     def optimize_rewrite_parse_table(self, expression, config, arguments, table_expression):
         table = {"table_name": None, "table_alias": None, "columns": {}}
         if isinstance(table_expression, sqlglot_expressions.Table):
@@ -2816,29 +2707,6 @@ class Compiler(object):
                 related_tables.add(calculate_field["table_name"])
         else:
             calcuate_expressions.append(condition_expression)
-
-    def optimize_rewrite_except_table(self, expression, config, arguments, primary_table):
-        def parse_except_table(arg_expression):
-            if not isinstance(arg_expression, sqlglot_expressions.Expression):
-                return arg_expression
-            if isinstance(arg_expression, sqlglot_expressions.Column):
-                column = self.parse_column(arg_expression, config, arguments)
-                if column["table_name"] and column["table_name"] != primary_table["table_name"]:
-                    arg_expression.args["this"].args["this"] = "%s__%s" % (
-                        column["table_name"].replace(".", "__"), column["column_name"])
-                if arg_expression.args.get("db"):
-                    arg_expression.args["db"] = None
-                if arg_expression.args.get("table"):
-                    arg_expression.args["table"] = None
-                return arg_expression
-            for child_arg_expression in arg_expression.args.values():
-                if isinstance(child_arg_expression, list):
-                    for child_item_arg_expression in child_arg_expression:
-                        parse_except_table(child_item_arg_expression)
-                else:
-                    parse_except_table(child_arg_expression)
-            return arg_expression
-        return parse_except_table(expression)
 
     def to_sql(self, expression_sql):
         if not isinstance(expression_sql, str):

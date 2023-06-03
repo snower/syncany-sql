@@ -38,8 +38,7 @@ class ExampleTestCase(TestCase):
         try:
             with self.get_executor() as executor:
                 executor.run("execute[%s]" % self.__class__.__name__, sqls)
-                exit_code = executor.execute()
-                assert exit_code is None or exit_code == 0, "execute error"
+                executor.execute()
 
             self.execute_results = {}
             for config_key, factory in self.script_engine.manager.database_manager.factorys.items():

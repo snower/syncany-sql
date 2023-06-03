@@ -8,7 +8,7 @@ from syncany.calculaters.calculater import Calculater
 class AggregateKeyCalculater(Calculater):
     def calculate(self, *args):
         if len(args) == 1:
-            return args[0]
+            return tuple(args[0]) if isinstance(args[0], list) else args[0]
         return args
 
 
