@@ -421,17 +421,6 @@ class Compiler(object):
             self.compile_select_calculate_column(calculate_expression, config, arguments, primary_table, column_alias,
                                                  join_tables)
 
-        distinct_expression = expression.args.get("distinct")
-        if distinct_expression and not config.get("aggregate", {}).get("distinct_keys"):
-            if not isinstance(config["schema"], dict):
-                raise SyncanySqlCompileException('error distinct, select columns is unknown, related sql "%s"' % self.to_sql(expression))
-            if "aggregate" not in config:
-                config["aggregate"] = copy.deepcopy(DEAULT_AGGREGATE)
-            for name, column in config["schema"].items():
-                if name in config["aggregate"]["schema"]:
-                    continue
-                config["aggregate"]["distinct_keys"].append(copy.deepcopy(column))
-
         where_expression = expression.args.get("where")
         if where_expression and isinstance(where_expression, sqlglot_expressions.Where):
             where_condition = self.compile_where_condition(where_expression.args["this"], config, arguments, primary_table, join_tables)
@@ -475,6 +464,20 @@ class Compiler(object):
 
         if group_expression and ("aggregate" not in config or not config["aggregate"] or not config["aggregate"]["schema"]):
             self.compile_group_column(group_expression, config, arguments, primary_table, join_tables)
+        distinct_expression = expression.args.get("distinct")
+        if distinct_expression and ("aggregate" not in config or not config["aggregate"] or not config["aggregate"]["schema"]):
+            if not group_expression:
+                self.compile_distinct_column(expression, config, arguments, primary_table, join_tables)
+            else:
+                if not isinstance(config["schema"], dict):
+                    raise SyncanySqlCompileException(
+                        'error distinct, select columns is unknown, related sql "%s"' % self.to_sql(expression))
+                if "aggregate" not in config:
+                    config["aggregate"] = copy.deepcopy(DEAULT_AGGREGATE)
+                for name, column in config["schema"].items():
+                    if name in config["aggregate"]["schema"]:
+                        continue
+                    config["aggregate"]["distinct_keys"].append(copy.deepcopy(column))
         if not from_expression and not primary_table["outputer_primary_keys"] and isinstance(config["schema"], dict):
             for column_alias in config["schema"]:
                 if not column_alias.isidentifier():
@@ -955,6 +958,38 @@ class Compiler(object):
         group_column = self.compile_aggregate_key(expression, config, arguments, primary_table, join_tables)
         if "aggregate" not in config:
             config["aggregate"] = copy.deepcopy(DEAULT_AGGREGATE)
+        aggregate_column = {
+            "key": group_column[0] if len(group_column) == 1 else ["#make", group_column, [":@aggregate_key", "$.*"]],
+            "value": config["schema"][column_alias],
+            "calculate": "$$.value",
+            "aggregate": [":#aggregate", "$.key", "$$.value"],
+            "reduce": "$$." + column_alias,
+            "final_value": None
+        }
+        config["schema"][column_alias] = ["#make", {
+            "key": copy.deepcopy(aggregate_column["key"]),
+            "value": copy.deepcopy(aggregate_column["value"])
+        }, [":#aggregate", "$.key", "$$.value"]]
+        config["aggregate"]["key"] = copy.deepcopy(aggregate_column["key"])
+        config["aggregate"]["schema"][column_alias] = aggregate_column
+
+    def compile_distinct_column(self, expression, config, arguments, primary_table, join_tables):
+        column_alias = None
+        if primary_table["outputer_primary_keys"]:
+            if isinstance(config["schema"], dict) and primary_table["outputer_primary_keys"][0] in config["schema"]:
+                column_alias = primary_table["outputer_primary_keys"][0]
+        if not column_alias:
+            if isinstance(config["schema"], dict) and config["schema"]:
+                column_alias = list(config["schema"].keys())[0]
+            else:
+                raise SyncanySqlCompileException('error group by, unknown column, related sql "%s"' % self.to_sql(expression))
+        if "aggregate" not in config:
+            config["aggregate"] = copy.deepcopy(DEAULT_AGGREGATE)
+        group_column = []
+        for select_name, select_column in config["schema"].items():
+            if select_name in config["aggregate"]["schema"] or select_name in config["aggregate"]["window_schema"]:
+                continue
+            group_column.append(copy.deepcopy(select_column))
         aggregate_column = {
             "key": group_column[0] if len(group_column) == 1 else ["#make", group_column, [":@aggregate_key", "$.*"]],
             "value": config["schema"][column_alias],

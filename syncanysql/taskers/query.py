@@ -283,7 +283,10 @@ class QueryTasker(object):
                 aggregate["key"] = ["@aggregate_key", "$._aggregate_distinct_key_"]
             else:
                 aggregate["key"] = "$._aggregate_distinct_key_"
-        self.config["schema"]["_aggregate_distinct_aggregate_key_"] = ["#aggregate", copy.deepcopy(group_column), ["#const", 0]]
+        self.config["schema"]["_aggregate_distinct_aggregate_key_"] = ["#make", {
+            "key": copy.deepcopy(group_column),
+            "value": ["#const", 0]
+        }, [":#aggregate", "$.key", "$$.value"]]
         distinct_aggregate["key"] = copy.deepcopy(group_column)
         distinct_aggregate["schema"]["_aggregate_distinct_aggregate_key_"] = {
             "key": group_column,
