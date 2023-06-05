@@ -5,6 +5,7 @@
 import traceback
 from syncany.logger import get_logger
 from syncany.calculaters.calculater import Calculater
+from syncany.calculaters.import_calculater import parse_final_filter
 
 
 class MysqlCalculater(Calculater):
@@ -35,4 +36,4 @@ class MysqlCalculater(Calculater):
     def get_final_filter(self):
         if hasattr(self.func, "get_final_filter"):
             return self.func.get_final_filter()
-        return None
+        return parse_final_filter(self.func)
