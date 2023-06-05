@@ -3,6 +3,7 @@
 # create by: snower
 
 from syncany.calculaters.calculater import Calculater
+from syncany.filters import IntFilter, FloatFilter
 from ..errors import SyncanySqlExecutorException
 
 
@@ -49,6 +50,9 @@ class WindowStateAggregateRowNumberCalculater(WindowAggregateCalculater):
     def order_aggregate(self, state_value, data_value, context):
         return context.current_index + 1
 
+    def get_final_filter(self):
+        return IntFilter.default()
+
 
 class WindowStateAggregateRankCalculater(WindowStateAggregateCalculater):
     def order_aggregate(self, state_value, data_value, context):
@@ -65,6 +69,9 @@ class WindowStateAggregateRankCalculater(WindowStateAggregateCalculater):
             return 1
         return state_value["rank"]
 
+    def get_final_filter(self):
+        return IntFilter.default()
+
 
 class WindowStateAggregateDenseRankCalculater(WindowStateAggregateCalculater):
     def order_aggregate(self, state_value, data_value, context):
@@ -79,6 +86,9 @@ class WindowStateAggregateDenseRankCalculater(WindowStateAggregateCalculater):
         if state_value is None:
             return 1
         return state_value["rank"]
+
+    def get_final_filter(self):
+        return IntFilter.default()
 
 
 class WindowStateAggregatePercentRankCalculater(WindowStateAggregateCalculater):
@@ -98,9 +108,15 @@ class WindowStateAggregatePercentRankCalculater(WindowStateAggregateCalculater):
             return 0
         return state_value["rank"] - 1 / state_value["row_number"] - 1
 
+    def get_final_filter(self):
+        return FloatFilter.default()
+
 
 class WindowStateAggregateCumeDistCalculater(WindowAggregateCalculater):
     def order_aggregate(self, state_value, data_value, context):
         if not context.datas:
             return 0
         return context.current_index + 1 / len(context.datas) + 1
+
+    def get_final_filter(self):
+        return FloatFilter.default()

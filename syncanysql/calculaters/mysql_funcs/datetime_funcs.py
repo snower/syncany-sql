@@ -7,6 +7,7 @@ import time
 import datetime
 import pytz
 from syncany.utils import get_timezone, parse_datetime
+from syncany.calculaters import typing_filter
 
 TIMEDELTA_UNITS = {"YEAR": 365 * 24 * 60 * 60, "QUARTER": 90 * 24 * 60 * 60, "MONTH": 30 * 24 * 60 * 60,
                    "WEEK": 7 * 24 * 60 * 60, "DAY": 24 * 60 * 60, "HOUR": 3600, "MINUTE": 60, "SECOND": 1,
@@ -51,26 +52,33 @@ def calculate_datetime(dt, interval, is_sub=False):
     return dt
 
 
+@typing_filter(datetime.datetime)
 def mysql_currenttimestamp():
     return datetime.datetime.now(tz=get_timezone())
 
+@typing_filter(datetime.date)
 def mysql_curdate():
     return datetime.date.today()
 
+@typing_filter(datetime.date)
 def mysql_currentdate():
     return datetime.date.today()
 
+@typing_filter(datetime.time)
 def mysql_curtime():
     dt = datetime.datetime.now(tz=get_timezone())
     return datetime.time(dt.hour, dt.minute, dt.second, dt.microsecond)
 
+@typing_filter(datetime.time)
 def mysql_currenttime():
     dt = datetime.datetime.now(tz=get_timezone())
     return datetime.time(dt.hour, dt.minute, dt.second, dt.microsecond)
 
+@typing_filter(datetime.datetime)
 def mysql_sysdate():
     return datetime.datetime.now(tz=get_timezone())
 
+@typing_filter(datetime.date)
 def mysql_date(dt):
     if dt is None:
         return None
@@ -82,6 +90,7 @@ def mysql_date(dt):
         return dt
     return None
 
+@typing_filter(datetime.datetime)
 def mysql_datetime(dt):
     if dt is None:
         return None
@@ -97,6 +106,7 @@ def mysql_datetime(dt):
                                  dt.second, dt.microsecond, tzinfo=get_timezone())
     return None
 
+@typing_filter(datetime.time)
 def mysql_time(dt):
     if dt is None:
         return None
@@ -110,16 +120,19 @@ def mysql_time(dt):
         return datetime.time(tzinfo=get_timezone())
     return None
 
+@typing_filter(int)
 def mysql_unix_timestamp(dt=None):
     if dt is None:
         return int(time.time())
     return int(time.mktime(dt.utctimetuple()))
 
+@typing_filter(datetime.datetime)
 def mysql_from_unixtime(t):
     if t is None:
         return None
     return datetime.datetime.utcfromtimestamp(t).replace(tzinfo=pytz.UTC).astimezone(tz=get_timezone())
 
+@typing_filter(int)
 def mysql_month(dt):
     if dt is None:
         return None
@@ -127,6 +140,7 @@ def mysql_month(dt):
         dt = parse_datetime(str(dt), None, get_timezone())
     return dt.month
 
+@typing_filter(str)
 def mysql_monthname(dt):
     if dt is None:
         return None
@@ -134,6 +148,7 @@ def mysql_monthname(dt):
         dt = parse_datetime(str(dt), None, get_timezone())
     return dt.strftime("%b")
 
+@typing_filter(str)
 def mysql_dayname(dt):
     if dt is None:
         return None
@@ -141,6 +156,7 @@ def mysql_dayname(dt):
         dt = parse_datetime(str(dt), None, get_timezone())
     return dt.strftime("%A")
 
+@typing_filter(int)
 def mysql_dayofweek(dt):
     if dt is None:
         return None
@@ -148,6 +164,7 @@ def mysql_dayofweek(dt):
         dt = parse_datetime(str(dt), None, get_timezone())
     return dt.weekday() + 1
 
+@typing_filter(int)
 def mysql_week(dt, mod=None):
     if dt is None:
         return None
@@ -155,6 +172,7 @@ def mysql_week(dt, mod=None):
         dt = parse_datetime(str(dt), None, get_timezone())
     return int(dt.strftime("%W" if str(mod) == "1" else "%U"))
 
+@typing_filter(int)
 def mysql_yearweek(dt, mod=None):
     if dt is None:
         return None
@@ -162,6 +180,7 @@ def mysql_yearweek(dt, mod=None):
         dt = parse_datetime(str(dt), None, get_timezone())
     return int(dt.strftime("%Y%W" if str(mod) == "1" else "%Y%U"))
 
+@typing_filter(int)
 def mysql_dayofyear(dt):
     if dt is None:
         return None
@@ -169,6 +188,7 @@ def mysql_dayofyear(dt):
         dt = parse_datetime(str(dt), None, get_timezone())
     return int(dt.strftime("%j"))
 
+@typing_filter(int)
 def mysql_dayofmonth(dt):
     if dt is None:
         return None
@@ -176,6 +196,7 @@ def mysql_dayofmonth(dt):
         dt = parse_datetime(str(dt), None, get_timezone())
     return dt.day
 
+@typing_filter(int)
 def mysql_year(dt):
     if dt is None:
         return None
@@ -183,6 +204,7 @@ def mysql_year(dt):
         dt = parse_datetime(str(dt), None, get_timezone())
     return dt.year
 
+@typing_filter(int)
 def mysql_time_to_sec(dt):
     if dt is None:
         return None
@@ -191,12 +213,14 @@ def mysql_time_to_sec(dt):
         dt = parse_datetime("2000-01-01 " + dt, None, get_timezone())
     return int((dt - st).total_seconds())
 
+@typing_filter(str)
 def mysql_sec_to_time(t):
     if t is None:
         return None
     st = parse_datetime("2000-01-01 00:00:00", None, get_timezone())
     return (st + datetime.timedelta(seconds=t)).strftime("%H:%M:%S")
 
+@typing_filter(datetime.datetime)
 def mysql_dateadd(dt, i):
     if dt is None:
         return None
@@ -206,6 +230,7 @@ def mysql_dateadd(dt, i):
         return dt + datetime.timedelta(days=int(i))
     return calculate_datetime(dt, i, False)
 
+@typing_filter(datetime.datetime)
 def mysql_adddate(dt, i):
     if dt is None:
         return None
@@ -215,6 +240,7 @@ def mysql_adddate(dt, i):
         return dt + datetime.timedelta(days=int(i))
     return calculate_datetime(dt, i, False)
 
+@typing_filter(datetime.datetime)
 def mysql_datesub(dt, i):
     if dt is None:
         return None
@@ -224,6 +250,7 @@ def mysql_datesub(dt, i):
         return dt - datetime.timedelta(days=int(i))
     return calculate_datetime(dt, i, True)
 
+@typing_filter(datetime.datetime)
 def mysql_subdate(dt, i):
     if dt is None:
         return None
@@ -233,6 +260,7 @@ def mysql_subdate(dt, i):
         return dt - datetime.timedelta(days=int(i))
     return calculate_datetime(dt, i, True)
 
+@typing_filter(datetime.datetime)
 def mysql_addtime(dt, i):
     if dt is None:
         return None
@@ -242,6 +270,7 @@ def mysql_addtime(dt, i):
         return dt + datetime.timedelta(days=int(i))
     return calculate_datetime(dt, i, False)
 
+@typing_filter(datetime.datetime)
 def mysql_subtime(dt, i):
     if dt is None:
         return None
@@ -251,6 +280,7 @@ def mysql_subtime(dt, i):
         return dt - datetime.timedelta(days=int(i))
     return calculate_datetime(dt, i, True)
 
+@typing_filter(int)
 def mysql_datediff(dt1, dt2):
     if dt1 is None or dt2 is None:
         return None
@@ -260,6 +290,7 @@ def mysql_datediff(dt1, dt2):
         dt2 = parse_datetime(str(dt2), None, get_timezone())
     return int((dt2 - dt1).total_seconds() / 86400)
 
+@typing_filter(str)
 def mysql_date_format(dt, f):
     if dt is None:
         return None
@@ -267,6 +298,7 @@ def mysql_date_format(dt, f):
         dt = parse_datetime(str(dt), None, get_timezone())
     return dt.strftime(f.replace("%v", "%V"))
 
+@typing_filter(str)
 def mysql_time_format(dt, f):
     if dt is None:
         return None
@@ -274,6 +306,7 @@ def mysql_time_format(dt, f):
         dt = parse_datetime("2000-01-01 " + str(dt), None, get_timezone())
     return dt.strftime(f.replace("%v", "%V"))
 
+@typing_filter(int)
 def mysql_weekday(dt):
     if dt is None:
         return None
@@ -281,14 +314,17 @@ def mysql_weekday(dt):
         dt = parse_datetime(str(dt), None, get_timezone())
     return dt.weekday()
 
+@typing_filter(datetime.date)
 def mysql_utc_date():
     dt = datetime.datetime.utcnow()
     return datetime.date(dt.year, dt.month, dt.day)
 
+@typing_filter(datetime.time)
 def mysql_utc_time():
     dt = datetime.datetime.utcnow()
     return datetime.time(dt.hour, dt.minute, dt.second, dt.microsecond)
 
+@typing_filter(datetime.datetime)
 def mysql_utc_timestamp():
     dt = datetime.datetime.utcnow()
     return dt.replace(tzinfo=pytz.UTC)

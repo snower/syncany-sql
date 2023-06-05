@@ -3,6 +3,7 @@
 # create by: snower
 
 import json
+from syncany.calculaters import typing_filter
 
 
 def parse_json_path(json_path):
@@ -87,6 +88,7 @@ def get_json_path_value(json_data, json_path):
     return get_value(json_data, parse_json_path(json_path))
 
 
+@typing_filter(int)
 def mysql_json_contains(target, candidate, path):
     if isinstance(target, str):
         try:
@@ -102,6 +104,7 @@ def mysql_json_contains(target, candidate, path):
     return 1 if target_value == candidate else 0
 
 
+@typing_filter(int)
 def mysql_json_contains_path(json_doc, one_or_all, *paths):
     if isinstance(json_doc, str):
         try:
@@ -131,7 +134,7 @@ def mysql_json_extract(json_doc, *paths):
         results.append(get_json_path_value(json_doc, path))
     return results[0] if len(paths) == 1 else results
 
-
+@typing_filter(int)
 def mysql_json_depth(json_doc):
     if isinstance(json_doc, str):
         try:
@@ -149,6 +152,7 @@ def mysql_json_depth(json_doc):
     return get_depth(json_doc)
 
 
+@typing_filter(list)
 def mysql_json_keys(json_doc, path=None):
     if isinstance(json_doc, str):
         try:
@@ -162,6 +166,7 @@ def mysql_json_keys(json_doc, path=None):
     return list(json_doc.keys())
 
 
+@typing_filter(int)
 def mysql_json_length(json_doc, path=None):
     if isinstance(json_doc, str):
         try:
@@ -175,6 +180,7 @@ def mysql_json_length(json_doc, path=None):
     return len(json_doc)
 
 
+@typing_filter(int)
 def mysql_json_valid(val):
     if isinstance(val, str):
         try:

@@ -3,6 +3,8 @@
 # create by: snower
 
 from syncany.calculaters.calculater import Calculater
+from syncany.filters import IntFilter, FloatFilter, ArrayFilter
+from ..utils import ensure_number, ensure_int
 
 
 class AggregateKeyCalculater(Calculater):
@@ -73,6 +75,8 @@ class AggregateCountCalculater(AggregateCalculater):
             except:
                 return state_value
 
+    def get_final_filter(self):
+        return IntFilter.default()
 
 class AggregateDistinctCountCalculater(StateAggregateCalculater):
     def aggregate(self, state_value, data_value):
@@ -112,25 +116,27 @@ class AggregateDistinctCountCalculater(StateAggregateCalculater):
             return 0
         return len(state_value)
 
+    def get_final_filter(self):
+        return IntFilter.default()
+
 
 class AggregateSumCalculater(AggregateCalculater):
     def aggregate(self, state_value, data_value):
         try:
-            return state_value + data_value
+            if isinstance(data_value, (int, float)):
+                return state_value + data_value
+            return state_value + ensure_number(data_value)
         except:
             if data_value is None:
                 return state_value or 0
             if state_value is None:
-                return data_value
-            try:
-                if isinstance(state_value, (int, float)):
-                    return state_value + type(state_value)(data_value)
-                try:
-                    return int(state_value) + int(data_value)
-                except:
-                    return float(state_value) + float(data_value)
-            except:
-                return state_value
+                if isinstance(data_value, (int, float)):
+                    return data_value
+                return ensure_number(data_value)
+            return state_value
+
+    def get_final_filter(self):
+        return FloatFilter.default()
 
 
 class AggregateMaxCalculater(AggregateCalculater):
@@ -181,7 +187,10 @@ class AggregateAvgCalculater(StateAggregateCalculater):
     def aggregate(self, state_value, data_value):
         try:
             state_value["count_value"] += 1
-            state_value["sum_value"] += data_value
+            if isinstance(data_value, (int, float)):
+                state_value["sum_value"] += data_value
+            else:
+                state_value["sum_value"] += ensure_number(data_value)
             return state_value
         except:
             if data_value is None:
@@ -189,20 +198,10 @@ class AggregateAvgCalculater(StateAggregateCalculater):
             if state_value is None:
                 if data_value is None:
                     return None
-                return {"count_value": 1, "sum_value": data_value}
-            try:
-                if isinstance(state_value["sum_value"], (int, float)):
-                    state_value["count_value"] += 1
-                    state_value["sum_value"] += type(state_value["sum_value"])(data_value)
-                    return state_value
-                try:
-                    return {"count_value": state_value["count_value"] + 1,
-                            "sum_value": int(state_value["sum_value"]) + int(data_value)}
-                except:
-                    return {"count_value": state_value["count_value"] + 1,
-                            "sum_value": float(state_value["sum_value"]) + float(data_value)}
-            except:
-                return state_value
+                if isinstance(data_value, (int, float)):
+                    return {"count_value": 1, "sum_value": data_value}
+                return {"count_value": 1, "sum_value": ensure_number(data_value)}
+            return state_value
 
     def reduce(self, state_value, data_value):
         if data_value is None:
@@ -216,6 +215,9 @@ class AggregateAvgCalculater(StateAggregateCalculater):
         if state_value is None:
             return 0
         return state_value["sum_value"] / state_value["count_value"]
+
+    def get_final_filter(self):
+        return FloatFilter.default()
 
 
 class AggregateGroupConcatCalculater(StateAggregateCalculater):
@@ -261,6 +263,9 @@ class AggregateGroupArrayCalculater(StateAggregateCalculater):
             return []
         return state_value
 
+    def get_final_filter(self):
+        return FloatFilter.default()
+
 
 class AggregateGroupUniqArrayCalculater(StateAggregateCalculater):
     def aggregate(self, state_value, data_value):
@@ -294,6 +299,9 @@ class AggregateGroupUniqArrayCalculater(StateAggregateCalculater):
             return []
         return list(state_value)
 
+    def get_final_filter(self):
+        return ArrayFilter.default()
+
 
 class AggregateGroupBitAndCalculater(AggregateCalculater):
     def aggregate(self, state_value, data_value):
@@ -301,7 +309,9 @@ class AggregateGroupBitAndCalculater(AggregateCalculater):
             return state_value
         if state_value is None:
             return data_value
-        return state_value & data_value
+        if isinstance(data_value, int):
+            return state_value & data_value
+        return state_value & ensure_int(data_value)
 
     def reduce(self, state_value, data_value):
         if data_value is None:
@@ -309,6 +319,9 @@ class AggregateGroupBitAndCalculater(AggregateCalculater):
         if state_value is None:
             return data_value
         return state_value & data_value
+
+    def get_final_filter(self):
+        return IntFilter.default()
 
 
 class AggregateGroupBitOrCalculater(AggregateCalculater):
@@ -317,7 +330,9 @@ class AggregateGroupBitOrCalculater(AggregateCalculater):
             return state_value
         if state_value is None:
             return data_value
-        return state_value | data_value
+        if isinstance(data_value, int):
+            return state_value | data_value
+        return state_value | ensure_int(data_value)
 
     def reduce(self, state_value, data_value):
         if data_value is None:
@@ -325,6 +340,9 @@ class AggregateGroupBitOrCalculater(AggregateCalculater):
         if state_value is None:
             return data_value
         return state_value | data_value
+
+    def get_final_filter(self):
+        return IntFilter.default()
 
 
 class AggregateGroupBitXorCalculater(AggregateCalculater):
@@ -333,7 +351,9 @@ class AggregateGroupBitXorCalculater(AggregateCalculater):
             return state_value
         if state_value is None:
             return data_value
-        return state_value ^ data_value
+        if isinstance(data_value, int):
+            return state_value ^ data_value
+        return state_value ^ ensure_int(data_value)
 
     def reduce(self, state_value, data_value):
         if data_value is None:
@@ -341,3 +361,6 @@ class AggregateGroupBitXorCalculater(AggregateCalculater):
         if state_value is None:
             return data_value
         return state_value ^ data_value
+
+    def get_final_filter(self):
+        return IntFilter.default()

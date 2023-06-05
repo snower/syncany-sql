@@ -2,9 +2,10 @@
 # 2023/5/29
 # create by: snower
 
-from .number_funcs import ensure_number
-from .string_funcs import ensure_str
+from syncany.calculaters import typing_filter
+from ...utils import ensure_number, ensure_str
 
+@typing_filter(int)
 def mysql_eq(a, b):
     if a is None or b is None:
         return None
@@ -14,6 +15,7 @@ def mysql_eq(a, b):
         return 1 if ensure_str(a) == ensure_str(b) else 0
     return 1 if a == b else 0
 
+@typing_filter(int)
 def mysql_neq(a, b):
     if a is None or b is None:
         return None
@@ -23,6 +25,7 @@ def mysql_neq(a, b):
         return 1 if ensure_str(a) != ensure_str(b) else 0
     return 1 if a != b else 0
 
+@typing_filter(int)
 def mysql_gt(a, b):
     if a is None or b is None:
         return None
@@ -32,6 +35,7 @@ def mysql_gt(a, b):
         return 1 if ensure_str(a) > ensure_str(b) else 0
     return 1 if a > b else 0
 
+@typing_filter(int)
 def mysql_gte(a, b):
     if a is None or b is None:
         return None
@@ -41,6 +45,7 @@ def mysql_gte(a, b):
         return 1 if ensure_str(a) >= ensure_str(b) else 0
     return 1 if a >= b else 0
 
+@typing_filter(int)
 def mysql_lt(a, b):
     if a is None or b is None:
         return None
@@ -50,6 +55,7 @@ def mysql_lt(a, b):
         return 1 if ensure_str(a) < ensure_str(b) else 0
     return 1 if a < b else 0
 
+@typing_filter(int)
 def mysql_lte(a, b):
     if a is None or b is None:
         return None
@@ -59,6 +65,7 @@ def mysql_lte(a, b):
         return 1 if ensure_str(a) <= ensure_str(b) else 0
     return 1 if a <= b else 0
 
+@typing_filter(int)
 def mysql_in(a, b):
     if a is None:
         return None
@@ -71,16 +78,19 @@ def mysql_in(a, b):
             return 1
     return None if hs_none else 0
 
+@typing_filter(int)
 def mysql_not(a):
     if a is None:
         return None
     return 1 if not a else 0
 
+@typing_filter(int)
 def mysql_is(a, b):
     if a is None or b is None:
         return 1 if a is b else 0
     return mysql_eq(a, b)
 
+@typing_filter(int)
 def mysql_is_not(a, b):
     if a is None or b is None:
         return 0 if a is b else 1

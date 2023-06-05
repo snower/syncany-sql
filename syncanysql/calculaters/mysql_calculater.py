@@ -31,3 +31,8 @@ class MysqlCalculater(Calculater):
             get_logger().warning("mysql calculater execute %s(%s) error: %s\n%s", self.name[7:], args, e,
                                  traceback.format_exc())
             return None
+
+    def get_final_filter(self):
+        if hasattr(self.func, "get_final_filter"):
+            return self.func.get_final_filter()
+        return None
