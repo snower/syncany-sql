@@ -1416,7 +1416,12 @@ class Compiler(object):
                 column = ["@mysql::" + calculater_name]
             else:
                 if calculater_name[:8] == "convert_":
-                    column = ["@" + calculater_name + "|" + calculater_name[8:]]
+                    if calculater_name[8:] in self.TYPE_FILTERS:
+                        calculater_name = "convert_" + self.TYPE_FILTERS[calculater_name[8:]]
+                    if calculater_name.startswith("convert_str"):
+                        column = ["@convert_string|str"]
+                    else:
+                        column = ["@" + calculater_name + "|" + calculater_name[8:]]
                 else:
                     calculater_modules = calculater_name.split("$")
                     column = ["@" + calculater_modules[0] + (("::" + ".".join(calculater_modules[1:])) if len(calculater_modules) >= 2 else "")]
@@ -1449,6 +1454,8 @@ class Compiler(object):
                 typing_filter = "date"
             elif to_type in sqlglot_expressions.DataType.TEMPORAL_TYPES:
                 typing_filter = "datetime"
+            elif to_type == sqlglot_expressions.DataType.Type.TIME:
+                typing_filter = "time"
             elif to_type == sqlglot_expressions.DataType.TEXT_TYPES:
                 typing_filter = "str"
             else:
