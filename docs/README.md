@@ -19,6 +19,7 @@
 - [配置详解](configure.md)
 - [驱动依赖](driver-dependency.md)
 - [示例详解](../examples)
+- [内置函数](functions.md)
 
 ## 安装
 
