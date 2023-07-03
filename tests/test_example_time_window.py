@@ -4,7 +4,7 @@
 
 import datetime
 import pytz
-from syncany.utils import ensure_timezone
+from syncany.utils import ensure_timezone, get_timezone
 from .example import ExampleTestCase
 
 gmt8 = pytz.timezone("Etc/GMT-8")
@@ -23,30 +23,30 @@ class TimeWindowExampleTestCase(ExampleTestCase):
         self.assert_value(2, "e", lambda value: isinstance(value, datetime.datetime), "data error")
         self.assert_value(2, "f", lambda value: isinstance(value, datetime.datetime), "data error")
 
-        self.assert_value(4, "a", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 24, 27, tzinfo=gmt8)),
+        self.assert_value(4, "a", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 24, 27, tzinfo=get_timezone())),
                           "data error")
-        self.assert_value(4, "b", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 24, 15, tzinfo=gmt8)),
+        self.assert_value(4, "b", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 24, 15, tzinfo=get_timezone())),
                           "data error")
-        self.assert_value(4, "c", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 24, tzinfo=gmt8)),
+        self.assert_value(4, "c", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 24, tzinfo=get_timezone())),
                           "data error")
-        self.assert_value(4, "d", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 15, tzinfo=gmt8)),
+        self.assert_value(4, "d", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 15, tzinfo=get_timezone())),
                           "data error")
-        self.assert_value(4, "e", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 0, tzinfo=gmt8)),
+        self.assert_value(4, "e", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 0, tzinfo=get_timezone())),
                           "data error")
-        self.assert_value(4, "f", ensure_timezone(datetime.datetime(2023, 7, 3, 0, 0, tzinfo=gmt8)),
+        self.assert_value(4, "f", ensure_timezone(datetime.datetime(2023, 7, 3, 0, 0, tzinfo=get_timezone())),
                           "data error")
 
-        self.assert_value(7, "a", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 24, 30, tzinfo=gmt8)),
+        self.assert_value(7, "a", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 24, 30, tzinfo=get_timezone())),
                           "data error")
-        self.assert_value(7, "b", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 25, tzinfo=gmt8)),
+        self.assert_value(7, "b", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 25, tzinfo=get_timezone())),
                           "data error")
-        self.assert_value(7, "c", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 27, tzinfo=gmt8)),
+        self.assert_value(7, "c", ensure_timezone(datetime.datetime(2023, 7, 3, 12, 27, tzinfo=get_timezone())),
                           "data error")
-        self.assert_value(7, "d", ensure_timezone(datetime.datetime(2023, 7, 3, 13, 0, tzinfo=gmt8)),
+        self.assert_value(7, "d", ensure_timezone(datetime.datetime(2023, 7, 3, 13, 0, tzinfo=get_timezone())),
                           "data error")
-        self.assert_value(7, "e", ensure_timezone(datetime.datetime(2023, 7, 3, 18, 0, tzinfo=gmt8)),
+        self.assert_value(7, "e", ensure_timezone(datetime.datetime(2023, 7, 3, 18, 0, tzinfo=get_timezone())),
                           "data error")
-        self.assert_value(7, "f", ensure_timezone(datetime.datetime(2023, 7, 6, 0, 0, tzinfo=gmt8)),
+        self.assert_value(7, "f", ensure_timezone(datetime.datetime(2023, 7, 6, 0, 0, tzinfo=get_timezone())),
                           "data error")
 
         self.assert_value(10, "TIME_WINDOW('15M', create_time)",
