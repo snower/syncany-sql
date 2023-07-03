@@ -64,12 +64,12 @@ class ExampleTestCase(TestCase):
         else:
             self.assertEqual(execute_result, checker, error_msg)
 
-    def assert_value(self, lineno, key, checker, error_msg):
+    def assert_value(self, lineno, key, checker, error_msg, index=0):
         execute_result = self.execute_results.get("__test__%s_%s" % (self.__class__.__name__, lineno))
         assert execute_result is not None, error_msg
-        assert isinstance(execute_result, list) and len(execute_result) == 1, error_msg
-        assert key in execute_result[0], error_msg
+        assert isinstance(execute_result, list) and len(execute_result) > index, error_msg
+        assert key in execute_result[index], error_msg
         if callable(checker):
-            self.assertTrue(checker(execute_result[0][key]), error_msg)
+            self.assertTrue(checker(execute_result[index][key]), error_msg)
         else:
-            self.assertEqual(execute_result[0][key], checker, error_msg)
+            self.assertEqual(execute_result[index][key], checker, error_msg)
