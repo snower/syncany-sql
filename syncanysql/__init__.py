@@ -18,7 +18,7 @@ from syncany.taskers.manager import TaskerManager
 from syncany.database import DatabaseManager, find_database
 from syncany.errors import DatabaseUnknownException
 from .version import version, version_info
-from .parser import SqlParser, SqlSegment
+from .parser import SqlParser, SqlSegment, FileParser
 from .config import GlobalConfig
 from .executor import Executor
 from .calculaters import GenerateCalculater, AggregateCalculater, StateAggregateCalculater, \
@@ -98,9 +98,9 @@ class ScriptEngine(object):
     def current_context(cls):
         return ExecuterContext.current()
 
-    def __init__(self, config=None):
+    def __init__(self, custom_config=None):
+        self.custom_config = custom_config
         self.config = GlobalConfig()
-        self.config.load(config)
         self.manager = None
         self.databases = {}
         self.executor = None
@@ -108,16 +108,17 @@ class ScriptEngine(object):
     def setup(self):
         if self.manager is not None:
             return
-        init_execute_files = self.config.load()
+        init_execute_files = self.config.load(self.custom_config)
         self.config.config_logging()
         self.config.load_extensions()
         self.manager = TaskerManager(DatabaseManager())
         self.executor = Executor(self.manager, self.config.session())
         if init_execute_files:
-            self.executor.run("init", [SqlSegment("execute `%s`" % init_execute_files[i], i + 1) for i in
-                                       range(len(init_execute_files))])
-            with self.executor as executor:
-                executor.execute()
+            for init_execute_file in init_execute_files:
+                file_parser = FileParser(init_execute_file)
+                self.executor.run("init " + init_execute_file, file_parser.load())
+                with self.executor as executor:
+                    executor.execute()
 
     def get_variable(self, name, default=None):
         if self.executor is None:

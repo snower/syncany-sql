@@ -12,7 +12,7 @@ from syncany.taskers.manager import TaskerManager
 from syncany.database.database import DatabaseManager
 from .config import GlobalConfig
 from syncanysql.executor import Executor
-from .parser import SqlParser, FileParser, SqlSegment
+from .parser import SqlParser, FileParser
 from .prompt import CliPrompt
 
 def main():
@@ -42,8 +42,10 @@ def main():
         try:
             with Executor(manager, global_config.session()) as executor:
                 if init_execute_files:
-                    executor.run("init", [SqlSegment("execute `%s`" % init_execute_files[i], i + 1) for i in range(len(init_execute_files))])
-                    executor.execute()
+                    for init_execute_file in init_execute_files:
+                        file_parser = FileParser(init_execute_file)
+                        executor.run("init " + init_execute_file, file_parser.load())
+                        executor.execute()
 
                 if not sys.stdin.isatty() and (len(sys.argv) == 1 or (
                         len(sys.argv) >= 2 and not sys.argv[1].endswith(".sqlx") and not sys.argv[1].endswith(".sql"))):

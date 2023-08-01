@@ -22,7 +22,7 @@ def calculate_datetime(dt, interval, is_sub=False):
             months = value * 3 if unit == "QUARTER" else value
             if is_sub:
                 new_year = dt.year - int(months / 12) - (1 if dt.month - months % 12 < 1 else 0)
-                new_month = 12 + (dt.month - months % 12)
+                new_month = (dt.month - months % 12) + (12 if dt.month - months % 12 < 1 else 0)
             else:
                 new_year = dt.year + int(months / 12) + (1 if dt.month + months % 12 > 12 else 0)
                 new_month = (dt.month + months % 12) % 12

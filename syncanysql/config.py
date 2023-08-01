@@ -183,7 +183,16 @@ class GlobalConfig(object):
                 database["date_format"] = date_format
             if time_format:
                 database["time_format"] = time_format
-        return self.config.pop("executes", [])
+
+        init_execute_files = []
+        for init_execute_file in self.config.pop("executes", []):
+            if os.path.exists(init_execute_file):
+                init_execute_files.append(init_execute_file)
+            elif os.path.exists(os.path.join(home_config_path, init_execute_file)):
+                init_execute_files.append(os.path.join(home_config_path, init_execute_file))
+            else:
+                raise FileNotFoundError(init_execute_file)
+        return init_execute_files
 
     def load_config(self, filename=None):
         if filename is None:
