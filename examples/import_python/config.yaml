@@ -1,0 +1,9 @@
+
+extensions:
+  - syncany_ext
+
+imports:
+  math: math
+
+executes:
+  - init.sql
