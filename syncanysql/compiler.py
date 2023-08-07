@@ -9,7 +9,8 @@ import uuid
 import sqlglot.expressions
 from sqlglot import maybe_parse, ParseError
 from sqlglot import expressions as sqlglot_expressions
-from sqlglot.dialects import Dialect
+from sqlglot import dialects as sqlglot_dialects
+from sqlglot import parser as sqlglot_parser
 from sqlglot import tokens
 from syncany.taskers.core import CoreTasker
 from .errors import SyncanySqlCompileException
@@ -26,7 +27,7 @@ from .taskers.use import UseCommandTasker
 from .taskers.show import ShowCommandTasker
 
 
-class CompilerDialect(Dialect):
+class CompilerDialect(sqlglot_dialects.Dialect):
     class Tokenizer(tokens.Tokenizer):
         QUOTES = ["'", '"']
         COMMENTS = ["--", "#", ("/*", "*/")]
@@ -34,6 +35,38 @@ class CompilerDialect(Dialect):
         ESCAPES = ["'", "\\"]
         BIT_STRINGS = [("b'", "'"), ("B'", "'"), ("0b", "")]
         HEX_STRINGS = [("x'", "'"), ("X'", "'"), ("0x", "")]
+
+    class Parser(sqlglot_parser.Parser):
+        def _parse_limit(self, this=None, top=False):
+            if top or not self._match(sqlglot_parser.TokenType.LIMIT, False):
+                return sqlglot_parser.Parser._parse_limit(self, this, top)
+            offset_token = sqlglot_parser.seq_get(self._tokens, self._index + 1)
+            if offset_token is None or offset_token.token_type != sqlglot_parser.TokenType.NUMBER:
+                return sqlglot_parser.Parser._parse_limit(self, this, top)
+            comma_token = sqlglot_parser.seq_get(self._tokens, self._index + 2)
+            if comma_token is None or comma_token.token_type != sqlglot_parser.TokenType.COMMA:
+                return sqlglot_parser.Parser._parse_limit(self, this, top)
+            limit_token = sqlglot_parser.seq_get(self._tokens, self._index + 3)
+            if limit_token is None or limit_token.token_type != sqlglot_parser.TokenType.NUMBER:
+                return sqlglot_parser.Parser._parse_limit(self, this, top)
+            return self.expression(sqlglot_parser.exp.Limit, this=this,
+                                   expression=self.PRIMARY_PARSERS[sqlglot_parser.TokenType.NUMBER](self, limit_token))
+
+        def _parse_offset(self, this=None):
+            if not self._match(sqlglot_parser.TokenType.LIMIT, False):
+                return sqlglot_parser.Parser._parse_offset(self, this)
+            offset_token = sqlglot_parser.seq_get(self._tokens, self._index + 1)
+            if offset_token is None or offset_token.token_type != sqlglot_parser.TokenType.NUMBER:
+                return sqlglot_parser.Parser._parse_offset(self, this)
+            comma_token = sqlglot_parser.seq_get(self._tokens, self._index + 2)
+            if comma_token is None or comma_token.token_type != sqlglot_parser.TokenType.COMMA:
+                return sqlglot_parser.Parser._parse_offset(self, this)
+            limit_token = sqlglot_parser.seq_get(self._tokens, self._index + 3)
+            if limit_token is None or limit_token.token_type != sqlglot_parser.TokenType.NUMBER:
+                return sqlglot_parser.Parser._parse_offset(self, this)
+            self._advance(4)
+            return self.expression(sqlglot_parser.exp.Offset, this=this,
+                                   expression=self.PRIMARY_PARSERS[sqlglot_parser.TokenType.NUMBER](self, offset_token))
 
 
 class Compiler(object):
@@ -447,20 +480,20 @@ class Compiler(object):
         if order_expression:
             self.compile_order(order_expression.args["expressions"], config, arguments, primary_table)
 
-        if expression.args.get("offset"):
-            offset_expression, limit_expression = expression.args.get("limit"), expression.args.get("offset")
-        else:
-            offset_expression, limit_expression = None, expression.args.get("limit")
-        if limit_expression:
-            offset_value = max(int(offset_expression.args["expression"].args["this"]), 0) if offset_expression else 0
-            limit_value = max(int(limit_expression.args["expression"].args["this"]), 1)
-            if limit_value > 0:
-                if config["intercepts"] or (config.get("aggregate") and (config["aggregate"]["schema"]
-                                                                         or config["aggregate"]["window_schema"])) \
-                        or config["pipelines"] or offset_value > 0:
-                    config["pipelines"].append([">>@array::slice", "$.*|array", offset_value, offset_value + limit_value])
+        offset_value = max(int(expression.args.get("offset").args["expression"].args["this"]), 0) if expression.args.get("offset") else 0
+        limit_value = int(expression.args.get("limit").args["expression"].args["this"]) if expression.args.get("limit") else 0
+        if limit_value != 0 or offset_value > 0:
+            if config["intercepts"] or (config.get("aggregate") and (config["aggregate"]["schema"] or config["aggregate"]["window_schema"])) \
+                    or config["pipelines"] or limit_value <= 0:
+                if limit_value != 0:
+                    config["pipelines"].append([">>@array::slice", "$.*|array", offset_value,
+                                                (offset_value + limit_value) if limit_value > 0 else limit_value])
                 else:
-                    arguments["@limit"] = limit_value
+                    config["pipelines"].append([">>@array::slice", "$.*|array", offset_value])
+            else:
+                if offset_value > 0:
+                    config["pipelines"].append([">>@array::slice", "$.*|array", offset_value])
+                arguments["@limit"] = offset_value + limit_value
 
         if group_expression and ("aggregate" not in config or not config["aggregate"] or not config["aggregate"]["schema"]):
             self.compile_group_column(group_expression, config, arguments, primary_table, join_tables)
@@ -495,7 +528,7 @@ class Compiler(object):
         if not select_expressions or len(select_expressions) != 1 or not isinstance(select_expressions[0], sqlglot_expressions.Anonymous):
             return None
         if expression.args.get("group") or expression.args.get("where") or expression.args.get("having") \
-                or expression.args.get("order") or expression.args.get("limit"):
+                or expression.args.get("order") or expression.args.get("limit") or expression.args.get("offset"):
             return None
         calculate_fields = []
         self.parse_calculate(select_expressions[0], config, arguments, primary_table, calculate_fields)
@@ -890,8 +923,8 @@ class Compiler(object):
                      not self.is_column(select_expressions[0], config, arguments)):
                 raise SyncanySqlCompileException('error subquery, there must be only one query field, related sql "%s"'
                                                  % self.to_sql(expression))
-            if expression.args.get("group") or expression.args.get("having") \
-                    or expression.args.get("order") or expression.args.get("limit") or expression.args.get("distinct"):
+            if expression.args.get("group") or expression.args.get("having") or expression.args.get("order") \
+                    or expression.args.get("limit") or expression.args.get("offset") or expression.args.get("distinct"):
                 is_subquery = True
             else:
                 is_subquery = False
@@ -2527,14 +2560,10 @@ class Compiler(object):
             sql.append(str(expression.args["having"]))
         if expression.args.get("order"):
             sql.append(str(expression.args["order"]))
+        if expression.args.get("limit"):
+            sql.append(str(expression.args.get("limit")))
         if expression.args.get("offset"):
-            offset_expression, limit_expression = expression.args.get("limit"), expression.args.get("offset")
-        else:
-            offset_expression, limit_expression = None, expression.args.get("limit")
-        if limit_expression:
-            offset_value = max(int(offset_expression.args["expression"].args["this"]), 0) if offset_expression else 0
-            limit_value = max(int(limit_expression.args["expression"].args["this"]), 1)
-            sql.append(("LIMIT %d, %d" % (offset_value, limit_value)) if offset_value > 0 else ("LIMIT %d" % limit_value))
+            sql.append(str(expression.args.get("offset")))
         return maybe_parse(" ".join(sql), dialect=CompilerDialect)
 
     def optimize_rewrite_right_join(self, expression, config, arguments):
@@ -2621,14 +2650,10 @@ class Compiler(object):
             sql.append(str(expression.args["having"]))
         if expression.args.get("order"):
             sql.append(str(expression.args["order"]))
+        if expression.args.get("limit"):
+            sql.append(str(expression.args.get("limit")))
         if expression.args.get("offset"):
-            offset_expression, limit_expression = expression.args.get("limit"), expression.args.get("offset")
-        else:
-            offset_expression, limit_expression = None, expression.args.get("limit")
-        if limit_expression:
-            offset_value = max(int(offset_expression.args["expression"].args["this"]), 0) if offset_expression else 0
-            limit_value = max(int(limit_expression.args["expression"].args["this"]), 1)
-            sql.append(("LIMIT %d, %d" % (offset_value, limit_value)) if offset_value > 0 else ("LIMIT %d" % limit_value))
+            sql.append(str(expression.args.get("offset")))
         return maybe_parse(" ".join(sql), dialect=CompilerDialect)
 
     def optimize_rewrite_inner_join(self, expression, config, arguments):
@@ -2683,15 +2708,10 @@ class Compiler(object):
             sql.append(str(expression.args["having"]))
         if expression.args.get("order"):
             sql.append(str(expression.args["order"]))
+        if expression.args.get("limit"):
+            sql.append(str(expression.args.get("limit")))
         if expression.args.get("offset"):
-            offset_expression, limit_expression = expression.args.get("limit"), expression.args.get("offset")
-        else:
-            offset_expression, limit_expression = None, expression.args.get("limit")
-        if limit_expression:
-            offset_value = max(int(offset_expression.args["expression"].args["this"]), 0) if offset_expression else 0
-            limit_value = max(int(limit_expression.args["expression"].args["this"]), 1)
-            sql.append(
-                ("LIMIT %d, %d" % (offset_value, limit_value)) if offset_value > 0 else ("LIMIT %d" % limit_value))
+            sql.append(str(expression.args.get("offset")))
         return maybe_parse(" ".join(sql), dialect=CompilerDialect)
 
     def optimize_rewrite_parse_table(self, expression, config, arguments, table_expression):
