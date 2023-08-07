@@ -22,6 +22,7 @@
 - [驱动依赖](docs/driver-dependency.md)
 - [示例详解](examples)
 - [内置函数](docs/functions.md)
+- [使用教程](docs/使用教程/)
 
 ## 安装
 
