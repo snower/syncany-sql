@@ -2,6 +2,7 @@
 # 2023/2/19
 # create by: snower
 
+from decimal import Decimal
 import datetime
 import string
 
@@ -84,7 +85,7 @@ def ensure_float(x):
     return float(x)
 
 def ensure_number(x):
-    if isinstance(x, (int, float)):
+    if isinstance(x, (int, float, Decimal)):
         return x
     if x is None:
         raise ValueError('value is None')
