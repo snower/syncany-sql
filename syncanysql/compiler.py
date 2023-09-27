@@ -1634,12 +1634,13 @@ class Compiler(object):
                     self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index)
                 ]
             if isinstance(expression, sqlglot_expressions.Like):
+                match_key = self.parse_const(expression.args["expression"], config, arguments)["value"]
                 return [
                     "#if",
                     [
                         "@re::match",
-                        self.parse_const(expression.args["this"], config, arguments)["value"].replace("%", ".*").replace(".*.*", "%"),
-                        self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index)
+                        ".*" if match_key == "%%" else match_key.replace("%", ".*").replace(".*.*", "%"),
+                        self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
                     ],
                     ["#const", 1], ["#const", 0]
                 ]
@@ -1774,8 +1775,8 @@ class Compiler(object):
             if not isinstance(right_calculater, list) or len(right_calculater) != 2 or right_calculater[0] != "#const":
                 raise SyncanySqlCompileException('error having condition, like condition value must be const, related sql "%s"'
                                                  % self.to_sql(expression))
-            return ["#if", ["@re::match", right_calculater[1].replace("%", ".*").replace(".*.*", "%"), left_calculater],
-                    ["#const", 1], ["#const", 0]]
+            return ["#if", ["@re::match", ".*" if right_calculater[1] == "%%" else right_calculater[1].replace("%", ".*")
+                .replace(".*.*", "%"), left_calculater], ["#const", 1], ["#const", 0]]
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_having_condition(expression.args.get("this"), config, arguments, primary_table)
         else:
