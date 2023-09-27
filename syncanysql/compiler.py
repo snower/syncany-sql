@@ -908,8 +908,8 @@ class Compiler(object):
                 raise SyncanySqlCompileException(
                     'error having condition, like condition value must be const, related sql "%s"'
                     % self.to_sql(expression))
-            return ["#if", ["@re::match", right_calculater[1].replace("%", ".*").replace(".*.*", "%"), left_calculater],
-                    ["#const", 1], ["#const", 0]]
+            return ["#if", ["@re::match", ".*" if right_calculater[1] == "%%" else right_calculater[1].replace("%", ".*")
+                .replace(".*.*", "%"), left_calculater], ["#const", 1], ["#const", 0]]
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_where_condition(expression.args.get("this"), config, arguments, primary_table, join_tables, False)
         else:
