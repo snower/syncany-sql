@@ -164,6 +164,12 @@ def remove_json_path_value(json_data, json_path):
         return json_data
     return remove_value(json_data, parse_json_path(json_path))
 
+def mysql_json_encode(value):
+    return json.dumps(value, default=str, ensure_ascii=False)
+
+def mysql_json_decode(content):
+    return json.loads(content)
+
 def mysql_json_array(*values):
     return list(values)
 
