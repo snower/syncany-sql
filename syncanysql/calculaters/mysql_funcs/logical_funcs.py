@@ -10,7 +10,10 @@ def mysql_eq(a, b):
     if a is None or b is None:
         return None
     if isinstance(a, (int, float, bool)) or isinstance(b, (int, float, bool)):
-        return 1 if ensure_number(a) == ensure_number(b) else 0
+        try:
+            return 1 if ensure_number(a) == ensure_number(b) else 0
+        except:
+            pass
     if isinstance(a, str) or isinstance(b, str):
         return 1 if ensure_str(a) == ensure_str(b) else 0
     return 1 if a == b else 0
@@ -20,7 +23,10 @@ def mysql_neq(a, b):
     if a is None or b is None:
         return None
     if isinstance(a, (int, float, bool)) or isinstance(b, (int, float, bool)):
-        return 1 if ensure_number(a) != ensure_number(b) else 0
+        try:
+            return 1 if ensure_number(a) != ensure_number(b) else 0
+        except:
+            pass
     if isinstance(a, str) or isinstance(b, str):
         return 1 if ensure_str(a) != ensure_str(b) else 0
     return 1 if a != b else 0
@@ -30,7 +36,10 @@ def mysql_gt(a, b):
     if a is None or b is None:
         return None
     if isinstance(a, (int, float, bool)) or isinstance(b, (int, float, bool)):
-        return 1 if ensure_number(a) > ensure_number(b) else 0
+        try:
+            return 1 if ensure_number(a) > ensure_number(b) else 0
+        except:
+            pass
     if isinstance(a, str) or isinstance(b, str):
         return 1 if ensure_str(a) > ensure_str(b) else 0
     return 1 if a > b else 0
@@ -40,7 +49,10 @@ def mysql_gte(a, b):
     if a is None or b is None:
         return None
     if isinstance(a, (int, float, bool)) or isinstance(b, (int, float, bool)):
-        return 1 if ensure_number(a) >= ensure_number(b) else 0
+        try:
+            return 1 if ensure_number(a) >= ensure_number(b) else 0
+        except:
+            pass
     if isinstance(a, str) or isinstance(b, str):
         return 1 if ensure_str(a) >= ensure_str(b) else 0
     return 1 if a >= b else 0
@@ -50,7 +62,10 @@ def mysql_lt(a, b):
     if a is None or b is None:
         return None
     if isinstance(a, (int, float, bool)) or isinstance(b, (int, float, bool)):
-        return 1 if ensure_number(a) < ensure_number(b) else 0
+        try:
+            return 1 if ensure_number(a) < ensure_number(b) else 0
+        except:
+            pass
     if isinstance(a, str) or isinstance(b, str):
         return 1 if ensure_str(a) < ensure_str(b) else 0
     return 1 if a < b else 0
@@ -60,7 +75,10 @@ def mysql_lte(a, b):
     if a is None or b is None:
         return None
     if isinstance(a, (int, float, bool)) or isinstance(b, (int, float, bool)):
-        return 1 if ensure_number(a) <= ensure_number(b) else 0
+        try:
+            return 1 if ensure_number(a) <= ensure_number(b) else 0
+        except:
+            pass
     if isinstance(a, str) or isinstance(b, str):
         return 1 if ensure_str(a) <= ensure_str(b) else 0
     return 1 if a <= b else 0
@@ -71,7 +89,7 @@ def mysql_in(a, b):
         return None
     hs_none = False
     for v in b:
-        if b is None:
+        if v is None:
             hs_none = True
             continue
         if mysql_eq(a, v):
