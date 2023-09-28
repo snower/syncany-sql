@@ -30,3 +30,12 @@ SELECT JSON_LENGTH('{"a": 1, "b": {"c": 30}}', '$.b');
 
 SELECT JSON_VALID('{"a": 1}');
 SELECT JSON_VALID('hello'), JSON_VALID('"hello"');
+
+SET @j = '{"a": 1, "b": 2, "c": {"d": 4}}';
+SELECT JSON_SET(@j, '$.a', 2), JSON_SET(@j, '$.c.d', 2);
+SELECT JSON_SET('"1"', '$[0]', 'a'), JSON_SET('"1"', '$[2]', 'a');
+SELECT JSON_SET('["1"]', '$[0]', 'a'), JSON_SET('["1"]', '$[2]', 'a');
+
+SELECT JSON_REMOVE(@j, '$.a', '$.c.d'), JSON_REMOVE(@j, '$.c.a');
+SELECT JSON_REMOVE('"1"', '$[0]'), JSON_REMOVE('"1"', '$[2]');
+SELECT JSON_REMOVE('["1"]', '$[0]'), JSON_REMOVE('["1"]', '$[2]');

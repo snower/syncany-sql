@@ -62,11 +62,12 @@ def get_json_path_value(json_data, json_path):
         for i in range(len(json_path_keys)):
             json_path_key = json_path_keys[i]
             if isinstance(json_path_key, int):
-                if isinstance(json_data, list):
+                if isinstance(json_data, (list, str)):
                     if json_path_key >= len(json_data):
                         return None
                     json_data = json_data[json_path_key]
                     continue
+                return None
             if json_path_key == "*":
                 if i + 1 >= len(json_path_keys):
                     return json_data
@@ -87,6 +88,102 @@ def get_json_path_value(json_data, json_path):
         return json_data
     return get_value(json_data, parse_json_path(json_path))
 
+
+def set_json_path_value(json_data, json_path, value):
+    if json_data is None:
+        raise ValueError('value is None')
+    if json_path and json_path[:2] == "$.":
+        json_path = json_path[2:]
+    elif json_path and json_path[0] == '$':
+        json_path = json_path[1:]
+
+    def set_value(json_data, json_path_keys):
+        for i in range(len(json_path_keys)):
+            json_path_key = json_path_keys[i]
+            if isinstance(json_path_key, int):
+                if isinstance(json_data, list):
+                    if i + 1 >= len(json_path_keys):
+                        if json_path_key >= len(json_data):
+                            json_data.append(value)
+                            return json_data
+                        json_data[json_path_key] = value
+                        return json_data
+                    json_data = [] if json_path_key >= len(json_data) else json_data[json_path_key]
+                elif isinstance(json_data, str):
+                    if i + 1 >= len(json_path_keys):
+                        if json_path_key >= len(json_data):
+                            return [json_data, value]
+                        return json_data[:json_path_key] + str(value) + json_data[json_path_key + 1:]
+                    json_data = [] if json_path_key >= len(json_data) else json_data[json_path_key]
+                else:
+                    json_data = []
+                continue
+            if not isinstance(json_data, dict):
+                return json_data
+            if json_path_key not in json_data:
+                if i + 1 >= len(json_path_keys):
+                    json_data[json_path_key] = value
+                return json_data
+            if i + 1 >= len(json_path_keys):
+                json_data[json_path_key] = value
+                return json_data
+            json_data = json_data[json_path_key]
+        return json_data
+    return set_value(json_data, parse_json_path(json_path))
+
+
+def remove_json_path_value(json_data, json_path):
+    if json_data is None:
+        raise ValueError('value is None')
+    if json_path and json_path[:2] == "$.":
+        json_path = json_path[2:]
+    elif json_path and json_path[0] == '$':
+        json_path = json_path[1:]
+
+    def remove_value(json_data, json_path_keys):
+        for i in range(len(json_path_keys)):
+            json_path_key = json_path_keys[i]
+            if isinstance(json_path_key, int):
+                if isinstance(json_data, list):
+                    if i + 1 >= len(json_path_keys):
+                        if json_path_key >= len(json_data):
+                            return json_data
+                        del json_data[json_path_key]
+                        return json_data
+                    if json_path_key < len(json_data):
+                        del json_data[json_path_key]
+                continue
+            if not isinstance(json_data, dict):
+                return json_data
+            if json_path_key not in json_data:
+                return json_data
+            if i + 1 >= len(json_path_keys):
+                json_data.pop(json_path_key)
+                return json_data
+            json_data = json_data[json_path_key]
+        return json_data
+    return remove_value(json_data, parse_json_path(json_path))
+
+def mysql_json_array(*values):
+    return list(values)
+
+def mysql_json_object(*values):
+    obj = {}
+    for i in range(int(len(values) / 2)):
+        obj[values[i * 2]] = values[i * 2 + 1]
+    return obj
+
+def json_array_append(json_doc, *path_vals):
+    if isinstance(json_doc, str):
+        try:
+            json_doc = json.loads(json_doc)
+        except:
+            pass
+    for i in range(int(len(path_vals) / 2)):
+        json_value = get_json_path_value(json_doc, path_vals[i * 2])
+        if isinstance(json_value, list):
+            json_value.append(path_vals[i * 2 + 1])
+    return json_doc
 
 @typing_filter(int)
 def mysql_json_contains(target, candidate, path):
@@ -133,6 +230,29 @@ def mysql_json_extract(json_doc, *paths):
     for path in paths:
         results.append(get_json_path_value(json_doc, path))
     return results[0] if len(paths) == 1 else results
+
+def mysql_json_set(json_doc, *path_vals):
+    if isinstance(json_doc, str):
+        try:
+            json_doc = json.loads(json_doc)
+        except:
+            pass
+    for i in range(int(len(path_vals) / 2)):
+        if not isinstance(json_doc, (list, dict)):
+            json_doc = set_json_path_value(json_doc, path_vals[i * 2], path_vals[i * 2 + 1])
+        else:
+            set_json_path_value(json_doc, path_vals[i * 2], path_vals[i * 2 + 1])
+    return json_doc
+
+def mysql_json_remove(json_doc, *paths):
+    if isinstance(json_doc, str):
+        try:
+            json_doc = json.loads(json_doc)
+        except:
+            pass
+    for path in paths:
+        remove_json_path_value(json_doc, path)
+    return json_doc
 
 @typing_filter(int)
 def mysql_json_depth(json_doc):
