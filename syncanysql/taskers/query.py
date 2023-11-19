@@ -430,11 +430,16 @@ class QueryTasker(object):
             if not loader_or_outputer.name.startswith(db + "."):
                 continue
 
-            def env_variable_setter(obj, prefix, key):
+            def env_variable_setter(ctasker, ctable_name, obj, prefix, key):
                 def _(executor, session_config, manager):
-                    obj.name = prefix + str(executor.env_variables.get_value(key))
+                    table_name_value = str(executor.env_variables.get_value(key))
+                    if ctable_name in ctasker.input:
+                        ctasker.input = ctasker.input.replace(ctable_name, table_name_value)
+                    if ctable_name in ctasker.output:
+                        ctasker.output = ctasker.output.replace(ctable_name, table_name_value)
+                    obj.name = prefix + table_name_value
                 return _
-            self.updaters.append(env_variable_setter(loader_or_outputer, db + ".", table_name[16:-1]))
+            self.updaters.append(env_variable_setter(tasker, table_name, loader_or_outputer, db + ".", table_name[16:-1]))
         return compile_arguments
 
     def run_tasker(self, executor, session_config, manager, tasker, dependency_taskers):

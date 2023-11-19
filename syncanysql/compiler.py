@@ -518,10 +518,12 @@ class Compiler(object):
                 primary_table["outputer_primary_keys"] = [column_alias]
                 break
         config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
-                                   "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id"])
+                                   "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id",
+                                   (" use " + arguments["@use_input"]) if arguments.get("@use_input") else ""])
         config["output"] = "".join([config["output"].split("::")[0], "::",
                                     "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "id",
-                                    (" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else " use I"])
+                                    (" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else (
+                                            " use " + (arguments.get("@use_output") or "I"))])
 
     def compile_pipleline_select(self, expression, config, arguments, primary_table):
         select_expressions = expression.args.get("expressions")
@@ -542,10 +544,12 @@ class Compiler(object):
             pipeline = pipeline[:1] + ["$.*|array"] + pipeline[1:]
         config["pipelines"].append(pipeline)
         config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
-                                   "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id"])
+                                   "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id",
+                                   (" use " + arguments["@use_input"]) if arguments.get("@use_input") else ""])
         config["output"] = "".join([config["output"].split("::")[0], "::",
                                     "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "id",
-                                    (" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else " use I"])
+                                    (" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else (
+                                            " use " + (arguments.get("@use_output") or "I"))])
         arguments["@primary_order"] = False
         arguments["@limit"] = 0
         return config

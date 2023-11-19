@@ -146,6 +146,7 @@ class Executor(object):
                          "@limit": self.env_variables.get("@limit", 0), "@batch": self.env_variables.get("@batch", 0),
                          "@streaming": self.env_variables.get("@streaming", False), "@recovery": self.env_variables.get("@recovery", False),
                          "@join_batch": self.env_variables.get("@join_batch", 10000), "@insert_batch": self.env_variables.get("@insert_batch", 0),
+                         "@use_input": self.env_variables.get("@use_input", None), "@use_output": self.env_variables.get("@use_output", None),
                          "@primary_order": False}
             tasker = compiler.compile(sql, arguments)
         finally:
