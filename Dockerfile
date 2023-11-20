@@ -9,8 +9,9 @@ COPY requirements.txt /root
 RUN cd /root && \
     sed -i '/Items below this point will not be included in the Docker Image/,$d' requirements.txt && \
     python -m pip install --upgrade pip && \
-	pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt && \
     pip install git+https://github.com/snower/syncany.git#egg=syncany && \
-    pip install git+https://github.com/snower/syncany-sql.git#egg=syncanysql
+    pip install git+https://github.com/snower/syncany-sql.git#egg=syncanysql && \
+    mkdir /data
 
 CMD syncany-sql
