@@ -16,3 +16,7 @@ select 'abc' not like '%' as a, 'abc' not like '%%' as b, 'abc' not like '%a%' a
 select 'a' in ('a', 'b', 'c') as a, 1 in ('a', 'b', 'c') as b, 1 in (1, 2, 3) as c, 'a' in (1, 2, 3) as d;
 
 select 'a' not in ('a', 'b', 'c') as a, 1 not in ('a', 'b', 'c') as b, 1 not in (1, 2, 3) as c, 'a' not in (1, 2, 3) as d;
+
+select if(amount > 0 and status=0, 1, 0) as a, case when amount <= 0 then 'A' when amount > 0 and amount < 1 then 'B' when amount between 1 and 10 'C' else 'D' end as b from `data/orders.json` where uid=1;
+
+select sum(amount) as a, if(sum(amount) > 0, 1, 0) as b, case when sum(amount) <= 0 then 'A' when sum(amount) > 0 and sum(amount) < 1 then 'B' when sum(amount) between 1 and 100 'C' else 'D' end as c from `data/orders.json`;

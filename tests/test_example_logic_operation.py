@@ -28,3 +28,7 @@ class LogicOperationExampleTestCase(ExampleTestCase):
         self.assert_data(16, [{'a': 1, 'b': 0, 'c': 1, 'd': 0}], "data error")
 
         self.assert_data(18, [{'a': 0, 'b': 1, 'c': 0, 'd': 1}], "data error")
+
+        self.assert_data(20, [{'a': 1, 'b': 'B'}, {'a': 1, 'b': 'C'}], "data error")
+
+        self.assert_data(22, [{'a': 36.2, 'b': 1, 'c': 'C'}], "data error")

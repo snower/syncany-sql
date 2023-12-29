@@ -1560,7 +1560,7 @@ class Compiler(object):
                     "#if",
                     if_value_column if value_column is None else ["@mysql::eq", value_column, if_value_column],
                     self.compile_calculate(if_expression.args["true"], config, arguments, primary_table, column_join_tables,
-                                           join_index) if expression.args.get("true") else ["#const", 1],
+                                           join_index) if if_expression.args.get("true") else ["#const", 1],
                     build_if(case_expressions[0], case_expressions[1:]) if case_expressions else defaul_column,
                 ]
             return build_if(expression.args["ifs"][0], expression.args["ifs"][1:])
