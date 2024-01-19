@@ -15,9 +15,10 @@ from syncanysql.executor import Executor
 from .parser import SqlParser, FileParser
 from .prompt import CliPrompt
 
+
 def main():
     if os.getcwd() not in sys.path:
-        sys.path.append(os.getcwd())
+        sys.path.insert(0, os.getcwd())
     if sys.stdin.isatty() and len(sys.argv) >= 2 and not sys.argv[1].endswith(".sqlx") \
             and not sys.argv[1].endswith(".sql"):
         print("usage: syncany [-h] sqlx|sql")
