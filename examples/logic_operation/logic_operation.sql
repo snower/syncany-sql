@@ -20,3 +20,7 @@ select 'a' not in ('a', 'b', 'c') as a, 1 not in ('a', 'b', 'c') as b, 1 not in 
 select if(amount > 0 and status=0, 1, 0) as a, case when amount <= 0 then 'A' when amount > 0 and amount < 1 then 'B' when amount between 1 and 10 'C' else 'D' end as b from `data/orders.json` where uid=1;
 
 select sum(amount) as a, if(sum(amount) > 0, 1, 0) as b, case when sum(amount) <= 0 then 'A' when sum(amount) > 0 and sum(amount) < 1 then 'B' when sum(amount) between 1 and 100 'C' else 'D' end as c from `data/orders.json`;
+
+select order_id, uid, goods_id, amount from `data/orders.json` where uid != 3 and uid != 4 and uid > 0 and uid < 10 order by order_id desc limit 2, 1;
+
+select * from `data/orders.json` where uid != 3 and uid != 4 and uid > 0 and uid < 10 and status=0 order by order_id desc limit 1 offset 2;

@@ -853,7 +853,7 @@ class Compiler(object):
             if condition_column["typing_name"] not in config["querys"]:
                 config["querys"][condition_column["typing_name"]] = {}
             condition_querys = config["querys"][condition_column["typing_name"]]
-            if (condition_querys, dict):
+            if isinstance(condition_querys, dict):
                 if condition_exp not in condition_querys:
                     condition_querys[condition_exp] = condition_calculater
                     return None
@@ -2025,7 +2025,7 @@ class Compiler(object):
             if condition_column["typing_name"] not in join_table["querys"]:
                 join_table["querys"][condition_column["typing_name"]] = {}
             condition_querys = join_table["querys"][condition_column["typing_name"]]
-            if (condition_querys, dict):
+            if isinstance(condition_querys, dict):
                 if condition_exp not in condition_querys:
                     condition_querys[condition_exp] = condition_calculater
                     return None

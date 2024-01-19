@@ -22,7 +22,7 @@
   },
   {
     "order_id": 4,
-    "uid": 1,
+    "uid": 3,
     "goods_id": 1,
     "amount": 8,
     "status": 0
@@ -36,7 +36,7 @@
   },
   {
     "order_id": 6,
-    "uid": 2,
+    "uid": 4,
     "goods_id": 2,
     "amount": 7,
     "status": 0
