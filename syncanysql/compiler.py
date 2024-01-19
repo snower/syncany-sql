@@ -849,61 +849,57 @@ class Compiler(object):
                                                       primary_table, [])
             return False, left_column, left_calculater, right_calculater
 
+        def build_query_condition(condition_column, condition_exp, condition_calculater):
+            if condition_column["typing_name"] not in config["querys"]:
+                config["querys"][condition_column["typing_name"]] = {}
+            condition_querys = config["querys"][condition_column["typing_name"]]
+            if (condition_querys, dict):
+                if condition_exp not in condition_querys:
+                    condition_querys[condition_exp] = condition_calculater
+                    return None
+                condition_querys = [condition_querys]
+                config["querys"][condition_column["typing_name"]] = condition_querys
+            for condition_query in condition_querys:
+                if condition_exp not in condition_query:
+                    condition_query[condition_exp] = condition_calculater
+                    return None
+            condition_querys.append({condition_exp: condition_calculater})
+            return None
+
         if isinstance(expression, sqlglot_expressions.EQ):
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
             if is_query_condition and is_query_column:
-                if condition_column["typing_name"] not in config["querys"]:
-                    config["querys"][condition_column["typing_name"]] = {}
-                config["querys"][condition_column["typing_name"]]["=="] = right_calculater
-                return None
+                return build_query_condition(condition_column, "==", right_calculater)
             return ["@mysql::eq", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.NEQ):
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
             if is_query_condition and is_query_column:
-                if condition_column["typing_name"] not in config["querys"]:
-                    config["querys"][condition_column["typing_name"]] = {}
-                config["querys"][condition_column["typing_name"]]["!="] = right_calculater
-                return None
+                return build_query_condition(condition_column, "!=", right_calculater)
             return ["@mysql::neq", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.GT):
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
             if is_query_condition and is_query_column:
-                if condition_column["typing_name"] not in config["querys"]:
-                    config["querys"][condition_column["typing_name"]] = {}
-                config["querys"][condition_column["typing_name"]][">"] = right_calculater
-                return None
+                return build_query_condition(condition_column, ">", right_calculater)
             return ["@mysql::gt", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.GTE):
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
             if is_query_condition and is_query_column:
-                if condition_column["typing_name"] not in config["querys"]:
-                    config["querys"][condition_column["typing_name"]] = {}
-                config["querys"][condition_column["typing_name"]][">="] = right_calculater
-                return None
+                return build_query_condition(condition_column, ">=", right_calculater)
             return ["@mysql::gte", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.LT):
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
             if is_query_condition and is_query_column:
-                if condition_column["typing_name"] not in config["querys"]:
-                    config["querys"][condition_column["typing_name"]] = {}
-                config["querys"][condition_column["typing_name"]]["<"] = right_calculater
-                return None
+                return build_query_condition(condition_column, "<", right_calculater)
             return ["@mysql::lt", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.LTE):
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
             if is_query_condition and is_query_column:
-                if condition_column["typing_name"] not in config["querys"]:
-                    config["querys"][condition_column["typing_name"]] = {}
-                config["querys"][condition_column["typing_name"]]["<="] = right_calculater
-                return None
+                return build_query_condition(condition_column, "<=", right_calculater)
             return ["@mysql::lte", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.In):
             is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
             if is_query_condition and is_query_column:
-                if condition_column["typing_name"] not in config["querys"]:
-                    config["querys"][condition_column["typing_name"]] = {}
-                config["querys"][condition_column["typing_name"]]["in"] = ["@convert_array", right_calculater]
-                return None
+                return build_query_condition(condition_column, "in", ["@convert_array", right_calculater])
             return ["@mysql::in", left_calculater, ["@convert_array", right_calculater]]
         elif isinstance(expression, sqlglot_expressions.Like):
             is_query_condition = False
@@ -2025,66 +2021,69 @@ class Compiler(object):
                 return False, condition_column, ["#make", value_items]
             return False, condition_column, self.compile_calculate(value_expression, config, arguments, primary_table, [])
 
+        def build_query_condition(condition_column, condition_exp, condition_calculater):
+            if condition_column["typing_name"] not in join_table["querys"]:
+                join_table["querys"][condition_column["typing_name"]] = {}
+            condition_querys = join_table["querys"][condition_column["typing_name"]]
+            if (condition_querys, dict):
+                if condition_exp not in condition_querys:
+                    condition_querys[condition_exp] = condition_calculater
+                    return None
+                condition_querys = [condition_querys]
+                join_table["querys"][condition_column["typing_name"]] = condition_querys
+            for condition_query in condition_querys:
+                if condition_exp not in condition_query:
+                    condition_query[condition_exp] = condition_calculater
+                    return None
+            condition_querys.append({condition_exp: condition_calculater})
+            return None
+
         if isinstance(expression, sqlglot_expressions.EQ):
             is_column, condition_column, value_column = parse(expression)
             if not is_column and condition_column:
-                if condition_column["typing_name"] not in join_table["querys"]:
-                    join_table["querys"][condition_column["typing_name"]] = {}
-                join_table["querys"][condition_column["typing_name"]]["=="] = value_column
+                build_query_condition(condition_column, "==", value_column)
         elif isinstance(expression, sqlglot_expressions.NEQ):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
                 raise SyncanySqlCompileException('error join on condition, conditions except != conditions must be constants, related sql "%s"'
                                                  % self.to_sql(expression))
             if condition_column:
-                if condition_column["typing_name"] not in join_table["querys"]:
-                    join_table["querys"][condition_column["typing_name"]] = {}
-                join_table["querys"][condition_column["typing_name"]]["!="] = value_column
+                build_query_condition(condition_column, "!=", value_column)
         elif isinstance(expression, sqlglot_expressions.GT):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
                 raise SyncanySqlCompileException('error join on condition, conditions except > conditions must be constants, related sql "%s"'
                                                  % self.to_sql(expression))
             if condition_column:
-                if condition_column["typing_name"] not in join_table["querys"]:
-                    join_table["querys"][condition_column["typing_name"]] = {}
-                join_table["querys"][condition_column["typing_name"]][">"] = value_column
+                build_query_condition(condition_column, ">", value_column)
         elif isinstance(expression, sqlglot_expressions.GTE):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
                 raise SyncanySqlCompileException('error join on condition, conditions except >= conditions must be constants, related sql "%s"'
                                                  % self.to_sql(expression))
             if condition_column:
-                if condition_column["typing_name"] not in join_table["querys"]:
-                    join_table["querys"][condition_column["typing_name"]] = {}
-                join_table["querys"][condition_column["typing_name"]][">="] = value_column
+                build_query_condition(condition_column, ">=", value_column)
         elif isinstance(expression, sqlglot_expressions.LT):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
                 raise SyncanySqlCompileException('error join on condition, conditions except < conditions must be constants, related sql "%s"'
                                                  % self.to_sql(expression))
             if condition_column:
-                if condition_column["typing_name"] not in join_table["querys"]:
-                    join_table["querys"][condition_column["typing_name"]] = {}
-                join_table["querys"][condition_column["typing_name"]]["<"] = value_column
+                build_query_condition(condition_column, "<", value_column)
         elif isinstance(expression, sqlglot_expressions.LTE):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
                 raise SyncanySqlCompileException('error join on condition, conditions except <= conditions must be constants, related sql "%s"'
                                                  % self.to_sql(expression))
             if condition_column:
-                if condition_column["typing_name"] not in join_table["querys"]:
-                    join_table["querys"][condition_column["typing_name"]] = {}
-                join_table["querys"][condition_column["typing_name"]]["<="] = value_column
+                build_query_condition(condition_column, "<=", value_column)
         elif isinstance(expression, sqlglot_expressions.In):
             is_column, condition_column, value_column = parse(expression)
             if is_column:
                 raise SyncanySqlCompileException('error join on condition, conditions except in conditions must be constants, related sql "%s"'
                                                  % self.to_sql(expression))
             if condition_column:
-                if condition_column["typing_name"] not in join_table["querys"]:
-                    join_table["querys"][condition_column["typing_name"]] = {}
-                join_table["querys"][condition_column["typing_name"]]["in"] = value_column
+                build_query_condition(condition_column, "in", value_column)
         else:
             calculate_fields = []
             self.parse_calculate(expression, config, arguments, primary_table, calculate_fields)
@@ -2379,35 +2378,41 @@ class Compiler(object):
             if "|" in key:
                 continue
             typing_filter = None
-            for exp_key, exp_value in config["querys"][key].items():
-                if isinstance(exp_value, list) and len(exp_value) == 2:
-                    if (isinstance(exp_value[0], str) and exp_value[0][:1] == "&") \
-                            or (isinstance(exp_value[0], list) and exp_value[0] and isinstance(exp_value[0][0], str)
-                                and exp_value[0][0][:1] == "&"):
-                        if isinstance(exp_value[1], list) and exp_value:
-                            exp_value = exp_value[1][0]
-                        if isinstance(exp_value, str):
-                            typing_filter = "|".join(exp_value.split("|")[1:])
-                            continue
+            column_query = config["querys"][key]
+            if isinstance(column_query, dict):
+                column_query = [column_query]
+            for query_exps in column_query:
+                for exp_key, exp_value in query_exps.items():
+                    if isinstance(exp_value, list) and len(exp_value) == 2:
+                        if (isinstance(exp_value[0], str) and exp_value[0][:1] == "&") \
+                                or (isinstance(exp_value[0], list) and exp_value[0] and isinstance(exp_value[0][0], str)
+                                    and exp_value[0][0][:1] == "&"):
+                            if isinstance(exp_value[1], list) and exp_value:
+                                exp_value = exp_value[1][0]
+                            if isinstance(exp_value, str):
+                                typing_filter = "|".join(exp_value.split("|")[1:])
+                                continue
 
-                if exp_key == "in":
-                    if not exp_value:
+                    if exp_key == "in":
+                        if not exp_value:
+                            continue
+                        exp_value = exp_value[0]
+                    if (isinstance(exp_value, str) and exp_value == "@now") or (isinstance(exp_value, list) and exp_value and exp_value[0] == "@now"):
+                        if typing_filter and typing_filter != "datetime":
+                            typing_filter = False
+                            break
+                        typing_filter = "datetime"
                         continue
-                    exp_value = exp_value[0]
-                if (isinstance(exp_value, str) and exp_value == "@now") or (isinstance(exp_value, list) and exp_value and exp_value[0] == "@now"):
-                    if typing_filter and typing_filter != "datetime":
-                        typing_filter = None
-                        break
-                    typing_filter = "datetime"
-                    continue
-                if isinstance(exp_value, list) and len(exp_value) == 2 and exp_value[0] == "#const":
-                    exp_value = exp_value[1]
-                type_name = str(type(exp_value).__name__)
-                if type_name in ("int", "float", "bool"):
-                    if typing_filter and typing_filter != type_name:
-                        typing_filter = None
-                        break
-                    typing_filter = type_name
+                    if isinstance(exp_value, list) and len(exp_value) == 2 and exp_value[0] == "#const":
+                        exp_value = exp_value[1]
+                    type_name = str(type(exp_value).__name__)
+                    if type_name in ("int", "float", "bool"):
+                        if typing_filter and typing_filter != type_name:
+                            typing_filter = False
+                            break
+                        typing_filter = type_name
+                if typing_filter is False:
+                    break
             if typing_filter:
                 config["querys"][key + "|" + typing_filter] = config["querys"][key]
                 config["querys"].pop(key)
