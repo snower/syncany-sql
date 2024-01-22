@@ -1,0 +1,18 @@
+[
+  {
+    "name": "ServiceA",
+    "device_code": "123"
+  },
+  {
+    "name": "ServiceA",
+    "device_code": "124"
+  },
+  {
+    "name": "ServiceA",
+    "device_code": "125"
+  },
+  {
+    "name": "ServiceB",
+    "device_code": "123"
+  }
+]

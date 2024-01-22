@@ -1,0 +1,32 @@
+[
+  {
+    "uid": 1,
+    "order_type": 1,
+    "out_order_no": "2",
+    "code": "123"
+  },
+  {
+    "uid": 2,
+    "order_type": 1,
+    "out_order_no": "1",
+    "code": "124"
+  },
+  {
+    "uid": 2,
+    "order_type": 1,
+    "out_order_no": "1",
+    "code": "125"
+  },
+  {
+    "uid": 1,
+    "order_type": 2,
+    "out_order_no": "10",
+    "code": "126"
+  },
+  {
+    "uid": 2,
+    "order_type": 2,
+    "out_order_no": "11",
+    "code": "127"
+  }
+]

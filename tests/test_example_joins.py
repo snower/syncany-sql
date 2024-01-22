@@ -35,6 +35,13 @@ class JoinsExampleTestCase(ExampleTestCase):
         self.assert_data(24, [{'name': '李四', 'goods_name': '青菜'}, {'name': '王五', 'goods_name': '青菜'},
                               {'name': '李四', 'goods_name': '白菜'}], "data error")
 
+        self.assert_data(29, [{'code': '123', 'name': '王五', 'goods_name': '青菜'},
+                              {'code': '124', 'name': '李四', 'goods_name': '青菜'},
+                              {'code': '125', 'name': '李四', 'goods_name': '青菜'}], "data error")
+
+        self.assert_data(35, [{'order_id': 1, 'name': 'ServiceA'}, {'order_id': 1, 'name': 'ServiceA'},
+                              {'order_id': 2, 'name': 'ServiceA'}, {'order_id': 2, 'name': 'ServiceB'}], "data error")
+
     def test_right_join(self):
         self.execute("right_join.sql")
 
