@@ -701,9 +701,17 @@ class Compiler(object):
                                                        column_join_tables, i)
                                 for calculate_expression in join_table["calculate_expressions"]]
 
-
-            join_db_table = "&." + join_table["db"] + "." + join_table["table"] + "::" + (
-                "+".join(join_table["primary_keys"]) if join_table["primary_keys"] else "id")
+            if join_table["primary_keys"]:
+                primary_keys = []
+                for primary_key in join_table["primary_keys"]:
+                    foreign_column_info = join_table["columns"].get(primary_key)
+                    if foreign_column_info and isinstance(foreign_column_info, dict):
+                        primary_keys.append(self.compile_foreign_column(expression, config, arguments, foreign_column_info))
+                    else:
+                        primary_keys.append(primary_key)
+            else:
+                primary_keys = ["id"]
+            join_db_table = "&." + join_table["db"] + "." + join_table["table"] + "::" + "+".join(primary_keys)
             if join_table["querys"]:
                 join_db_table = [join_db_table, join_table["querys"]]
 
@@ -973,7 +981,8 @@ class Compiler(object):
         if where_expression and isinstance(where_expression, sqlglot_expressions.Where):
             self.compile_where_condition(where_expression.args["this"], querys, arguments, primary_table, [])
             self.parse_condition_typing_filter(expression, querys, arguments)
-        db_table = "&." + table_info["db"] + "." + table_info["name"] + "::" + column_info["column_name"]
+        db_table = "&." + table_info["db"] + "." + table_info["name"] + "::" + \
+                   self.compile_foreign_column(expression, config, arguments, column_info)
         if querys.get("querys"):
             return [[db_table, querys["querys"]], self.compile_column(select_expressions[0], config, arguments, column_info)]
         return [db_table, self.compile_column(select_expressions[0], config, arguments, column_info)]
@@ -1833,6 +1842,11 @@ class Compiler(object):
             config["pipelines"].append([">>@sort", "$.*|array", False, sort_keys])
         if primary_sort_keys:
             config["orders"].extend(primary_sort_keys)
+
+    def compile_foreign_column(self, expression, config, arguments, column):
+        if column.get("typing_filters"):
+            return column["column_name"] + "|" + column["typing_filters"][0]
+        return column["column_name"]
         
     def compile_column(self, expression, config, arguments, column, scope_depth=1):
         if column["typing_filters"]:
@@ -1873,7 +1887,7 @@ class Compiler(object):
             else:
                 name = join_expression.args["this"].args["alias"].args["this"].name
             join_table = {
-                "db": db, "table": table, "name": name, "primary_keys": [], "columns": set([]),
+                "db": db, "table": table, "name": name, "primary_keys": [], "columns": {},
                 "join_columns": [], "calculate_expressions": [], "querys": {}, "ref_count": 0,
                 "having_expressions": [], "subquery": subquery_config
             }
@@ -1882,7 +1896,7 @@ class Compiler(object):
                 self.parse_condition_typing_filter(expression, join_table, arguments)
             if not join_table["primary_keys"]:
                 if join_table["columns"]:
-                    join_table["primary_keys"].append(list(join_table["columns"])[0])
+                    join_table["primary_keys"].append(list(join_table["columns"].keys())[0])
                 else:
                     def find_primary_key(item_expression):
                         if not isinstance(item_expression, sqlglot_expressions.Expression):
@@ -1929,8 +1943,8 @@ class Compiler(object):
             for calculate_field in calculate_fields:
                 if calculate_field["table_name"] != join_table["name"]:
                     join_table["join_columns"].append(calculate_field)
-                else:
-                    join_table["columns"].add(calculate_field["column_name"])
+                elif calculate_field["column_name"] not in join_table["columns"]:
+                    join_table["columns"][calculate_field["column_name"]] = calculate_field
             join_table["having_expressions"].append(expression)
             return
 
@@ -1971,7 +1985,7 @@ class Compiler(object):
                             'error join on condition, primary_key duplicate, related sql "%s"' % self.to_sql(expression))
                     join_table["join_columns"].append(self.parse_column(join_on_expression, config, arguments))
                     join_table["primary_keys"].append(condition_column["column_name"])
-                    join_table["columns"].add(condition_column["column_name"])
+                    join_table["columns"][condition_column["column_name"]] = condition_column
                     join_table["calculate_expressions"].append(join_on_expression)
                     return True, condition_column, None
 
@@ -1985,7 +1999,7 @@ class Compiler(object):
                         'error join on condition, primary_key duplicate, related sql "%s"' % self.to_sql(expression))
                 join_table["join_columns"].extend(calculate_fields)
                 join_table["primary_keys"].append(condition_column["column_name"])
-                join_table["columns"].add(condition_column["column_name"])
+                join_table["columns"][condition_column["column_name"]] = condition_column
                 join_table["calculate_expressions"].append(join_on_expression)
                 return True, condition_column, None
 
@@ -1999,8 +2013,8 @@ class Compiler(object):
                 for calculate_field in calculate_fields:
                     if calculate_field["table_name"] != join_table["name"]:
                         join_table["join_columns"].append(calculate_field)
-                    else:
-                        join_table["columns"].add(calculate_field["column_name"])
+                    elif calculate_field["column_name"] not in join_table["columns"]:
+                        join_table["columns"][calculate_field["column_name"]] = calculate_field["column_name"]
                 join_table["having_expressions"].append(expression)
                 return False, None, None
 
@@ -2090,8 +2104,8 @@ class Compiler(object):
             for calculate_field in calculate_fields:
                 if calculate_field["table_name"] != join_table["name"]:
                     join_table["join_columns"].append(calculate_field)
-                else:
-                    join_table["columns"].add(calculate_field["column_name"])
+                elif calculate_field["column_name"] not in join_table["columns"]:
+                    join_table["columns"][calculate_field["column_name"]] = calculate_field["column_name"]
             join_table["having_expressions"].append(expression)
 
     def parse_calculate(self, expression, config, arguments, primary_table, calculate_fields):
