@@ -12,7 +12,7 @@ from syncany.calculaters import typing_filter
 TIMEDELTA_UNITS = {"YEAR": 365 * 24 * 60 * 60, "QUARTER": 90 * 24 * 60 * 60, "MONTH": 30 * 24 * 60 * 60,
                    "WEEK": 7 * 24 * 60 * 60, "DAY": 24 * 60 * 60, "HOUR": 3600, "MINUTE": 60, "SECOND": 1,
                    "MICROSECOND": 1}
-TIME_INTERVAL_RE = re.compile('^(\d{4}?\-)?(\d+?\-)?(\d+?\s)?(\d+?:)?(\d+?)?(:\d+)?(\.\d+)?$')
+TIME_INTERVAL_RE = re.compile(r'^(\d{4}?\-)?(\d+?\-)?(\d+?\s)?(\d+?:)?(\d+?)?(:\d+)?(\.\d+)?$')
 
 def calculate_datetime(dt, interval, is_sub=False):
     def calculate(unit, value):
