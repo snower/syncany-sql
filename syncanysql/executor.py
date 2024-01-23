@@ -15,9 +15,9 @@ from .errors import SyncanySqlCompileException
 from .utils import parse_value
 from .compiler import Compiler
 
-ENV_VARIABLE_RE = re.compile("(\$\{[@\w]+?(:.*?){0,1}\})", re.DOTALL | re.M)
-RAW_SQL_RE = re.compile("(\/\*\s*raw\(([\w\.]+?)\)\s*(\*\/\s*\()?\s*(.*?)\s*(\)\s*\/\*)?\s*endraw\s*\*\/)", re.DOTALL | re.M)
-FUNC_RE = re.compile("^(\w+?)\(((.+),{0,1})*\)$", re.DOTALL)
+ENV_VARIABLE_RE = re.compile(r"(\$\{[@\w]+?(:.*?)?\})", re.DOTALL | re.M)
+RAW_SQL_RE = re.compile(r"(\/\*\s*raw\(([\w\.]+?)\)\s*(\*\/\s*\()?\s*(.*?)\s*(\)\s*\/\*)?\s*endraw\s*\*\/)", re.DOTALL | re.M)
+FUNC_RE = re.compile(r"^(\w+?)\(((.+),?)*\)$", re.DOTALL)
 
 
 class EnvVariables(dict):
