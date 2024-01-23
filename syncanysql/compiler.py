@@ -13,6 +13,7 @@ from sqlglot import dialects as sqlglot_dialects
 from sqlglot import parser as sqlglot_parser
 from sqlglot import tokens
 from syncany.taskers.core import CoreTasker
+from syncany.filters import find_filter
 from .errors import SyncanySqlCompileException
 from .calculaters import is_mysql_func, find_generate_calculater, find_aggregate_calculater, find_window_aggregate_calculater, CalculaterUnknownException
 from .config import CONST_CONFIG_KEYS
@@ -2310,9 +2311,17 @@ class Compiler(object):
             typing_filters = []
             for typing_filter in origin_name[start_index+1: end_index].split(";"):
                 typing_filter = typing_filter.split(" ")
-                if not typing_filter or typing_filter[0].lower() not in self.TYPE_FILTERS:
+                if not typing_filter:
                     continue
-                typing_filters.append(" ".join([self.TYPE_FILTERS[typing_filter[0].lower()]] + typing_filter[1:]))
+                typing_filter_name = typing_filter[0].lower()
+                if typing_filter_name in self.TYPE_FILTERS:
+                    typing_filters.append(" ".join([self.TYPE_FILTERS[typing_filter_name]] + typing_filter[1:]))
+                else:
+                    try:
+                        if find_filter(typing_filter_name):
+                            typing_filters.append(" ".join([typing_filter_name] + typing_filter[1:]))
+                    except:
+                        pass
             column_name = origin_name[:start_index]
             typing_name = (column_name + "|" + typing_filters[0]) if typing_filters else column_name
         except ValueError:
