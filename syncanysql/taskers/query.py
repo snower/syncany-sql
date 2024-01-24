@@ -215,7 +215,8 @@ class QueryTasker(object):
                 tasker_generator.send(None)
             except StopIteration:
                 break
-            yield TaskerYieldNext()
+            if executor.env_variables.get("@streaming", False):
+                yield TaskerYieldNext()
 
     def terminate(self):
         if not self.tasker:
@@ -400,7 +401,7 @@ class QueryTasker(object):
         compile_arguments.update({key.lower(): value for key, value in os.environ.items()})
         compile_arguments.update(arguments)
         if self.is_local_memory_database(tasker.config):
-            if isinstance(tasker.config["input"], str) and "&.--." in tasker.config["input"]:
+            if isinstance(tasker.config["input"], str) and "&.--." in tasker.config["input"] and not arguments.get("@loop", False):
                 compile_arguments["@batch"] = 0
             if isinstance(tasker.config["output"], str) and "&.--." in tasker.config["output"]:
                 compile_arguments["@insert_batch"] = 0

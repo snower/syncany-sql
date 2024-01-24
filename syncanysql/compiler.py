@@ -202,6 +202,12 @@ class Compiler(object):
                                         subquery_config["output"].split("::")[-1].split(" use ")[0] + " use I"
             subquery_config["name"] = subquery_config["name"] + "#" + table_name + "#select"
             arguments.update({subquery_config["name"] + "@" + key: value for key, value in subquery_arguments.items()})
+            output_db_table_name = subquery_config["output"].split("::")[0]
+            for dependency_config in (subquery_config.get("dependencys") or []):
+                if isinstance(dependency_config.get("input"), str) and dependency_config["input"].startswith(output_db_table_name):
+                    dependency_config["input"] = dependency_config["output"].split(" ")[0]
+                    arguments[subquery_config["name"] + "@" + dependency_config["name"] + "@@batch"] = 1
+                    arguments[subquery_config["name"] + "@" + dependency_config["name"] + "@@loop"] = True
             config["dependencys"].append(subquery_config)
 
     def compile_subquery(self, expression, arguments):
@@ -304,6 +310,7 @@ class Compiler(object):
         parse(expression)
 
         query_name = "__unionquery_" + str(uuid.uuid1().int)
+        union_column_names = None
         for select_expression in select_expressions:
             subquery_name = "__unionquery_" + str(uuid.uuid1().int)
             subquery_arguments = {key: arguments[key] for key in CONST_CONFIG_KEYS if key in arguments}
@@ -316,6 +323,15 @@ class Compiler(object):
                     config["schema"] = {}
                 for name in subquery_config["schema"]:
                     config["schema"][name] = "$." + name
+            if isinstance(subquery_config["schema"], dict):
+                if union_column_names is None:
+                    union_column_names = sorted(list(subquery_config["schema"].keys()))
+                else:
+                    subquery_column_names = sorted(list(subquery_config["schema"].keys()))
+                    for i in range(min(len(union_column_names), len(subquery_column_names))):
+                        if union_column_names[i] == subquery_column_names[i]:
+                            continue
+                        subquery_config["schema"][union_column_names[i]] = subquery_config["schema"][subquery_column_names[i]]
             config["dependencys"].append(subquery_config)
         config["input"] = "&.--." + query_name + "::" + config["dependencys"][0]["output"].split("::")[-1].split(" ")[0]
         config["output"] = config["output"].split("::")[0] + "::" + config["input"].split("::")[-1].split(" ")[0]
