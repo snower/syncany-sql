@@ -316,18 +316,17 @@ def mysql_weekday(dt):
 
 @typing_filter(datetime.date)
 def mysql_utc_date():
-    dt = datetime.datetime.utcnow()
+    dt = datetime.datetime.now(pytz.UTC)
     return datetime.date(dt.year, dt.month, dt.day)
 
 @typing_filter(datetime.time)
 def mysql_utc_time():
-    dt = datetime.datetime.utcnow()
+    dt = datetime.datetime.now(pytz.UTC)
     return datetime.time(dt.hour, dt.minute, dt.second, dt.microsecond)
 
 @typing_filter(datetime.datetime)
 def mysql_utc_timestamp():
-    dt = datetime.datetime.utcnow()
-    return dt.replace(tzinfo=pytz.UTC)
+    return datetime.datetime.now(pytz.UTC)
 
 
 funcs = {key[6:]: value for key, value in globals().items() if key.startswith("mysql_")}
