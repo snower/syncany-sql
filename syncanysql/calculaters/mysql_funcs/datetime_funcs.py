@@ -130,7 +130,7 @@ def mysql_unix_timestamp(dt=None):
 def mysql_from_unixtime(t):
     if t is None:
         return None
-    return datetime.datetime.utcfromtimestamp(int(t)).replace(tzinfo=pytz.UTC).astimezone(tz=get_timezone())
+    return datetime.datetime.fromtimestamp(int(t), pytz.UTC).astimezone(tz=get_timezone())
 
 @typing_filter(int)
 def mysql_month(dt):
