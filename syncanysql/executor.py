@@ -11,6 +11,8 @@ from collections import deque
 from syncany.filters import StringFilter
 from syncany.calculaters import find_calculater
 from syncany.database import find_database
+from syncany.taskers.config import ConfigReader, register_reader
+from syncany.taskers.core import CoreTasker
 from .errors import SyncanySqlCompileException
 from .utils import parse_value
 from .compiler import Compiler
@@ -18,6 +20,26 @@ from .compiler import Compiler
 ENV_VARIABLE_RE = re.compile(r"(\$\{[@\w]+?(:.*?)?\})", re.DOTALL | re.M)
 RAW_SQL_RE = re.compile(r"(\/\*\s*raw\(([\w\.]+?)\)\s*(\*\/\s*\()?\s*(.*?)\s*(\)\s*\/\*)?\s*endraw\s*\*\/)", re.DOTALL | re.M)
 FUNC_RE = re.compile(r"^(\w+?)\(((.+),?)*\)$", re.DOTALL)
+
+
+@register_reader("context")
+class ContextConfigReader(ConfigReader):
+    def read(self):
+        executor = Executor.current()
+        if not executor:
+            return "dict", {}
+        names = self.name[10:].split("/")
+        if len(names) >= 2 and names[0] == "session" and names[1] == "config":
+            if len(names) >= 3:
+                return "dict", {
+                    names[2]: executor.session_config.get().get(names[2], CoreTasker.DEFAULT_CONFIG.get(names[2]))
+                }
+            config = executor.session_config.get()
+            return "dict", {
+                "extends": config.get("extends", []),
+                "databases": config.get("databases", []),
+            }
+        return "dict", {}
 
 
 class EnvVariables(dict):

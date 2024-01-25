@@ -150,14 +150,22 @@ class Compiler(object):
         raise SyncanySqlCompileException('unknown sql "%s"' % self.to_sql(expression))
 
     def compile_delete(self, expression, arguments):
-        config = {key: copy.deepcopy(self.config.get(key)) for key in CoreTasker.DEFAULT_CONFIG}
+        config = {key: copy.deepcopy(self.config.get(key)) for key in CoreTasker.DEFAULT_CONFIG
+                  if key not in {"extends", "input", "output", "querys", "databases", "schema", "intercepts", "orders",
+                                 "dependencys", "pipelines"}}
         config.update({
+            "extends": ["context://session/config"],
             "input": "&.--.--::id",
             "loader": "const_loader",
             "loader_arguments":  {"datas": []},
             "output": "&.-.&1::id",
             "querys": {},
+            "databases": [],
             "schema": "$.*",
+            "intercepts": [],
+            "orders": [],
+            "dependencys": [],
+            "pipelines": []
         })
 
         table_info = self.parse_table(expression.args["this"], config, arguments)
@@ -169,11 +177,15 @@ class Compiler(object):
         return config
 
     def compile_query(self, expression, arguments):
-        config = {key: copy.deepcopy(self.config.get(key)) for key in CoreTasker.DEFAULT_CONFIG}
+        config = {key: copy.deepcopy(self.config.get(key)) for key in CoreTasker.DEFAULT_CONFIG
+                  if key not in {"extends", "input", "output", "querys", "databases", "schema", "intercepts", "orders",
+                                 "dependencys", "pipelines"}}
         config.update({
+            "extends": ["context://session/config"],
             "input": "&.-.&1::id",
             "output": "&.-.&1::id",
             "querys": {},
+            "databases": [],
             "schema": "$.*",
             "intercepts": [],
             "orders": [],
