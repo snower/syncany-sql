@@ -19,10 +19,13 @@ from .prompt import CliPrompt
 def main():
     if os.getcwd() not in sys.path:
         sys.path.insert(0, os.getcwd())
-    if sys.stdin.isatty() and len(sys.argv) >= 2 and not sys.argv[1].endswith(".sqlx") \
-            and not sys.argv[1].endswith(".sql"):
-        print("usage: syncany [-h] sqlx|sql")
-        print("syncany error: require sqlx or sql file")
+    try:
+        fileext = os.path.splitext(sys.argv[1])[1].lower() if len(sys.argv) >= 2 else None
+    except:
+        fileext = None
+    if sys.stdin.isatty() and fileext and fileext not in (".sql", ".sqlx", ".prql"):
+        print("usage: syncany [-h] sqlx|sql|prql")
+        print("syncany error: require sqlx or sql or prql file")
         exit(2)
 
     try:
@@ -32,8 +35,7 @@ def main():
 
         global_config = GlobalConfig()
         init_execute_files = global_config.load()
-        if not sys.stdin.isatty() and (len(sys.argv) == 1 or (
-                len(sys.argv) >= 2 and not sys.argv[1].endswith(".sqlx") and not sys.argv[1].endswith(".sql"))):
+        if not sys.stdin.isatty() and (not fileext or fileext not in (".sql", ".sqlx", ".prql")):
             global_config.config_logging(False)
         else:
             global_config.config_logging(True)
@@ -48,8 +50,7 @@ def main():
                         executor.run("init " + init_execute_file, file_parser.load())
                         executor.execute()
 
-                if not sys.stdin.isatty() and (len(sys.argv) == 1 or (
-                        len(sys.argv) >= 2 and not sys.argv[1].endswith(".sqlx") and not sys.argv[1].endswith(".sql"))):
+                if not sys.stdin.isatty() and (not fileext or fileext not in (".sql", ".sqlx", ".prql")):
                     start_time = time.time()
                     content = sys.stdin.read().strip()
                     if not content:

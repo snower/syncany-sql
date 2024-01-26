@@ -54,6 +54,7 @@ setup(
         "redis": ["redis>=3.5.3"],
         "requests": ["requests>=2.22.0"],
         "pymssql": ['pymssql>=2.2.7'],
+        "prql-python": ["prql-python>=0.11.1"],
     },
     package_data={
         '': ['README.md'],

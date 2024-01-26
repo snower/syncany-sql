@@ -18,6 +18,7 @@ clickhouse_driver>=0.1.5
 redis>=3.5.3
 requests>=2.22.0
 pymssql>=2.2.7
+prql-python>=0.11.1
 
 # Items below this point will not be included in the Docker Image
 

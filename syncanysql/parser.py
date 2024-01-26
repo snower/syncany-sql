@@ -3,6 +3,7 @@
 # create by: snower
 
 import os
+from .errors import SyncanySqlCompileException
 
 
 class SqlSegment(object):
@@ -129,6 +130,13 @@ class FileParser(object):
     def load(self):
         with open(self.filename, "r+", encoding=os.environ.get("SYNCANYENCODING", "utf-8")) as fp:
             content = fp.read()
+        if isinstance(self.filename, str) and self.filename[-5:].lower() == ".prql":
+            try:
+                import prql_python
+                content = prql_python.compile(content, options=prql_python.CompileOptions(
+                    signature_comment=False, target="sql.mysql"))
+            except ImportError:
+                raise SyncanySqlCompileException("prql-python>=0.11.1 is required")
         sql_parser = SqlParser(content)
         sqls = sql_parser.split()
         return sqls
