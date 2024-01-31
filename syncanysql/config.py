@@ -285,7 +285,8 @@ class GlobalConfig(object):
 
 
 class SessionConfig(GlobalConfig):
-    TASKER_EXTEND_KEYS = ("extends", "databases", "caches", "imports", "sources", "options", "states")
+    TASKER_EXTEND_KEYS = ("extends", "databases", "caches", "imports", "sources", "defines", "variables",
+                          "options", "states")
 
     def __init__(self, global_config, parent_config):
         super(SessionConfig, self).__init__()
@@ -298,35 +299,29 @@ class SessionConfig(GlobalConfig):
     def get(self):
         if self.merged_config is None:
             session_config, self.config = self.config, copy.deepcopy(CoreTasker.DEFAULT_CONFIG)
-            self.merge_config(copy.deepcopy(self.parent_config.get()))
-            self.merge_config(copy.deepcopy(session_config))
-            self.merged_config, self.config = self.config, session_config
+            try:
+                self.merge_config(copy.deepcopy(self.parent_config.get()))
+                self.merge_config(copy.deepcopy(session_config))
+            finally:
+                self.merged_config, self.config = self.config, session_config
         return self.merged_config
 
     def set(self, key, value):
         super(SessionConfig, self).set(key, value)
         self.merged_config = None
+        self.tasker_extend_config = None
 
     def session(self):
         return SessionConfig(self.global_config, self)
 
     def create_tasker_config(self):
-        parent_config, tasker_config = self.parent_config.get(), copy.deepcopy(self.config)
-        if "defines" in parent_config and parent_config["defines"]:
-            defines = copy.deepcopy(parent_config["defines"])
-            defines.update(tasker_config["defines"])
-            tasker_config["defines"] = defines
-        if "variables" in parent_config and parent_config["variables"]:
-            variables = copy.deepcopy(parent_config["variables"])
-            variables.update(tasker_config["variables"])
-            tasker_config["variables"] = variables
-        return tasker_config
+        return copy.deepcopy(CoreTasker.DEFAULT_CONFIG)
 
     def get_tasker_extend_config(self):
         if self.tasker_extend_config is None:
-            parent_config = self.parent_config.get()
-            self.tasker_extend_config = {key: copy.deepcopy(parent_config[key]) for key in self.TASKER_EXTEND_KEYS
-                                         if key in parent_config}
+            merged_config = self.get()
+            self.tasker_extend_config = {key: merged_config[key] for key in self.TASKER_EXTEND_KEYS
+                                         if key in merged_config}
         return self.tasker_extend_config
 
     def __bool__(self):

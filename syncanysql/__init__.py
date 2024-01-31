@@ -48,9 +48,7 @@ class ExecuterContext(object):
         self.executor.env_variables[name] = value
 
     def use(self, name, func_or_module):
-        if "imports" not in self.executor.session_config.config:
-            self.executor.session_config.config["imports"] = {}
-        self.executor.session_config.config["imports"][name] = func_or_module
+        self.executor.session_config.set(("imports", name), func_or_module)
 
     def execute(self, sql):
         sql_parser = SqlParser(sql)
@@ -137,9 +135,7 @@ class ScriptEngine(object):
     def use(self, name, func_or_module):
         if self.executor is None:
             self.setup()
-        if "imports" not in self.executor.session_config.config:
-            self.executor.session_config["imports"] = {}
-        self.executor.session_config.config["imports"][name] = func_or_module
+        self.executor.session_config.set(("imports", name), func_or_module)
 
     def context(self):
         if self.executor is None:

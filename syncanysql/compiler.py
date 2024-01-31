@@ -707,7 +707,7 @@ class Compiler(object):
     def compile_join_column(self, expression, config, arguments, primary_table, column, column_join_tables):
         jit_define_name = None
         if isinstance(column, list) and len(column) == 3 and column[0] == "#call" and column[1].startswith("jit_define_") and column[2] == "$.*":
-            jit_define_name, column = column[1], config["defines"][column[1]]
+            jit_define_name, column = column[1], (config["defines"][column[1]] if column[1] in config["defines"] else self.config.get()[column[1]])
 
         if isinstance(column, str):
             column = ":" + column
