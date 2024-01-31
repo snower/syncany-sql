@@ -26,7 +26,16 @@ def calculate_datetime(dt, interval, is_sub=False):
             else:
                 new_year = dt.year + int(months / 12) + (1 if dt.month + months % 12 > 12 else 0)
                 new_month = (dt.month + months % 12) % 12
-            return dt.replace(year=new_year, month=new_month)
+            try:
+                return dt.replace(year=new_year, month=new_month)
+            except ValueError:
+                day = dt.day - 1
+                while day >= 1:
+                    try:
+                        return dt.replace(year=new_year, month=new_month, day=day)
+                    except ValueError:
+                        day -= 1
+                return None
         if unit in TIMEDELTA_UNITS:
             td = datetime.timedelta(seconds=TIMEDELTA_UNITS[unit] * value)
             return (dt - td) if is_sub else (dt + td)

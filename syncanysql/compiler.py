@@ -78,9 +78,10 @@ class Compiler(object):
                    "bigint": "int", "mediumint": "int", "smallint": "int", "tinyint": "int", "decimal": "decimal", "double": "float",
                    "boolean": "bool", "binary": "bytes", "varbinary": "bytes", "blob": "bytes", "timestamp": "datetime"}
 
-    def __init__(self, config, env_variables):
+    def __init__(self, config, env_variables, name):
         self.config = config
         self.env_variables = env_variables
+        self.name = name
         self.mapping = {}
 
     def compile(self, sql, arguments):
@@ -150,11 +151,10 @@ class Compiler(object):
         raise SyncanySqlCompileException('unknown sql "%s"' % self.to_sql(expression))
 
     def compile_delete(self, expression, arguments):
-        config = {key: copy.deepcopy(self.config.get(key)) for key in CoreTasker.DEFAULT_CONFIG
-                  if key not in {"extends", "input", "output", "querys", "databases", "schema", "intercepts", "orders",
-                                 "dependencys", "pipelines"}}
+        config = self.config.create_tasker_config()
         config.update({
             "extends": ["context://session/config"],
+            "name": self.name or "",
             "input": "&.--.--::id",
             "loader": "const_loader",
             "loader_arguments":  {"datas": []},
@@ -177,11 +177,10 @@ class Compiler(object):
         return config
 
     def compile_query(self, expression, arguments):
-        config = {key: copy.deepcopy(self.config.get(key)) for key in CoreTasker.DEFAULT_CONFIG
-                  if key not in {"extends", "input", "output", "querys", "databases", "schema", "intercepts", "orders",
-                                 "dependencys", "pipelines"}}
+        config = self.config.create_tasker_config()
         config.update({
             "extends": ["context://session/config"],
+            "name": self.name or "",
             "input": "&.-.&1::id",
             "output": "&.-.&1::id",
             "querys": {},
