@@ -47,6 +47,9 @@
 - join()
 - now()
 - current_env_variable()
+- objectid
+- uuid
+- snowflakeid
 
 ## 支持的MySQL常用函数
 
