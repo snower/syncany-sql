@@ -61,3 +61,9 @@ class DatetimeExampleTestCase(ExampleTestCase):
         self.assert_value(18, "DATETIME(TIME(NOW()))", lambda value: isinstance(value, datetime.datetime), "data error")
         self.assert_value(18, "DATE(TIME(NOW()))", None, "data error")
         self.assert_value(18, "TIME(DATE(NOW()))", lambda value: isinstance(value, datetime.time), "data error")
+
+        self.assert_value(20, "DATE_FORMAT(CONVERT_DATETIME('1600-01-01'), '%Y-%m-%d %H:%M:%S')",
+                          '1600-01-01 00:00:00', "data error")
+        self.assert_value(20, "DATE_FORMAT(CONVERT_DATETIME('1900-01-01 10:12:23'), '%Y-%m-%d %H:%M:%S')",
+                          '1900-01-01 10:12:23', "data error")
+        self.assert_value(20, "TIME_FORMAT(CONVERT_DATETIME('1800-01-01 10:12:23'), '%H:%M:%S')", '10:12:23', "data error")
