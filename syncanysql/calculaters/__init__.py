@@ -7,6 +7,7 @@ from syncany.calculaters import CALCULATERS, Calculater, TypeFormatCalculater, T
 from syncany.calculaters import register_calculater, find_calculater, CalculaterUnknownException
 from syncany.calculaters.import_calculater import ImportCalculater
 from .env_variable_calculater import CurrentEnvVariableCalculater
+from .row_calculater import *
 from .mysql_calculater import MysqlCalculater
 from .generate_calculater import *
 from .aggregate_calculater import *
@@ -14,6 +15,8 @@ from .window_calculater import *
 
 SQL_CALCULATERS = {
     "current_env_variable": CurrentEnvVariableCalculater,
+    "row_index": RowIndexCalculater,
+    "row_last": RowLastCalculater,
     "mysql": MysqlCalculater,
     "aggregate_key": AggregateKeyCalculater,
     "aggregate_count": AggregateCountCalculater,
