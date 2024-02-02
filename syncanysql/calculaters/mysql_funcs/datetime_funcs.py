@@ -299,6 +299,16 @@ def mysql_datediff(dt1, dt2):
         dt2 = parse_datetime(str(dt2), None, get_timezone())
     return int((dt2 - dt1).total_seconds() / 86400)
 
+@typing_filter(int)
+def mysql_timestampdiff(unit, dt1, dt2):
+    if dt1 is None or dt2 is None:
+        return None
+    if isinstance(dt1, (int, float, str)):
+        dt1 = parse_datetime(str(dt1), None, get_timezone())
+    if isinstance(dt2, (int, float, str)):
+        dt2 = parse_datetime(str(dt2), None, get_timezone())
+    return int((dt2 - dt1).total_seconds() / TIMEDELTA_UNITS[unit])
+
 @typing_filter(str)
 def mysql_date_format(dt, f):
     if dt is None:

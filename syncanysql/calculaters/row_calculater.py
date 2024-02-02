@@ -6,25 +6,30 @@ from syncany.calculaters.calculater import Calculater
 
 
 class RowIndexCalculater(Calculater):
+    @classmethod
+    def instance(cls, name):
+        return RowIndexCalculater(name)
+
+    def __init__(self, *args, **kwargs):
+        super(RowIndexCalculater, self).__init__(*args, **kwargs)
+
+        self.row_index = 0
+
     def calculate(self, *args):
-        from syncany.taskers.context import TaskerContext
-        tasker_context = TaskerContext.current()
-        if not tasker_context:
-            return None
-        tasker_context_cache = tasker_context.cache("sql_row")
-        row_index = tasker_context_cache.get("row_index", 0) + 1
-        tasker_context_cache["row_index"] = row_index
-        return row_index
+        self.row_index += 1
+        return self.row_index
 
 
 class RowLastCalculater(Calculater):
+    @classmethod
+    def instance(cls, name):
+        return RowLastCalculater(name)
+
+    def __init__(self, *args, **kwargs):
+        super(RowLastCalculater, self).__init__(*args, **kwargs)
+
+        self.row_last = None
+
     def calculate(self, *args):
-        from syncany.taskers.context import TaskerContext
-        tasker_context = TaskerContext.current()
-        if not tasker_context:
-            return None
-        tasker_context_cache = tasker_context.cache("sql_row")
-        row_last = tasker_context_cache.get("row_last")
-        if args:
-            tasker_context_cache["row_last"] = args[0] if len(args) == 1 else args
+        row_last, self.row_last = self.row_last, (args[0] if len(args) == 1 else args)
         return row_last
