@@ -11,8 +11,8 @@ from sqlglot import maybe_parse, ParseError
 from sqlglot import expressions as sqlglot_expressions
 from sqlglot import dialects as sqlglot_dialects
 from sqlglot import parser as sqlglot_parser
+from sqlglot import generator as sqlglot_generator
 from sqlglot import tokens
-from syncany.taskers.core import CoreTasker
 from syncany.filters import find_filter
 from .errors import SyncanySqlCompileException
 from .calculaters import is_mysql_func, find_generate_calculater, find_aggregate_calculater, find_window_aggregate_calculater, CalculaterUnknownException
@@ -28,6 +28,10 @@ from .taskers.use import UseCommandTasker
 from .taskers.show import ShowCommandTasker
 
 
+class AssignParameter(sqlglot_expressions.Parameter):
+    arg_types = {"this": True, "expression": False, "wrapped": False}
+
+
 class CompilerDialect(sqlglot_dialects.Dialect):
     class Tokenizer(tokens.Tokenizer):
         QUOTES = ["'", '"']
@@ -38,6 +42,16 @@ class CompilerDialect(sqlglot_dialects.Dialect):
         HEX_STRINGS = [("x'", "'"), ("X'", "'"), ("0x", "")]
 
     class Parser(sqlglot_parser.Parser):
+        def _parse_parameter(self):
+            wrapped = self._match(sqlglot_parser.TokenType.L_BRACE)
+            this = self._parse_var() or self._parse_primary()
+            self._match(sqlglot_parser.TokenType.R_BRACE)
+            if not self._match_pair(sqlglot_parser.TokenType.COLON, sqlglot_parser.TokenType.EQ, False):
+                return self.expression(sqlglot_expressions.Parameter, this=this, wrapped=wrapped)
+            self._advance(2)
+            expression = self._parse_conjunction() or self._parse_function() or self._parse_id_var()
+            return self.expression(AssignParameter, this=this, expression=expression, wrapped=wrapped)
+
         def _parse_limit(self, this=None, top=False):
             if top or not self._match(sqlglot_parser.TokenType.LIMIT, False):
                 return sqlglot_parser.Parser._parse_limit(self, this, top)
@@ -68,6 +82,20 @@ class CompilerDialect(sqlglot_dialects.Dialect):
             self._advance(4)
             return self.expression(sqlglot_parser.exp.Offset, this=this,
                                    expression=self.PRIMARY_PARSERS[sqlglot_parser.TokenType.NUMBER](self, offset_token))
+
+    class Generator(sqlglot_generator.Generator):
+        TRANSFORMS = {
+            **sqlglot_generator.Generator.TRANSFORMS,
+            AssignParameter: lambda self, e: self.assign_parameter_sql(e),
+        }
+        sqlglot_generator.Generator.TRANSFORMS.update({
+            AssignParameter: lambda self, e: self.assign_parameter_sql(e),
+        })
+
+        def assign_parameter_sql(self, expression):
+            this = self.sql(expression, "this")
+            this = f"{{{this}}}" if expression.args.get("wrapped") else f"{this}"
+            return f"""{self.PARAMETER_TOKEN}{this} := {self.sql(expression, "expression")}"""
 
 
 class Compiler(object):
@@ -145,7 +173,7 @@ class Compiler(object):
         elif isinstance(expression, sqlglot.expressions.Set) and expression.args.get("expressions") and len(expression.args.get("expressions")) == 1:
             set_item_expression = expression.args.get("expressions")[0]
             if isinstance(set_item_expression, sqlglot_expressions.SetItem) and isinstance(set_item_expression.args["this"], sqlglot_expressions.EQ):
-                value = str(set_item_expression).split("=")
+                value = self.generate_sql(set_item_expression).split("=")
                 config = {"key": value[0].strip(), "value": "=".join(value[1:]).strip()}
                 return SetCommandTasker(config)
         raise SyncanySqlCompileException('unknown sql "%s"' % self.to_sql(expression))
@@ -438,17 +466,17 @@ class Compiler(object):
                     calculate_expression = select_expression.args["this"]
             elif self.is_const(select_expression, config, arguments):
                 const_info = self.parse_const(select_expression, config, arguments)
-                column_alias = str(select_expression)
+                column_alias = self.generate_sql(select_expression)
                 config["schema"][column_alias] = self.compile_const(select_expression, config, arguments, const_info)
                 continue
             elif self.is_window_aggregate(select_expression, config, arguments):
-                column_alias = str(select_expression)
+                column_alias = self.generate_sql(select_expression)
                 window_aggregate_expression = select_expression
             elif self.is_aggregate(select_expression, config, arguments):
-                column_alias = str(select_expression)
+                column_alias = self.generate_sql(select_expression)
                 aggregate_expression = select_expression
             elif self.is_calculate(select_expression, config, arguments):
-                column_alias = str(select_expression)
+                column_alias = self.generate_sql(select_expression)
                 calculate_expression = select_expression
             else:
                 raise SyncanySqlCompileException('error select column, must have an alias name, related sql "%s"'
@@ -1362,7 +1390,7 @@ class Compiler(object):
     def compile_window_order(self, expression, config, arguments, primary_table, join_tables):
         value_order_expressions, orders = [], []
         for order_expression in expression.args["expressions"]:
-            order_key = str(order_expression.args["this"])
+            order_key = self.generate_sql(order_expression.args["this"])
             orders.append([order_key, order_expression.args.get("desc")])
             value_order_expressions.append(order_expression.args["this"])
         return {"valuer": self.compile_window_key(value_order_expressions, config, arguments,
@@ -1472,7 +1500,7 @@ class Compiler(object):
                 if len(expression.args["expressions"]) != 1:
                     raise SyncanySqlCompileException(
                         'unknown calculate expression, jit run must by one expression related sql "%s"' % self.to_sql(expression))
-                define_name = "jit_define_" + str(str(expression).__hash__()).replace("-", "_")
+                define_name = "jit_define_" + str(self.generate_sql(expression).__hash__()).replace("-", "_")
                 if "defines" not in config:
                     config["defines"] = {}
                 if self.is_const(expression.args["expressions"][0], config, arguments):
@@ -1655,6 +1683,15 @@ class Compiler(object):
                 ]
             return ["@mysql::not", self.compile_calculate(expression.args["this"], config, arguments, primary_table,
                                                           column_join_tables, join_index)]
+        elif isinstance(expression, sqlglot_expressions.Parameter):
+            name = expression.args["this"].args["this"]
+            if name in self.mapping:
+                name = self.mapping[name]
+            if isinstance(expression, AssignParameter):
+                return ["@current_env_variable::set_value", ["#const", "@" + name],
+                        self.compile_calculate(expression.args.get("expression"), config, arguments, primary_table,
+                                               column_join_tables, join_index)]
+            return ["@current_env_variable::get_value", ["#const", "@" + name]]
         elif isinstance(expression, (sqlglot_expressions.Binary, sqlglot_expressions.Condition)):
             if isinstance(expression, sqlglot_expressions.And):
                 return [
@@ -1830,12 +1867,12 @@ class Compiler(object):
         for order_expression in expression:
             if not self.is_column(order_expression.args["this"], config, arguments):
                 if isinstance(config["schema"], dict):
-                    if str(order_expression.args["this"]) in config["schema"]:
-                        sort_keys.append((str(order_expression.args["this"]), True if order_expression.args["desc"] else False))
+                    if self.generate_sql(order_expression.args["this"]) in config["schema"]:
+                        sort_keys.append((self.generate_sql(order_expression.args["this"]), True if order_expression.args["desc"] else False))
                         continue
                     has_column = False
                     for column_alias, column_expression in primary_table["select_columns"].items():
-                        if str(order_expression.args["this"]).lower() == str(column_expression).lower():
+                        if self.generate_sql(order_expression.args["this"]).lower() == self.generate_sql(column_expression).lower():
                             sort_keys.append((column_alias, True if order_expression.args["desc"] else False))
                             has_column = True
                             break
@@ -2165,6 +2202,9 @@ class Compiler(object):
             if not column["table_name"] or primary_table["table_name"] == column["table_name"]:
                 primary_table["columns"][column["column_name"]] = column
             calculate_fields.append(column)
+        elif isinstance(expression, sqlglot_expressions.Parameter):
+            if isinstance(expression, AssignParameter):
+                self.parse_calculate(expression.args["expression"], config, arguments, primary_table, calculate_fields)
         elif isinstance(expression, (sqlglot_expressions.Select, sqlglot_expressions.Union, sqlglot_expressions.Subquery,
                                      sqlglot_expressions.Star, sqlglot_expressions.Interval, sqlglot_expressions.DataType)):
             pass
@@ -2514,9 +2554,11 @@ class Compiler(object):
     def is_const(self, expression, config, arguments):
         if isinstance(expression, sqlglot_expressions.Neg):
             return not isinstance(expression.args["this"], sqlglot_expressions.Neg) and self.is_const(expression.args["this"], config, arguments)
+        if isinstance(expression, sqlglot_expressions.Parameter):
+            return not isinstance(expression, AssignParameter)
         return isinstance(expression, (sqlglot_expressions.Literal, sqlglot_expressions.Boolean,
                                        sqlglot_expressions.Null, sqlglot_expressions.HexString, sqlglot_expressions.BitString,
-                                       sqlglot_expressions.ByteString, sqlglot_expressions.Parameter))
+                                       sqlglot_expressions.ByteString))
 
     def is_calculate(self, expression, config, arguments):
         if isinstance(expression, sqlglot_expressions.Condition):
@@ -2526,7 +2568,7 @@ class Compiler(object):
                                            sqlglot_expressions.Binary))
         return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Binary, sqlglot_expressions.Select,
                                        sqlglot_expressions.Subquery, sqlglot_expressions.Union,
-                                       sqlglot_expressions.BitwiseNot, sqlglot_expressions.Tuple))
+                                       sqlglot_expressions.BitwiseNot, sqlglot_expressions.Tuple, sqlglot_expressions.Parameter))
 
     def is_aggregate(self, expression, config, arguments):
         if isinstance(expression, (sqlglot_expressions.Column, sqlglot_expressions.Literal)):
@@ -2592,13 +2634,13 @@ class Compiler(object):
 
         sql = ["SELECT"]
         if expression.args.get("distinct"):
-            sql.append(str(expression.args["distinct"]))
-        sql.append(", ".join([str(select_expression) for select_expression in expression.args["expressions"]]))
-        sql.append("FROM " + str(expression.args["from"].expressions[0]))
+            sql.append(self.generate_sql(expression.args["distinct"]))
+        sql.append(", ".join([self.generate_sql(select_expression) for select_expression in expression.args["expressions"]]))
+        sql.append("FROM " + self.generate_sql(expression.args["from"].expressions[0]))
         for join_table in join_tables:
-            sql.append("LEFT JOIN " + str(join_table["table_expression"]))
+            sql.append("LEFT JOIN " + self.generate_sql(join_table["table_expression"]))
             if join_table["on_expressions"]:
-                sql.append("ON " + " AND ".join([str(on_expression) for on_expression in join_table["on_expressions"]]))
+                sql.append("ON " + " AND ".join([self.generate_sql(on_expression) for on_expression in join_table["on_expressions"]]))
 
         where_expressions = []
         for join_table in join_tables:
@@ -2610,20 +2652,20 @@ class Compiler(object):
                 if calcuate_expression not in where_expressions:
                     where_expressions.append(calcuate_expression)
         if where_expressions:
-            sql.append("WHERE " + " AND ".join([("(" + str(where_expression) + ")")
+            sql.append("WHERE " + " AND ".join([("(" + self.generate_sql(where_expression) + ")")
                                                 if isinstance(where_expression, sqlglot_expressions.Or)
-                                                else str(where_expression)
+                                                else self.generate_sql(where_expression)
                                                 for where_expression in where_expressions]))
         if expression.args.get("group"):
-            sql.append(str(expression.args["group"]))
+            sql.append(self.generate_sql(expression.args["group"]))
         if expression.args.get("having"):
-            sql.append(str(expression.args["having"]))
+            sql.append(self.generate_sql(expression.args["having"]))
         if expression.args.get("order"):
-            sql.append(str(expression.args["order"]))
+            sql.append(self.generate_sql(expression.args["order"]))
         if expression.args.get("limit"):
-            sql.append(str(expression.args.get("limit")))
+            sql.append(self.generate_sql(expression.args.get("limit")))
         if expression.args.get("offset"):
-            sql.append(str(expression.args.get("offset")))
+            sql.append(self.generate_sql(expression.args.get("offset")))
         return maybe_parse(" ".join(sql), dialect=CompilerDialect)
 
     def optimize_rewrite_right_join(self, expression, config, arguments):
@@ -2687,33 +2729,33 @@ class Compiler(object):
 
         sql = ["SELECT"]
         if expression.args.get("distinct"):
-            sql.append(str(expression.args["distinct"]))
-        sql.append(", ".join([str(select_expression) for select_expression in expression.args["expressions"]]))
-        sql.append("FROM " + str(selected_table["table_expression"]))
+            sql.append(self.generate_sql(expression.args["distinct"]))
+        sql.append(", ".join([self.generate_sql(select_expression) for select_expression in expression.args["expressions"]]))
+        sql.append("FROM " + self.generate_sql(selected_table["table_expression"]))
         for join_table in join_tables:
             if join_table["join_type"] == "right":
                 return expression
-            sql.append("LEFT JOIN " + str(join_table["table_expression"]))
+            sql.append("LEFT JOIN " + self.generate_sql(join_table["table_expression"]))
             on_expressions = join_table["on_expressions"] + join_table["const_expressions"] + join_table["calcuate_expressions"]
             if on_expressions:
-                sql.append("ON " + " AND ".join([str(on_expression) for on_expression in on_expressions]))
+                sql.append("ON " + " AND ".join([self.generate_sql(on_expression) for on_expression in on_expressions]))
 
         where_expressions = selected_table["const_expressions"] + primary_table["calcuate_expressions"] + selected_table["calcuate_expressions"]
         if where_expressions:
-            sql.append("WHERE " + " AND ".join([("(" + str(where_expression) + ")")
+            sql.append("WHERE " + " AND ".join([("(" + self.generate_sql(where_expression) + ")")
                                                 if isinstance(where_expression, sqlglot_expressions.Or)
-                                                else str(where_expression)
+                                                else self.generate_sql(where_expression)
                                                 for where_expression in where_expressions]))
         if expression.args.get("group"):
-            sql.append(str(expression.args["group"]))
+            sql.append(self.generate_sql(expression.args["group"]))
         if expression.args.get("having"):
-            sql.append(str(expression.args["having"]))
+            sql.append(self.generate_sql(expression.args["having"]))
         if expression.args.get("order"):
-            sql.append(str(expression.args["order"]))
+            sql.append(self.generate_sql(expression.args["order"]))
         if expression.args.get("limit"):
-            sql.append(str(expression.args.get("limit")))
+            sql.append(self.generate_sql(expression.args.get("limit")))
         if expression.args.get("offset"):
-            sql.append(str(expression.args.get("offset")))
+            sql.append(self.generate_sql(expression.args.get("offset")))
         return maybe_parse(" ".join(sql), dialect=CompilerDialect)
 
     def optimize_rewrite_inner_join(self, expression, config, arguments):
@@ -2745,33 +2787,33 @@ class Compiler(object):
 
         sql = ["SELECT"]
         if expression.args.get("distinct"):
-            sql.append(str(expression.args["distinct"]))
-        sql.append(", ".join([str(select_expression) for select_expression in expression.args["expressions"]]))
-        sql.append(str(expression.args["from"]))
+            sql.append(self.generate_sql(expression.args["distinct"]))
+        sql.append(", ".join([self.generate_sql(select_expression) for select_expression in expression.args["expressions"]]))
+        sql.append(self.generate_sql(expression.args["from"]))
         for join_expression in expression.args["joins"]:
-            sql.append("LEFT JOIN " + str(join_expression.args["this"]))
+            sql.append("LEFT JOIN " + self.generate_sql(join_expression.args["this"]))
             if join_expression.args.get("on"):
-                sql.append("ON " + str(join_expression.args["on"]))
+                sql.append("ON " + self.generate_sql(join_expression.args["on"]))
 
         inner_condition_sql = " AND ".join(["%s.%s IS NOT NULL" % (calculate_field["table_name"], calculate_field["column_name"])
                                             for calculate_field in inner_calculate_fields])
         if expression.args.get("where"):
             if isinstance(expression.args["where"].args["this"], sqlglot_expressions.Or):
-                sql.append("WHERE (" + str(expression.args["where"].args["this"]) + ") AND " + inner_condition_sql)
+                sql.append("WHERE (" + self.generate_sql(expression.args["where"].args["this"]) + ") AND " + inner_condition_sql)
             else:
-                sql.append("WHERE " + str(expression.args["where"].args["this"]) + " AND " + inner_condition_sql)
+                sql.append("WHERE " + self.generate_sql(expression.args["where"].args["this"]) + " AND " + inner_condition_sql)
         else:
             sql.append("WHERE " + inner_condition_sql)
         if expression.args.get("group"):
-            sql.append(str(expression.args["group"]))
+            sql.append(self.generate_sql(expression.args["group"]))
         if expression.args.get("having"):
-            sql.append(str(expression.args["having"]))
+            sql.append(self.generate_sql(expression.args["having"]))
         if expression.args.get("order"):
-            sql.append(str(expression.args["order"]))
+            sql.append(self.generate_sql(expression.args["order"]))
         if expression.args.get("limit"):
-            sql.append(str(expression.args.get("limit")))
+            sql.append(self.generate_sql(expression.args.get("limit")))
         if expression.args.get("offset"):
-            sql.append(str(expression.args.get("offset")))
+            sql.append(self.generate_sql(expression.args.get("offset")))
         return maybe_parse(" ".join(sql), dialect=CompilerDialect)
 
     def optimize_rewrite_parse_table(self, expression, config, arguments, table_expression):
@@ -2829,9 +2871,14 @@ class Compiler(object):
         else:
             calcuate_expressions.append(condition_expression)
 
+    def generate_sql(self, expression):
+        if isinstance(expression, sqlglot_expressions.Expression):
+            return expression.sql(dialect=CompilerDialect)
+        return str(expression)
+
     def to_sql(self, expression_sql):
         if not isinstance(expression_sql, str):
-            expression_sql = str(expression_sql)
+            expression_sql = self.generate_sql(expression_sql)
         parser = SqlParser(expression_sql)
         segments = []
         last_start_index, last_end_index = 0, 0

@@ -11,6 +11,8 @@ class CurrentEnvVariableCalculater(Calculater):
 
         if self.name[22:] == "get_value":
             self.func = self.get_value
+        elif self.name[22:] == "set_value":
+            self.func = self.set_value
         else:
             self.func = lambda *args: None
 
@@ -23,3 +25,10 @@ class CurrentEnvVariableCalculater(Calculater):
         if not current_executor:
             return None
         return current_executor.env_variables.get_value(key)
+
+    def set_value(self, key, value):
+        from ..executor import Executor
+        current_executor = Executor.current()
+        if current_executor:
+            current_executor.env_variables[key] = value
+        return value
