@@ -1554,8 +1554,17 @@ class Compiler(object):
                 typing_filter = "datetime"
             elif to_type == sqlglot_expressions.DataType.Type.TIME:
                 typing_filter = "time"
-            elif to_type == sqlglot_expressions.DataType.TEXT_TYPES:
+            elif to_type in sqlglot_expressions.DataType.TEXT_TYPES:
                 typing_filter = "str"
+            elif to_type == sqlglot_expressions.DataType.Type.BOOLEAN:
+                typing_filter = "bool"
+            elif to_type in (sqlglot_expressions.DataType.Type.DECIMAL, sqlglot_expressions.DataType.Type.BIGDECIMAL):
+                typing_filter = "decimal"
+            elif to_type == sqlglot_expressions.DataType.Type.UUID:
+                typing_filter = "uuid"
+            elif to_type in (sqlglot_expressions.DataType.Type.BINARY, sqlglot_expressions.DataType.Type.VARBINARY,
+                             sqlglot_expressions.DataType.Type.MEDIUMBLOB, sqlglot_expressions.DataType.Type.LONGBLOB):
+                typing_filter = "bytes"
             else:
                 typing_filter = None
             value_column = self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
