@@ -2468,9 +2468,9 @@ class Compiler(object):
                 value = self.env_variables.get_value("@" + name)
                 if isinstance(value, (int, float, bool)):
                     typing_filter = str(type(value).__name__)
-                value_getter = ["@current_env_variable::get_value", ["#const", "@" + name]]
             except KeyError:
-                raise SyncanySqlCompileException('unkonw parameter variable, related sql "%s"' % self.to_sql(expression))
+                value = None
+            value_getter = ["@current_env_variable::get_value", ["#const", "@" + name]]
         else:
             value = None
         return {

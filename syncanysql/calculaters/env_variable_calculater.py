@@ -24,7 +24,10 @@ class CurrentEnvVariableCalculater(Calculater):
         current_executor = Executor.current()
         if not current_executor:
             return None
-        return current_executor.env_variables.get_value(key)
+        try:
+            return current_executor.env_variables.get_value(key)
+        except KeyError:
+            return None
 
     def set_value(self, key, value):
         from ..executor import Executor
