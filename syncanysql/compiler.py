@@ -2283,6 +2283,14 @@ class Compiler(object):
         if expression.args.get("catalog"):
             db_name, table_name = expression.args["catalog"].name, ((db_name + ".") if db_name else "") + table_name
         table_alias = expression.args["alias"].args["this"].name if expression.args.get("alias") else None
+        use_output_type = arguments.get("@use_output_type")
+        if use_output_type and isinstance(use_output_type, str):
+            use_output_type = use_output_type.upper()
+            output_type_names = {"INSERT": "I", "UPDATE_INSERT": "UI", "UPDATE_DELETE_INSERT": "UDI", "DELETE_INSERT": "DI"}
+            if use_output_type in output_type_names:
+                use_output_type = output_type_names[use_output_type]
+            if use_output_type not in typing_options:
+                typing_options.append(use_output_type)
 
         if table_name in ("_", "."):
             db_name, table_name = "-", "&1"
