@@ -80,6 +80,8 @@ class QueryTaskerTemporaryMemoryManager(object):
 
 
 class QueryTasker(object):
+    ENV_ARGUMENTS = {key.lower(): value for key, value in os.environ.items()}
+
     def __init__(self, config, sql_expression=None, temporary_memory_manager=None):
         self.name = config.get("name", "")
         self.config = config
@@ -397,8 +399,7 @@ class QueryTasker(object):
 
     def compile_tasker(self, arguments, tasker):
         tasker.load()
-        compile_arguments = {}
-        compile_arguments.update({key.lower(): value for key, value in os.environ.items()})
+        compile_arguments = dict(**self.ENV_ARGUMENTS)
         compile_arguments.update(arguments)
         if self.is_local_memory_database(tasker.config):
             if isinstance(tasker.config["input"], str) and "&.--." in tasker.config["input"] and not arguments.get("@loop", False):
