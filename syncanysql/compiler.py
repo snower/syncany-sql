@@ -88,9 +88,6 @@ class CompilerDialect(sqlglot_dialects.Dialect):
             **sqlglot_generator.Generator.TRANSFORMS,
             AssignParameter: lambda self, e: self.assign_parameter_sql(e),
         }
-        sqlglot_generator.Generator.TRANSFORMS.update({
-            AssignParameter: lambda self, e: CompilerDialect.Generator.assign_parameter_sql(self, e),
-        })
 
         def assign_parameter_sql(self, expression):
             this = self.sql(expression, "this")
