@@ -370,7 +370,8 @@ class Compiler(object):
                         subquery_config["schema"][union_column_names[i]] = subquery_config["schema"][subquery_column_names[i]]
             config["dependencys"].append(subquery_config)
         config["input"] = "&.--." + query_name + "::" + config["dependencys"][0]["output"].split("::")[-1].split(" ")[0]
-        config["output"] = config["output"].split("::")[0] + "::" + config["input"].split("::")[-1].split(" ")[0]
+        config["output"] = config["output"].split("::")[0] + "::" + config["input"].split("::")[-1].split(" ")[0] + " use " + (
+            config["output"].split(" use ")[-1] if " use " in config["output"] else (arguments.get("@use_output") or "I"))
         arguments["@primary_order"] = False
         arguments["@limit"] = 0
 
@@ -676,9 +677,11 @@ class Compiler(object):
                 primary_table["loader_primary_keys"], primary_table["outputer_primary_keys"], primary_table["seted_primary_keys"] = [], [], True
             primary_table["loader_primary_keys"].append(column_info["column_name"])
             primary_table["outputer_primary_keys"].append(column_alias)
-        elif not primary_table["seted_primary_keys"] and not primary_table["outputer_primary_keys"]:
+        elif not primary_table["seted_primary_keys"] and not primary_table["loader_primary_keys"]:
             if not column_info["table_name"] or column_info["table_name"] == primary_table["table_name"]:
-                primary_table["loader_primary_keys"], primary_table["outputer_primary_keys"] = [column_info["column_name"]], [column_alias]
+                primary_table["loader_primary_keys"] = [column_info["column_name"]]
+                if not primary_table["outputer_primary_keys"]:
+                    primary_table["outputer_primary_keys"] = [column_alias]
 
     def compile_select_calculate_column(self, expression, config, arguments, primary_table, column_alias, join_tables, parse_primary_key=True):
         calculate_fields = []
@@ -702,13 +705,14 @@ class Compiler(object):
         else:
             config["schema"][column_alias] = self.compile_calculate(expression, config, arguments, primary_table, [])
         primary_table["select_columns"][column_alias] = expression
-        if parse_primary_key and not primary_table["seted_primary_keys"] and not primary_table["outputer_primary_keys"] \
-                and column_alias.isidentifier():
+        if parse_primary_key and not primary_table["seted_primary_keys"] and not primary_table["outputer_primary_keys"] and column_alias.isidentifier():
             loader_primary_keys = [calculate_field["column_name"] for calculate_field in calculate_fields
                                    if calculate_field["column_name"].isidentifier() and
                                    (not calculate_field["table_name"] or calculate_field["table_name"] == primary_table["table_name"])]
             if loader_primary_keys:
                 primary_table["loader_primary_keys"], primary_table["outputer_primary_keys"] = loader_primary_keys, [column_alias]
+            else:
+                primary_table["outputer_primary_keys"] = [column_alias]
 
     def compile_join_column_tables(self, expression, config, arguments, primary_table, current_join_tables, join_tables,
                                    column_join_tables):
