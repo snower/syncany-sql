@@ -346,12 +346,13 @@ class Compiler(object):
         parse(expression)
 
         query_name = "__unionquery_" + str(uuid.uuid1().int)
-        union_column_names = None
+        union_column_names, output_primary_key, output_type = None, None, "I"
         for select_expression in select_expressions:
             subquery_name = "__unionquery_" + str(uuid.uuid1().int)
             subquery_arguments = {key: arguments[key] for key in CONST_CONFIG_KEYS if key in arguments}
             subquery_config = self.compile_query(select_expression, subquery_arguments)
-            subquery_config["output"] = "&.--." + query_name + "::" + subquery_config["output"].split("::")[-1].split(" use ")[0] + " use I"
+            output_primary_key_type_info = subquery_config["output"].split("::")[-1].split(" use ")
+            subquery_config["output"] = "&.--." + query_name + "::" + output_primary_key_type_info[0] + " use I"
             subquery_config["name"] = subquery_config["name"] + "#" + subquery_name[2:]
             arguments.update({subquery_config["name"] + "@" + key: value for key, value in subquery_arguments.items()})
             if isinstance(subquery_config["schema"], dict):
@@ -368,10 +369,13 @@ class Compiler(object):
                         if union_column_names[i] == subquery_column_names[i]:
                             continue
                         subquery_config["schema"][union_column_names[i]] = subquery_config["schema"][subquery_column_names[i]]
+            if output_primary_key is None:
+                output_primary_key = output_primary_key_type_info[0]
+            if output_type == "I" and len(output_primary_key_type_info) >= 2:
+                output_type = output_primary_key_type_info[1].strip()
             config["dependencys"].append(subquery_config)
-        config["input"] = "&.--." + query_name + "::" + config["dependencys"][0]["output"].split("::")[-1].split(" ")[0]
-        config["output"] = config["output"].split("::")[0] + "::" + config["input"].split("::")[-1].split(" ")[0] + " use " + (
-            config["output"].split(" use ")[-1] if " use " in config["output"] else (arguments.get("@use_output") or "I"))
+        config["input"] = "&.--." + query_name + "::" + output_primary_key
+        config["output"] = config["output"].split("::")[0] + "::" + output_primary_key + " use " + output_type
         arguments["@primary_order"] = False
         arguments["@limit"] = 0
 
