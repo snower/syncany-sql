@@ -1317,7 +1317,12 @@ class Compiler(object):
                                                      join_tables, value_expressions) if value_expressions else None
             is_window_aggregate_calculate, aggregate_calculate, final_calculate = self.compile_window_calculate(window_expressions[i])
             partition_calculate = "$.partition_key" if partition_column is not None else None
-            order_calculate = {"valuer": "$.order_key", "orders": order_column["orders"]} if order_column is not None else None
+            if order_column is not None:
+                order_calculate = {"valuer": "$.order_key", "orders": order_column["orders"]}
+            elif is_window_aggregate_calculate:
+                order_calculate = {"valuer": ["#const", 0], "orders": []}
+            else:
+                order_calculate = None
             value_calculate = "$.value" if value_column is not None else None
             if is_window_aggregate_calculate:
                 aggregate_calculate = [":#partition", partition_calculate, order_calculate, value_calculate,
