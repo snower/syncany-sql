@@ -1446,10 +1446,7 @@ class Compiler(object):
             calculater_name = expression.args["this"].args["this"].lower()
             try:
                 aggregate_calculater = find_window_aggregate_calculater(calculater_name)
-                if expression.args.get("order"):
-                    return (True, "@" + calculater_name + "::order_aggregate",
-                            ("@" + calculater_name + "::final_value" if hasattr(aggregate_calculater, "final_value") else None))
-                return (True, "@" + calculater_name + "::aggregate",
+                return (True, "@" + calculater_name + "::order_aggregate",
                         ("@" + calculater_name + "::final_value" if hasattr(aggregate_calculater, "final_value") else None))
             except CalculaterUnknownException:
                 aggregate_calculate, reduce_calculate, final_calculate = self.compile_aggregate_calculate(expression.args["this"])

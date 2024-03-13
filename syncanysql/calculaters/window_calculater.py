@@ -112,40 +112,50 @@ class WindowStateAggregatePercentRankCalculater(WindowStateAggregateCalculater):
         return FloatFilter.default()
 
 
-class WindowStateAggregateLagCalculater(WindowStateAggregateCalculater):
+class WindowAggregateLagCalculater(WindowAggregateCalculater):
     def order_aggregate(self, state_value, data_value, context):
         if isinstance(data_value, list):
             offset = int(data_value[1]) if len(data_value) >= 2 else 1
             offset_index = context.current_index - offset
             if offset_index < 0 or offset_index >= len(context.datas):
                 return data_value[2] if len(data_value) >= 3 else None
-            return context.datas[offset_index][2].value[0]
+            valuer_id = context.partition_calculater.calculate_valuer.valuer_id
+            for partition_calculater in context.datas[offset_index][2]:
+                if partition_calculater.calculate_valuer.valuer_id == valuer_id:
+                    return partition_calculater.value[0]
+            return None
 
         offset_index = context.current_index - 1
         if offset_index < 0 or offset_index >= len(context.datas):
             return None
-        return context.datas[offset_index][2].value
+        valuer_id = context.partition_calculater.calculate_valuer.valuer_id
+        for partition_calculater in context.datas[offset_index][2]:
+            if partition_calculater.calculate_valuer.valuer_id == valuer_id:
+                return partition_calculater.value
+        return None
 
-    def final_value(self, state_value):
-        return state_value
 
-
-class WindowStateAggregateLeadCalculater(WindowStateAggregateCalculater):
+class WindowAggregateLeadCalculater(WindowAggregateCalculater):
     def order_aggregate(self, state_value, data_value, context):
         if isinstance(data_value, list):
             offset = int(data_value[1]) if len(data_value) >= 2 else 1
             offset_index = context.current_index + offset
             if offset_index < 0 or offset_index >= len(context.datas):
                 return data_value[2] if len(data_value) >= 3 else None
-            return context.datas[offset_index][2].value[0]
+            valuer_id = context.partition_calculater.calculate_valuer.valuer_id
+            for partition_calculater in context.datas[offset_index][2]:
+                if partition_calculater.calculate_valuer.valuer_id == valuer_id:
+                    return partition_calculater.value[0]
+            return None
 
         offset_index = context.current_index + 1
         if offset_index < 0 or offset_index >= len(context.datas):
             return None
-        return context.datas[offset_index][2].value
-
-    def final_value(self, state_value):
-        return state_value
+        valuer_id = context.partition_calculater.calculate_valuer.valuer_id
+        for partition_calculater in context.datas[offset_index][2]:
+            if partition_calculater.calculate_valuer.valuer_id == valuer_id:
+                return partition_calculater.value
+        return None
 
 
 class WindowStateAggregateCumeDistCalculater(WindowAggregateCalculater):

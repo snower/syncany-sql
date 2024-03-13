@@ -125,3 +125,18 @@ class WindowAggregateExampleTestCase(ExampleTestCase):
              'vd': '李四,李四'},
             {'order_id': 6, 'name': '李四', 'goods_name': '白菜', 'va': {'李四', '王五'}, 'vb': {'李四'}, 'vc': {'李四'},
              'vd': '李四,李四,李四'}], "data error")
+
+        self.assert_data(65, [{'order_id': 1, 'uid': 2, 'goods_id': 1, 'rn': 1, 'lag': None, 'lead': 2},
+                              {'order_id': 2, 'uid': 1, 'goods_id': 1, 'rn': 2, 'lag': 1, 'lead': 3},
+                              {'order_id': 3, 'uid': 2, 'goods_id': 2, 'rn': 3, 'lag': 2, 'lead': 4},
+                              {'order_id': 4, 'uid': 1, 'goods_id': 1, 'rn': 4, 'lag': 3, 'lead': 5},
+                              {'order_id': 5, 'uid': 2, 'goods_id': 1, 'rn': 5, 'lag': 4, 'lead': 6},
+                              {'order_id': 6, 'uid': 2, 'goods_id': 2, 'rn': 6, 'lag': 5, 'lead': None}], "data error")
+
+        self.assert_data(67, [{'order_id': 1, 'uid': 2, 'goods_id': 1, 'rn': 1, 'lag': 0, 'lead': 0},
+                              {'order_id': 2, 'uid': 1, 'goods_id': 1, 'rn': 2, 'lag': 0, 'lead': 0},
+                              {'order_id': 3, 'uid': 2, 'goods_id': 2, 'rn': 3, 'lag': 1, 'lead': 1},
+                              {'order_id': 4, 'uid': 1, 'goods_id': 1, 'rn': 4, 'lag': 2, 'lead': 2},
+                              {'order_id': 5, 'uid': 2, 'goods_id': 1, 'rn': 5, 'lag': 3, 'lead': 3},
+                              {'order_id': 6, 'uid': 2, 'goods_id': 2, 'rn': 6, 'lag': 4, 'lead': 4}], "data error")
+

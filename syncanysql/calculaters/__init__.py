@@ -37,8 +37,8 @@ SQL_CALCULATERS = {
     "dense_rank": WindowStateAggregateDenseRankCalculater,
     "percent_rank": WindowStateAggregatePercentRankCalculater,
     "cume_dist": WindowStateAggregateCumeDistCalculater,
-    "lag": WindowStateAggregateLagCalculater,
-    "lead": WindowStateAggregateLeadCalculater,
+    "lag": WindowAggregateLagCalculater,
+    "lead": WindowAggregateLeadCalculater,
 }
 CALCULATERS.update(SQL_CALCULATERS)
 
