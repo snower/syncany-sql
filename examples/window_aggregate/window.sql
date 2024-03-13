@@ -66,3 +66,6 @@ select order_id, uid, goods_id, row_number() over() as rn, lag(order_id) over() 
 
 select order_id, uid, goods_id, row_number() over(order by order_id) as rn, lag(order_id, 2, 0) over(order by order_id) as lag,
  lead(order_id, 2, 0) over(order by order_id desc) as lead from `data/orders.json` where status=0 order by order_id;
+
+select order_id, uid, goods_id, row_number() over(order by order_id) + 2 as rn, (lag(order_id, 2, 0) over(order by order_id)
+    + lead(order_id, 2, 0) over(order by order_id desc)) * 3 as lead from `data/orders.json` where status=0 order by order_id;

@@ -39,7 +39,7 @@ select aggregate_unique(uid) as uids, aggregate_join(order_id) as order_ids from
 
 select uid, aggregate_unique(goods_id) as goods_ids, aggregate_join(order_id) as order_ids from `data/orders.json` where status=0 group by uid;
 
-select uid, length(aggregate_join(order_id)) / 100 as avg_amount from `data/orders.json` where status=0 group by uid;
+select uid, length(aggregate_join(order_id)) / 100 as avg_amount, (length(aggregate_join(order_id)) / count(*) + 1) / 100 as percent from `data/orders.json` where status=0 group by uid;
 
 select b.name, c.goods_name, aggregate_unique(b.name) as names, aggregate_join(c.goods_name) as goods_namees from `data/orders.json` a
     join `data/users.json` b on a.uid=b.uid

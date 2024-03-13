@@ -47,12 +47,12 @@ class WindowAggregateExampleTestCase(ExampleTestCase):
                           {'order_id': 6, 'uid': 2, 'goods_id': 2, 'rn': 3, 'rk': 3, 'drk': 3,
                            'prk': 1.6666666666666665, 'cd': 3.25}], "data error")
 
-        self.assert_data(17, [{'order_id': 1, 'uid': 2, 'goods_id': 1, 'c': 1.25, 'a': 2, 'b': 0.0},
-                              {'order_id': 2, 'uid': 1, 'goods_id': 1, 'c': 2.5, 'a': 4, 'b': 0.1},
-                              {'order_id': 3, 'uid': 2, 'goods_id': 2, 'c': 4.25, 'a': 8, 'b': 1.1},
-                              {'order_id': 4, 'uid': 1, 'goods_id': 1, 'c': 1.5, 'a': 2, 'b': 0.0},
-                              {'order_id': 5, 'uid': 2, 'goods_id': 1, 'c': 2.25, 'a': 4, 'b': 0.1},
-                              {'order_id': 6, 'uid': 2, 'goods_id': 2, 'c': 3.25, 'a': 6, 'b': 0.5}], "data error")
+        self.assert_data(17, [{'order_id': 1, 'uid': 2, 'goods_id': 1, 'a': 2, 'b': 0.0, 'c': 125.0},
+                              {'order_id': 2, 'uid': 1, 'goods_id': 1, 'a': 4, 'b': 0.1, 'c': 250.0},
+                              {'order_id': 3, 'uid': 2, 'goods_id': 2, 'a': 8, 'b': 1.1, 'c': 425.0},
+                              {'order_id': 4, 'uid': 1, 'goods_id': 1, 'a': 2, 'b': 0.0, 'c': 150.0},
+                              {'order_id': 5, 'uid': 2, 'goods_id': 1, 'a': 4, 'b': 0.1, 'c': 225.0},
+                              {'order_id': 6, 'uid': 2, 'goods_id': 2, 'a': 6, 'b': 0.5, 'c': 325.0}], "data error")
 
         self.assert_data(21, [
             {'order_id': 1, 'name': '李四', 'goods_name': '青菜', 'order_cnt': 6, 'uorder_cnt': 4, 'goods_cnt': 2},
@@ -95,12 +95,12 @@ class WindowAggregateExampleTestCase(ExampleTestCase):
             {'order_id': 6, 'name': '李四', 'goods_name': '白菜', 'rn': 3, 'rk': 3, 'drk': 3, 'prk': 1.6666666666666665,
              'cd': 3.25}], "data error")
 
-        self.assert_data(47, [{'order_id': 1, 'name': '李四', 'goods_name': '青菜', 'c': 1.25, 'a': 2, 'b': 0.0},
-                              {'order_id': 2, 'name': '王五', 'goods_name': '青菜', 'c': 2.5, 'a': 4, 'b': 0.1},
-                              {'order_id': 3, 'name': '李四', 'goods_name': '白菜', 'c': 4.25, 'a': 8, 'b': 1.1},
-                              {'order_id': 4, 'name': '王五', 'goods_name': '青菜', 'c': 1.5, 'a': 2, 'b': 0.0},
-                              {'order_id': 5, 'name': '李四', 'goods_name': '青菜', 'c': 2.25, 'a': 4, 'b': 0.1},
-                              {'order_id': 6, 'name': '李四', 'goods_name': '白菜', 'c': 3.25, 'a': 6, 'b': 0.5}],
+        self.assert_data(47, [{'order_id': 1, 'name': '李四', 'goods_name': '青菜', 'a': 2, 'b': 0.0, 'c': 125.0},
+                              {'order_id': 2, 'name': '王五', 'goods_name': '青菜', 'a': 4, 'b': 0.1, 'c': 250.0},
+                              {'order_id': 3, 'name': '李四', 'goods_name': '白菜', 'a': 8, 'b': 1.1, 'c': 425.0},
+                              {'order_id': 4, 'name': '王五', 'goods_name': '青菜', 'a': 2, 'b': 0.0, 'c': 150.0},
+                              {'order_id': 5, 'name': '李四', 'goods_name': '青菜', 'a': 4, 'b': 0.1, 'c': 225.0},
+                              {'order_id': 6, 'name': '李四', 'goods_name': '白菜', 'a': 6, 'b': 0.5, 'c': 325.0}],
                          "data error")
 
         self.assert_data(56, [{'order_id': 1, 'uid': 2, 'goods_id': 1, 'va': {1, 2}, 'vb': {2}, 'vc': {2}, 'vd': '2'},
@@ -140,3 +140,9 @@ class WindowAggregateExampleTestCase(ExampleTestCase):
                               {'order_id': 5, 'uid': 2, 'goods_id': 1, 'rn': 5, 'lag': 3, 'lead': 3},
                               {'order_id': 6, 'uid': 2, 'goods_id': 2, 'rn': 6, 'lag': 4, 'lead': 4}], "data error")
 
+        self.assert_data(70, [{'order_id': 1, 'uid': 2, 'goods_id': 1, 'rn': 3, 'lead': 0},
+                              {'order_id': 2, 'uid': 1, 'goods_id': 1, 'rn': 4, 'lead': 0},
+                              {'order_id': 3, 'uid': 2, 'goods_id': 2, 'rn': 5, 'lead': 6},
+                              {'order_id': 4, 'uid': 1, 'goods_id': 1, 'rn': 6, 'lead': 12},
+                              {'order_id': 5, 'uid': 2, 'goods_id': 1, 'rn': 7, 'lead': 18},
+                              {'order_id': 6, 'uid': 2, 'goods_id': 2, 'rn': 8, 'lead': 24}], "data error")

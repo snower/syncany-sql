@@ -1342,7 +1342,7 @@ class Compiler(object):
             if value_column is not None:
                 window_aggregate_column[1]["value"] = value_column[0] if len(value_column) == 1 else ["#make", value_column]
 
-            if len(window_expressions) > 1:
+            if window_expressions or window_expressions[0] is not expression:
                 aggregate_column_alias = "__window_aggregate_value_%d__" % id(window_expressions[i])
                 config["schema"][aggregate_column_alias] = window_aggregate_column
                 setattr(window_expressions[i], "syncany_valuer", "$." + aggregate_column_alias)
@@ -1353,7 +1353,7 @@ class Compiler(object):
                 config["schema"][column_alias] = window_aggregate_column
                 config["aggregate"]["window_schema"][column_alias]["aggregate"] = copy.deepcopy(window_aggregate_column)
 
-        if len(window_expressions) > 1:
+        if window_expressions or window_expressions[0] is not expression:
             self.compile_select_calculate_column(expression, config, arguments, primary_table, column_alias, join_tables, False)
             config["aggregate"]["window_schema"][column_alias]["final_value"] = config["schema"].pop(column_alias, None)
         primary_table["select_columns"][column_alias] = expression
@@ -2247,7 +2247,7 @@ class Compiler(object):
     def parse_aggregate(self, expression, config, arguments, aggregate_expressions):
         if self.is_aggregate(expression, config, arguments):
             aggregate_expressions.append(expression)
-        if not self.is_calculate(expression, config, arguments):
+        if not self.is_calculate(expression, config, arguments) and not isinstance(expression, sqlglot_expressions.Paren):
             return
         for _, child_expression in expression.args.items():
             if isinstance(child_expression, list):
@@ -2259,7 +2259,7 @@ class Compiler(object):
     def parse_window_aggregate(self, expression, config, arguments, window_aggregate_expressions):
         if self.is_window_aggregate(expression, config, arguments):
             window_aggregate_expressions.append(expression)
-        if not self.is_calculate(expression, config, arguments):
+        if not self.is_calculate(expression, config, arguments) and not isinstance(expression, sqlglot_expressions.Paren):
             return
         for _, child_expression in expression.args.items():
             if isinstance(child_expression, list):

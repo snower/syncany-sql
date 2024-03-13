@@ -58,7 +58,8 @@ class AggregateExampleTestCase(ExampleTestCase):
         self.assert_data(40, [{'uid': 2, 'goods_ids': {1, 2}, 'order_ids': '1,3,5,6'},
                               {'uid': 1, 'goods_ids': {1}, 'order_ids': '2,4'}], "data error")
 
-        self.assert_data(42, [{'uid': 2, 'avg_amount': 0.07}, {'uid': 1, 'avg_amount': 0.03}], "data error")
+        self.assert_data(42, [{'uid': 2, 'avg_amount': 0.07, 'percent': 0.0275},
+                              {'uid': 1, 'avg_amount': 0.03, 'percent': 0.025}], "data error")
 
         self.assert_data(44, [
             {'name': '李四', 'goods_name': '青菜', 'names': {'李四', '王五'}, 'goods_namees': '青菜,青菜,白菜,青菜,青菜,白菜'}],
