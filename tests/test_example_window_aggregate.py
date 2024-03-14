@@ -146,3 +146,11 @@ class WindowAggregateExampleTestCase(ExampleTestCase):
                               {'order_id': 4, 'uid': 1, 'goods_id': 1, 'rn': 6, 'lead': 12},
                               {'order_id': 5, 'uid': 2, 'goods_id': 1, 'rn': 7, 'lead': 18},
                               {'order_id': 6, 'uid': 2, 'goods_id': 2, 'rn': 8, 'lead': 24}], "data error")
+
+        self.assert_data(73, [{'order_id': 1, 'uid': 2, 'goods_id': 1, 'fuid': 2, 'luid': 2, 'nuid': 1, 'bi': 1},
+                              {'order_id': 2, 'uid': 1, 'goods_id': 1, 'fuid': 2, 'luid': 2, 'nuid': 1, 'bi': 2},
+                              {'order_id': 3, 'uid': 2, 'goods_id': 2, 'fuid': 2, 'luid': 2, 'nuid': 2, 'bi': 1},
+                              {'order_id': 4, 'uid': 1, 'goods_id': 1, 'fuid': 2, 'luid': 2, 'nuid': 1, 'bi': 3},
+                              {'order_id': 5, 'uid': 2, 'goods_id': 1, 'fuid': 2, 'luid': 2, 'nuid': 1, 'bi': 4},
+                              {'order_id': 6, 'uid': 2, 'goods_id': 2, 'fuid': 2, 'luid': 2, 'nuid': 2, 'bi': 3}],
+                         "data error")

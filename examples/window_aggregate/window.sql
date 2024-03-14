@@ -69,3 +69,7 @@ select order_id, uid, goods_id, row_number() over(order by order_id) as rn, lag(
 
 select order_id, uid, goods_id, row_number() over(order by order_id) + 2 as rn, (lag(order_id, 2, 0) over(order by order_id)
     + lead(order_id, 2, 0) over(order by order_id desc)) * 3 as lead from `data/orders.json` where status=0 order by order_id;
+
+select order_id, uid, goods_id, first_value(uid) over w as fuid, last_value(uid) over w as luid,
+    nth_value(uid, 2) over w as nuid, ntile(4) over w as bi
+    from `data/orders.json` window w as (partition by goods_id order by order_id) order by order_id;
