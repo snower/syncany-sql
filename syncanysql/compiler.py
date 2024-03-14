@@ -1342,18 +1342,18 @@ class Compiler(object):
             if value_column is not None:
                 window_aggregate_column[1]["value"] = value_column[0] if len(value_column) == 1 else ["#make", value_column]
 
-            if window_expressions or window_expressions[0] is not expression:
+            if len(window_expressions) == 1 and window_expressions[0] is expression:
+                config["schema"][column_alias] = window_aggregate_column
+                config["aggregate"]["window_schema"][column_alias]["aggregate"] = copy.deepcopy(window_aggregate_column)
+            else:
                 aggregate_column_alias = "__window_aggregate_value_%d__" % id(window_expressions[i])
                 config["schema"][aggregate_column_alias] = window_aggregate_column
                 setattr(window_expressions[i], "syncany_valuer", "$." + aggregate_column_alias)
                 if not isinstance(config["aggregate"]["window_schema"][column_alias]["aggregate"], dict):
                     config["aggregate"]["window_schema"][column_alias]["aggregate"] = {}
                 config["aggregate"]["window_schema"][column_alias]["aggregate"][aggregate_column_alias] = copy.deepcopy(window_aggregate_column)
-            else:
-                config["schema"][column_alias] = window_aggregate_column
-                config["aggregate"]["window_schema"][column_alias]["aggregate"] = copy.deepcopy(window_aggregate_column)
 
-        if window_expressions or window_expressions[0] is not expression:
+        if not (len(window_expressions) == 1 and window_expressions[0] is expression):
             self.compile_select_calculate_column(expression, config, arguments, primary_table, column_alias, join_tables, False)
             config["aggregate"]["window_schema"][column_alias]["final_value"] = config["schema"].pop(column_alias, None)
         primary_table["select_columns"][column_alias] = expression

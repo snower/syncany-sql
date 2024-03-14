@@ -46,7 +46,7 @@ class WindowStateAggregateCalculater(WindowAggregateCalculater):
         return super(WindowStateAggregateCalculater, self).calculate(*args)
 
 
-class WindowStateAggregateRowNumberCalculater(WindowAggregateCalculater):
+class WindowAggregateRowNumberCalculater(WindowAggregateCalculater):
     def order_aggregate(self, state_value, data_value, context):
         return context.current_index + 1
 
@@ -54,7 +54,7 @@ class WindowStateAggregateRowNumberCalculater(WindowAggregateCalculater):
         return IntFilter.default()
 
 
-class WindowStateAggregateRankCalculater(WindowStateAggregateCalculater):
+class WindowAggregateRankCalculater(WindowStateAggregateCalculater):
     def order_aggregate(self, state_value, data_value, context):
         order_value = context.order_value
         if state_value is None:
@@ -73,7 +73,7 @@ class WindowStateAggregateRankCalculater(WindowStateAggregateCalculater):
         return IntFilter.default()
 
 
-class WindowStateAggregateDenseRankCalculater(WindowStateAggregateCalculater):
+class WindowAggregateDenseRankCalculater(WindowStateAggregateCalculater):
     def order_aggregate(self, state_value, data_value, context):
         order_value = context.order_value
         if state_value is None:
@@ -91,7 +91,7 @@ class WindowStateAggregateDenseRankCalculater(WindowStateAggregateCalculater):
         return IntFilter.default()
 
 
-class WindowStateAggregatePercentRankCalculater(WindowStateAggregateCalculater):
+class WindowAggregatePercentRankCalculater(WindowStateAggregateCalculater):
     def order_aggregate(self, state_value, data_value, context):
         order_value = context.order_value
         if state_value is None:
@@ -158,7 +158,7 @@ class WindowAggregateLeadCalculater(WindowAggregateCalculater):
         return None
 
 
-class WindowStateAggregateCumeDistCalculater(WindowAggregateCalculater):
+class WindowAggregateCumeDistCalculater(WindowAggregateCalculater):
     def order_aggregate(self, state_value, data_value, context):
         if not context.datas:
             return 0
