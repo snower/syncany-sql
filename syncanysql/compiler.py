@@ -1297,14 +1297,14 @@ class Compiler(object):
             aggregate_expression = window_expression.args["this"]
             if isinstance(aggregate_expression, sqlglot_expressions.Anonymous):
                 if aggregate_expression.args.get("expressions") and isinstance(aggregate_expression.args["expressions"][0], sqlglot_expressions.Distinct):
-                    raise SyncanySqlCompileException('error window distinct, only be used for the count function, related sql "%s"' %
+                    raise SyncanySqlCompileException('error window aggregate, only be used for the count function, related sql "%s"' %
                                                      self.to_sql(expression))
                 else:
                     value_expressions = aggregate_expression.args.get("expressions")
             else:
                 if isinstance(aggregate_expression.args.get("this"), sqlglot_expressions.Distinct):
                     if not isinstance(aggregate_expression, sqlglot_expressions.Count):
-                        raise SyncanySqlCompileException('error window distinct, only be used for the count function, related sql "%s"' %
+                        raise SyncanySqlCompileException('error window aggregate, only be used for the count function, related sql "%s"' %
                                                          self.to_sql(expression))
                     value_expressions = aggregate_expression.args.get("this").args.get("expressions")
                 else:
@@ -1313,12 +1313,16 @@ class Compiler(object):
                     else:
                         value_expressions = []
 
-            partition_expression, order_expression = window_expression.args.get("partition_by"), window_expression.args.get("order")
             if window_expression.args.get("alias"):
-                alias_name = window_expression.args["alias"].args["this"]
-                if alias_name in windows:
-                    window = windows[alias_name]
-                    partition_expression, order_expression = window.args.get("partition_by"), window.args.get("order")
+                window_alias_name = window_expression.args["alias"].args["this"]
+                if window_alias_name not in windows:
+                    raise SyncanySqlCompileException('error window aggregate, unknown window alias name, related sql "%s"'
+                                                     % self.to_sql(expression))
+                window = windows[window_alias_name]
+                partition_expression, order_expression = window.args.get("partition_by"), window.args.get("order")
+            else:
+                partition_expression = window_expression.args.get("partition_by")
+                order_expression = window_expression.args.get("order")
             partition_column = self.compile_window_key(partition_expression, config, arguments, primary_table,
                                                        join_tables) if partition_expression else None
             order_column = self.compile_window_order(order_expression, config, arguments, primary_table,
