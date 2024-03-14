@@ -37,6 +37,10 @@ SQL_CALCULATERS = {
     "dense_rank": WindowAggregateDenseRankCalculater,
     "percent_rank": WindowAggregatePercentRankCalculater,
     "cume_dist": WindowAggregateCumeDistCalculater,
+    "first_value": WindowAggregateFirstValueCalculater,
+    "last_value": WindowAggregateLastValueCalculater,
+    "nth_value": WindowAggregateNthValueCalculater,
+    "ntile": WindowAggregateNtileCalculater,
     "lag": WindowAggregateLagCalculater,
     "lead": WindowAggregateLeadCalculater,
 }
