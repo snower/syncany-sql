@@ -48,3 +48,5 @@ select b.name, c.goods_name, aggregate_unique(b.name) as names, aggregate_join(c
 select b.name, c.goods_name, aggregate_unique(b.name) as names, aggregate_join(c.goods_name) as goods_namees from `data/orders.json` a
     join `data/users.json` b on a.uid=b.uid
     join `data/goodses.json` c on a.goods_id=c.goods_id where a.status=0 group by b.name, c.goods_name;
+
+select uid, json_arrayagg(goods_id) as agoods_ids, json_objectagg(goods_id, order_id) as ogoods_ids from `data/orders.json` where status=0 group by uid;

@@ -2,8 +2,10 @@
 # 2023/3/21
 # create by: snower
 
+import datetime
+import json
 from syncany.calculaters.calculater import Calculater
-from syncany.filters import IntFilter, FloatFilter, ArrayFilter
+from syncany.filters import IntFilter, FloatFilter, ArrayFilter, StringFilter
 from ..utils import ensure_number, ensure_int
 
 
@@ -364,3 +366,77 @@ class AggregateGroupBitXorCalculater(AggregateCalculater):
 
     def get_final_filter(self):
         return IntFilter.default()
+
+
+class AggregateJsonArrayaggCalculater(StateAggregateCalculater):
+    def format_value(self, value):
+        if isinstance(value, datetime.date):
+            if isinstance(value, datetime.datetime):
+                return value.strftime("%Y-%m-%d %H:%M:%S")
+            return value.strftime("%Y-%m-%d")
+        if isinstance(value, datetime.time):
+            return value.strftime("%H:%M:%S")
+        return str(value)
+
+    def aggregate(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return [data_value]
+        state_value.append(data_value)
+        return state_value
+
+    def reduce(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return data_value
+        return state_value + data_value
+
+    def final_value(self, state_value):
+        if state_value is None:
+            return None
+        return json.dumps(state_value, ensure_ascii=False, default=self.format_value)
+
+    def get_final_filter(self):
+        return StringFilter.default()
+
+
+class AggregateJsonObjectaggCalculater(StateAggregateCalculater):
+    def format_value(self, value):
+        if isinstance(value, datetime.date):
+            if isinstance(value, datetime.datetime):
+                return value.strftime("%Y-%m-%d %H:%M:%S")
+            return value.strftime("%Y-%m-%d")
+        if isinstance(value, datetime.time):
+            return value.strftime("%H:%M:%S")
+        return str(value)
+
+    def aggregate(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            state_value = {}
+        if isinstance(data_value, list):
+            if len(data_value) >= 2:
+                state_value[self.format_value(data_value[0])] = data_value[1]
+            elif data_value:
+                state_value[self.format_value(data_value[0])] = None
+        else:
+            state_value[self.format_value(data_value)] = None
+        return state_value
+
+    def reduce(self, state_value, data_value):
+        if data_value is None:
+            return state_value
+        if state_value is None:
+            return data_value
+        return state_value.update(data_value)
+
+    def final_value(self, state_value):
+        if state_value is None:
+            return None
+        return json.dumps(state_value, ensure_ascii=False, default=self.format_value)
+
+    def get_final_filter(self):
+        return StringFilter.default()
