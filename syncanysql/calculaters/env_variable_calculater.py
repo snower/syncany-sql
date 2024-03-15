@@ -35,3 +35,6 @@ class CurrentEnvVariableCalculater(Calculater):
         if current_executor:
             current_executor.env_variables[key] = value
         return value
+
+    def is_realtime_calculater(self):
+        return True

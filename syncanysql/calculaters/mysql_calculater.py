@@ -37,3 +37,9 @@ class MysqlCalculater(Calculater):
         if hasattr(self.func, "get_final_filter"):
             return self.func.get_final_filter()
         return parse_final_filter(self.func)
+
+    def is_realtime_calculater(self):
+        if self.name[7:] in {"currenttimestamp", "curdate", "currentdate", "curtime", "currenttime",
+                             "sysdate", "unix_timestamp", "utc_date", "utc_time", "utc_timestamp"}:
+            return True
+        return False
