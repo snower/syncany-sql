@@ -33,6 +33,8 @@ class ReduceHooker(Hooker):
         self.batch_count = 0
 
     def outputed(self, tasker, datas):
+        if not datas:
+            return
         if self.batch > 0 and self.count > 0 and self.count + len(datas) >= self.batch:
             self.count, self.batch_count = 0, 1
             self.tasker.run_reduce(self.executor, self.session_config, self.manager, self.arguments, False)
