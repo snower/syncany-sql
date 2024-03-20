@@ -6,7 +6,7 @@ import datetime
 import json
 from syncany.calculaters.calculater import Calculater
 from syncany.filters import IntFilter, FloatFilter, ArrayFilter, StringFilter
-from ..utils import ensure_number, ensure_int
+from ..utils import NumberDecimalTypes, ensure_number, ensure_int
 
 
 class AggregateKeyCalculater(Calculater):
@@ -125,14 +125,14 @@ class AggregateDistinctCountCalculater(StateAggregateCalculater):
 class AggregateSumCalculater(AggregateCalculater):
     def aggregate(self, state_value, data_value):
         try:
-            if isinstance(data_value, (int, float)):
+            if isinstance(data_value, NumberDecimalTypes):
                 return state_value + data_value
             return state_value + ensure_number(data_value)
         except:
             if data_value is None:
                 return state_value or 0
             if state_value is None:
-                if isinstance(data_value, (int, float)):
+                if isinstance(data_value, NumberDecimalTypes):
                     return data_value
                 return ensure_number(data_value)
             return state_value
@@ -189,7 +189,7 @@ class AggregateAvgCalculater(StateAggregateCalculater):
     def aggregate(self, state_value, data_value):
         try:
             state_value["count_value"] += 1
-            if isinstance(data_value, (int, float)):
+            if isinstance(data_value, NumberDecimalTypes):
                 state_value["sum_value"] += data_value
             else:
                 state_value["sum_value"] += ensure_number(data_value)
@@ -200,7 +200,7 @@ class AggregateAvgCalculater(StateAggregateCalculater):
             if state_value is None:
                 if data_value is None:
                     return None
-                if isinstance(data_value, (int, float)):
+                if isinstance(data_value, NumberDecimalTypes):
                     return {"count_value": 1, "sum_value": data_value}
                 return {"count_value": 1, "sum_value": ensure_number(data_value)}
             return state_value

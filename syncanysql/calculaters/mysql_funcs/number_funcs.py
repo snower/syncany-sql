@@ -9,26 +9,38 @@ from ...utils import ensure_number, ensure_int
 
 @typing_filter(float)
 def mysql_add(x, y):
+    if x is None or y is None:
+        return None
     return ensure_number(x) + ensure_number(y)
 
 @typing_filter(float)
 def mysql_sub(x, y):
+    if x is None or y is None:
+        return None
     return ensure_number(x) - ensure_number(y)
 
 @typing_filter(float)
 def mysql_mul(x, y):
+    if x is None or y is None:
+        return None
     return ensure_number(x) * ensure_number(y)
 
 @typing_filter(float)
 def mysql_div(x, y):
+    if x is None or y is None:
+        return None
     return ensure_number(x) / ensure_number(y)
 
 @typing_filter(float)
 def mysql_mod(x, y):
+    if x is None or y is None:
+        return None
     return ensure_number(x) % ensure_number(y)
 
 @typing_filter(int)
 def mysql_bitwiseand(x, y):
+    if x is None or y is None:
+        return None
     try:
         return x & y
     except:
@@ -36,6 +48,8 @@ def mysql_bitwiseand(x, y):
 
 @typing_filter(int)
 def mysql_bitwiseor(x, y):
+    if x is None or y is None:
+        return None
     try:
         return x | y
     except:
@@ -43,6 +57,8 @@ def mysql_bitwiseor(x, y):
 
 @typing_filter(int)
 def mysql_bitwisenot(x):
+    if x is None:
+        return None
     try:
         return ~ x
     except:
@@ -50,6 +66,8 @@ def mysql_bitwisenot(x):
 
 @typing_filter(int)
 def mysql_bitwisexor(x, y):
+    if x is None or y is None:
+        return None
     try:
         return x ^ y
     except:
@@ -57,6 +75,8 @@ def mysql_bitwisexor(x, y):
 
 @typing_filter(int)
 def mysql_bitwiserightshift(x, y):
+    if x is None or y is None:
+        return None
     try:
         return x >> y
     except:
@@ -64,6 +84,8 @@ def mysql_bitwiserightshift(x, y):
 
 @typing_filter(int)
 def mysql_bitwiseleftshift(x, y):
+    if x is None or y is None:
+        return None
     try:
         return x << y
     except:
@@ -71,6 +93,8 @@ def mysql_bitwiseleftshift(x, y):
 
 @typing_filter(int)
 def mysql_bit_and(x, y):
+    if x is None or y is None:
+        return None
     try:
         return x & y
     except:
@@ -78,6 +102,8 @@ def mysql_bit_and(x, y):
 
 @typing_filter(int)
 def mysql_bit_or(x, y):
+    if x is None or y is None:
+        return None
     try:
         return x | y
     except:
@@ -85,6 +111,8 @@ def mysql_bit_or(x, y):
 
 @typing_filter(int)
 def mysql_bit_xor(x, y):
+    if x is None or y is None:
+        return None
     try:
         return x ^ y
     except:
@@ -92,6 +120,8 @@ def mysql_bit_xor(x, y):
 
 @typing_filter(float)
 def mysql_abs(x):
+    if x is None:
+        return None
     try:
         return abs(x)
     except:
@@ -99,6 +129,8 @@ def mysql_abs(x):
 
 @typing_filter(float)
 def mysql_sqrt(x):
+    if x is None:
+        return None
     try:
         return math.sqrt(x)
     except:
@@ -106,6 +138,8 @@ def mysql_sqrt(x):
 
 @typing_filter(float)
 def mysql_exp(x):
+    if x is None:
+        return None
     try:
         return math.exp(x)
     except:
@@ -117,6 +151,8 @@ def mysql_pi():
 
 @typing_filter(float)
 def mysql_ln(x):
+    if x is None:
+        return None
     try:
         return math.log(x, math.e)
     except:
@@ -124,6 +160,8 @@ def mysql_ln(x):
 
 @typing_filter(float)
 def mysql_log(x, base=10):
+    if x is None:
+        return None
     try:
         return math.log(x, base)
     except:
@@ -131,6 +169,8 @@ def mysql_log(x, base=10):
 
 @typing_filter(int)
 def mysql_ceil(x):
+    if x is None:
+        return None
     try:
         return math.ceil(x)
     except:
@@ -138,6 +178,8 @@ def mysql_ceil(x):
 
 @typing_filter(int)
 def mysql_ceiling(x):
+    if x is None:
+        return None
     try:
         return math.ceil(x)
     except:
@@ -145,6 +187,8 @@ def mysql_ceiling(x):
 
 @typing_filter(int)
 def mysql_floor(x):
+    if x is None:
+        return None
     try:
         return math.floor(x)
     except:
@@ -156,6 +200,8 @@ def mysql_rand():
 
 @typing_filter(float)
 def mysql_round(x, y=2):
+    if x is None or y is None:
+        return None
     try:
         return round(x, y)
     except:
@@ -163,6 +209,8 @@ def mysql_round(x, y=2):
 
 @typing_filter(float)
 def mysql_sign(x):
+    if x is None:
+        return None
     try:
         return 0 if x == 0 else (-1 if x < 0 else 1)
     except:
@@ -171,6 +219,8 @@ def mysql_sign(x):
 
 @typing_filter(float)
 def mysql_pow(x, y):
+    if x is None or y is None:
+        return None
     try:
         return math.pow(x, y)
     except:
@@ -178,6 +228,8 @@ def mysql_pow(x, y):
 
 @typing_filter(float)
 def mysql_power(x, y):
+    if x is None or y is None:
+        return None
     try:
         return math.pow(x, y)
     except:
@@ -185,6 +237,8 @@ def mysql_power(x, y):
 
 @typing_filter(float)
 def mysql_sin(x):
+    if x is None:
+        return None
     try:
         return math.sin(x)
     except:
@@ -192,6 +246,8 @@ def mysql_sin(x):
 
 @typing_filter(float)
 def mysql_asin(x):
+    if x is None:
+        return None
     try:
         return math.asin(x)
     except:
@@ -199,6 +255,8 @@ def mysql_asin(x):
 
 @typing_filter(float)
 def mysql_cos(x):
+    if x is None:
+        return None
     try:
         return math.cos(x)
     except:
@@ -206,6 +264,8 @@ def mysql_cos(x):
 
 @typing_filter(float)
 def mysql_acos(x):
+    if x is None:
+        return None
     try:
         return math.acos(x)
     except:
@@ -213,6 +273,8 @@ def mysql_acos(x):
 
 @typing_filter(float)
 def mysql_tan(x):
+    if x is None:
+        return None
     try:
         return math.tan(x)
     except:
@@ -220,6 +282,8 @@ def mysql_tan(x):
 
 @typing_filter(float)
 def mysql_atan(x):
+    if x is None:
+        return None
     try:
         return math.atan(x)
     except:

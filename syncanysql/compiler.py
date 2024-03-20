@@ -14,6 +14,7 @@ from sqlglot import parser as sqlglot_parser
 from sqlglot import generator as sqlglot_generator
 from sqlglot import tokens
 from syncany.filters import find_filter
+from .utils import NumberTypes
 from .errors import SyncanySqlCompileException
 from .calculaters import is_mysql_func, find_generate_calculater, find_aggregate_calculater, find_window_aggregate_calculater, CalculaterUnknownException
 from .config import CONST_CONFIG_KEYS
@@ -1491,7 +1492,7 @@ class Compiler(object):
                     column = []
                     if self.is_const(get_value_expressions[0], config, arguments):
                         get_value_key = self.parse_const(get_value_expressions[0], config, arguments)["value"]
-                        column.append((":$.:" + str(int(get_value_key))) if isinstance(get_value_key, (int, float)) else (":$." + str(get_value_key)))
+                        column.append((":$.:" + str(int(get_value_key))) if isinstance(get_value_key, NumberTypes) else (":$." + str(get_value_key)))
                     elif isinstance(get_value_expressions[0], sqlglot_expressions.Tuple):
                         get_value_indexs = [self.parse_const(tuple_expression, config, arguments)["value"]
                                             for tuple_expression in get_value_expressions[0].args["expressions"]
@@ -1633,7 +1634,7 @@ class Compiler(object):
                 if expression.args.get("ifs"):
                     for case_expression in expression.args["ifs"]:
                         case_value = self.parse_const(case_expression.args["this"], config, arguments)["value"]
-                        cases[(":" + str(case_value)) if isinstance(case_value, (int, float)) and not isinstance(case_value, bool) else case_value] = \
+                        cases[(":" + str(case_value)) if isinstance(case_value, NumberTypes) and not isinstance(case_value, bool) else case_value] = \
                             self.compile_calculate(case_expression.args["true"], config, arguments, primary_table, column_join_tables, join_index)
                 cases["#end"] = self.compile_calculate(expression.args["default"], config, arguments, primary_table, column_join_tables, join_index) \
                     if expression.args.get("default") else None

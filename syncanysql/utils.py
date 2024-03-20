@@ -6,6 +6,11 @@ from decimal import Decimal
 import datetime
 import string
 
+NumberTypes = (int, float)
+NumberDecimalTypes = (int, float, Decimal)
+NumberStringTypes = (int, float, str)
+
+
 def parse_value(value):
     value = value.strip()
     if not value:
@@ -85,7 +90,7 @@ def ensure_float(x):
     return float(x)
 
 def ensure_number(x):
-    if isinstance(x, (int, float, Decimal)):
+    if isinstance(x, NumberDecimalTypes):
         return x
     if x is None:
         raise ValueError('value is None')

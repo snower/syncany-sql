@@ -6,11 +6,11 @@ import socket
 import base64
 import binascii
 from syncany.calculaters import typing_filter
-from ...utils import ensure_str
+from ...utils import NumberTypes, ensure_str
 
 @typing_filter(str)
 def mysql_bin(x):
-    if isinstance(x, (int, float)):
+    if isinstance(x, NumberTypes):
         return bin(int(x))
     if x is None:
         return None
@@ -22,7 +22,7 @@ def mysql_bin(x):
 
 @typing_filter(str)
 def mysql_hex(x):
-    if isinstance(x, (int, float)):
+    if isinstance(x, NumberTypes):
         return hex(int(x))
     if x is None:
         return None
