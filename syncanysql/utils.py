@@ -9,6 +9,7 @@ import string
 NumberTypes = (int, float)
 NumberDecimalTypes = (int, float, Decimal)
 NumberStringTypes = (int, float, str)
+SequenceTypes = (tuple, list)
 
 
 def parse_value(value):

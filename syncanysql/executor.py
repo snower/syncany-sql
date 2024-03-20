@@ -14,7 +14,7 @@ from syncany.database import find_database
 from syncany.taskers.config import ConfigReader, register_reader
 from syncany.taskers.core import CoreTasker
 from .errors import SyncanySqlCompileException
-from .utils import parse_value
+from .utils import SequenceTypes, parse_value
 from .compiler import Compiler
 
 ENV_VARIABLE_RE = re.compile(r"(\$\{[@\w]+?(:.*?)?\})", re.DOTALL | re.M)
@@ -132,7 +132,7 @@ class Executor(object):
                     return value.strftime(self.session_config.get().get("date_format", "%Y-%m-%d"))
                 if isinstance(value, datetime.time):
                     return value.strftime(self.session_config.get().get("time_format", "%H:%M:%S"))
-                if isinstance(value, (list, tuple, set)):
+                if isinstance(value, SequenceTypes):
                     return "(" + ",".join([format_variable_value(v) for v in value]) + ")"
                 return str(value)
             sql = sql.replace(variable, format_variable_value(variable_value))

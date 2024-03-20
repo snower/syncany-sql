@@ -14,6 +14,7 @@ from syncany.taskers.core import CoreTasker
 from syncany.taskers.config import load_config
 from syncany.logger import get_logger
 from syncany.utils import set_timezone
+from .utils import SequenceTypes
 
 
 VIRTUAL_VIEW_ARGS_RE = re.compile(r"(\#\{\w+?(:.*?)?\})", re.DOTALL | re.M)
@@ -34,7 +35,7 @@ class GlobalConfig(object):
         return self.config
 
     def set(self, key, value):
-        if not isinstance(key, (list, tuple)):
+        if not isinstance(key, SequenceTypes):
             key = str(key).split(".")
         if not key:
             return

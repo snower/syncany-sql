@@ -5,6 +5,9 @@
 import json
 from syncany.calculaters import typing_filter
 
+ArrayStringTypes = (list, str)
+ArrayObjectTypes = (list, dict)
+
 
 def parse_json_path(json_path):
     if not json_path:
@@ -62,7 +65,7 @@ def get_json_path_value(json_data, json_path):
         for i in range(len(json_path_keys)):
             json_path_key = json_path_keys[i]
             if isinstance(json_path_key, int):
-                if isinstance(json_data, (list, str)):
+                if isinstance(json_data, ArrayStringTypes):
                     if json_path_key >= len(json_data):
                         return None
                     json_data = json_data[json_path_key]
@@ -244,7 +247,7 @@ def mysql_json_set(json_doc, *path_vals):
         except:
             pass
     for i in range(int(len(path_vals) / 2)):
-        if not isinstance(json_doc, (list, dict)):
+        if not isinstance(json_doc, ArrayObjectTypes):
             json_doc = set_json_path_value(json_doc, path_vals[i * 2], path_vals[i * 2 + 1])
         else:
             set_json_path_value(json_doc, path_vals[i * 2], path_vals[i * 2 + 1])
@@ -301,7 +304,7 @@ def mysql_json_length(json_doc, path=None):
             pass
     if path:
         json_doc = get_json_path_value(json_doc, path)
-    if not isinstance(json_doc, (list, dict)):
+    if not isinstance(json_doc, ArrayObjectTypes):
         return 0
     return len(json_doc)
 
