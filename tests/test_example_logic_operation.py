@@ -36,3 +36,7 @@ class LogicOperationExampleTestCase(ExampleTestCase):
         self.assert_data(24, [{'order_id': 2, 'uid': 1, 'goods_id': 1, 'amount': 0.6}], "data error")
 
         self.assert_data(26, [{'order_id': 2, 'uid': 1, 'goods_id': 1, 'amount': 0.6, 'status': 0}], "data error")
+
+        self.assert_data(28, [{'a': 0, 'b': 1, 'c': 4, 'd': 'a X c', 'e': 'abc'}], "data error")
+
+        self.assert_data(30, [{'a': 1, 'b': 0, 'c': 12, 'd': 'abc X ghi', 'e': 'def'}], "data error")

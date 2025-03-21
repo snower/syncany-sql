@@ -24,3 +24,7 @@ select sum(amount) as a, if(sum(amount) > 0, 1, 0) as b, case when sum(amount) <
 select order_id, uid, goods_id, amount from `data/orders.json` where uid != 3 and uid != 4 and uid > 0 and uid < 10 order by order_id desc limit 2, 1;
 
 select * from `data/orders.json` where uid != 3 and uid != 4 and uid > 0 and uid < 10 and status=0 order by order_id desc limit 1 offset 2;
+
+select '1aa2' like '.*bb.*' as a, REGEXP_LIKE('fo\nfo', '^fo$', 'm') as b, regexp_instr('dog cat dog', 'dog', 1, 1, 1) as c, regexp_replace('a b c', 'b', 'X') as d, regexp_substr('abc def ghi', '[a-z]+') as e;
+
+select '1aa2' like '.*aa.*' as a, regexp_like('1AA2', '.*aa.*', 'c') as b, regexp_instr('a bb c d BB e', 'bb', 1, 2, 1) as c, regexp_replace('abc def ghi', '[a-z]+', 'X', 1, 2) as d, regexp_substr('abc def ghi', '[a-z]+', 1, 2) as e;
