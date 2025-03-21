@@ -1,0 +1,142 @@
+[
+  {
+    "id": 1,
+    "order_id": 1,
+    "history_type": 1,
+    "uid": 2,
+    "goods_id": 1,
+    "amount": 9.6,
+    "status": 0,
+    "create_time": "2024-10-01 10:09:10"
+  },
+  {
+    "id": 2,
+    "order_id": 1,
+    "history_type": 0,
+    "uid": 2,
+    "goods_id": 1,
+    "amount": 5.2,
+    "status": 0,
+    "create_time": "2024-10-02 14:09:10"
+  },
+  {
+    "id": 3,
+    "order_id": 2,
+    "history_type": 1,
+    "uid": 1,
+    "goods_id": 1,
+    "amount": 7.6,
+    "status": 0,
+    "create_time": "2024-10-01 12:09:10"
+  },
+  {
+    "id": 4,
+    "order_id": 1,
+    "history_type": 1,
+    "uid": 2,
+    "goods_id": 1,
+    "amount": 19.1,
+    "status": 0,
+    "create_time": "2024-10-06 11:09:10"
+  },
+  {
+    "id": 5,
+    "order_id": 3,
+    "history_type": 1,
+    "uid": 2,
+    "goods_id": 2,
+    "amount": 3,
+    "status": 0,
+    "create_time": "2024-10-02 09:09:10"
+  },
+  {
+    "id": 6,
+    "order_id": 3,
+    "history_type": 0,
+    "uid": 2,
+    "goods_id": 2,
+    "amount": 3.3,
+    "status": 0,
+    "create_time": "2024-10-04 09:09:10"
+  },
+  {
+    "id": 7,
+    "order_id": 3,
+    "history_type": 1,
+    "uid": 2,
+    "goods_id": 2,
+    "amount": 4.3,
+    "status": 0,
+    "create_time": "2024-10-08 09:09:10"
+  },
+  {
+    "id": 8,
+    "order_id": 4,
+    "history_type": 1,
+    "uid": 1,
+    "goods_id": 1,
+    "amount": 8,
+    "status": 0,
+    "create_time": "2024-10-01 10:09:10"
+  },
+  {
+    "id": 9,
+    "order_id": 3,
+    "history_type": 0,
+    "uid": 2,
+    "goods_id": 7.12,
+    "amount": 3,
+    "status": 0,
+    "create_time": "2024-10-11 09:09:10"
+  },
+  {
+    "id": 10,
+    "order_id": 3,
+    "history_type": 0,
+    "uid": 2,
+    "goods_id": 2,
+    "amount": 31.1,
+    "status": 0,
+    "create_time": "2024-10-14 19:09:10"
+  },
+  {
+    "id": 11,
+    "order_id": 5,
+    "history_type": 1,
+    "uid": 2,
+    "goods_id": 1,
+    "amount": 8,
+    "status": 0,
+    "create_time": "2024-10-01 10:09:10"
+  },
+  {
+    "id": 12,
+    "order_id": 6,
+    "history_type": 1,
+    "uid": 2,
+    "goods_id": 2,
+    "amount": 7,
+    "status": 0,
+    "create_time": "2024-10-01 10:09:10"
+  },
+  {
+    "id": 13,
+    "order_id": 5,
+    "history_type": 0,
+    "uid": 2,
+    "goods_id": 1,
+    "amount": 18.9,
+    "status": 0,
+    "create_time": "2024-10-04 12:09:10"
+  },
+  {
+    "id": 14,
+    "order_id": 5,
+    "history_type": 1,
+    "uid": 2,
+    "goods_id": 0,
+    "amount": 81.9,
+    "status": 0,
+    "create_time": "2024-10-06 15:09:10"
+  }
+]

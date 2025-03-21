@@ -63,7 +63,7 @@ def mysql_regexp_instr(s, r, pos=1, occurrence=1, return_option=0, match_type=No
     except:
         return 0
 
-@typing_filter(int)
+@typing_filter(str)
 def mysql_regexp_replace(s, r, rs, pos=1, occurrence=0, match_type=None):
     if r is None or s is None or rs is None:
         return None
@@ -86,7 +86,7 @@ def mysql_regexp_replace(s, r, rs, pos=1, occurrence=0, match_type=None):
     except:
         return None
 
-@typing_filter(int)
+@typing_filter(str)
 def mysql_regexp_substr(s, r, pos=1, occurrence=1, match_type=None):
     if r is None or s is None:
         return None
