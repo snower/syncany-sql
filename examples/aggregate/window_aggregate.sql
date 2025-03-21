@@ -18,3 +18,8 @@ select oha.`id`, oha.`order_id`,oha.`history_type`,
 FROM `data/order_historys.json` oha
 LEFT JOIN `data/order_historys.json` ohb ON ohb.order_id=oha.order_id AND ohb.create_time<=oha.create_time AND ohb.history_type>0
 Where order_id=1 group by oha.id;
+
+select oha.`id`, oha.`order_id`,oha.`history_type`, count(oha.order_id) as cnt, sum(oha.amount) as total_amount,
+    LEAD(oha.history_type) OVER (PARTITION BY oha.order_id ORDER BY  oha.create_time) AS next_history_type,
+    LEAD(oha.create_time) OVER (PARTITION BY oha.order_id ORDER BY  oha.create_time) AS next_create_time
+FROM `data/order_historys.json` oha group by oha.order_id order by order_id;
