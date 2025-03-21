@@ -111,7 +111,7 @@ def mysql_regexp_substr(s, r, pos=1, occurrence=1, match_type=None):
 def mysql_like(s, r, match_type=None):
     if r is None or s is None:
         return None
-    r = ".*" if r == '%%' else "".join([rg.replace("%", ".*") for rg in r.split("%%")])
+    r = ".*" if r == '%%' else "".join([rg.replace("%", ".*") for rg in re.escape(r).split("%%")])
     try:
         return 1 if re.match(r, s, parse_flags(match_type)) else 0
     except:
