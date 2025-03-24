@@ -775,7 +775,7 @@ class Compiler(object):
                         primary_keys.append(primary_key)
             else:
                 primary_keys = ["id"]
-            join_db_table = "&." + join_table["db"] + "." + join_table["table"] + "::" + "+".join(primary_keys)
+            join_db_table = "&&." + join_table["db"] + "." + join_table["table"] + "::" + "+".join(primary_keys)
             if join_table["querys"]:
                 join_db_table = [join_db_table, join_table["querys"]]
 
