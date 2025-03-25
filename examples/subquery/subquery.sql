@@ -9,3 +9,11 @@ select order_id, uid, amount, (select count(*) from `data/order_historys.json` c
 select goods_id, goods_name, (select count(*) from `data/orders.json` c where c.goods_id=a.goods_id and status=0) as order_count,
        exists(select count(*) from `data/orders.json` c where c.goods_id=a.goods_id and status=0) as order_exists
     from `data/goodses.json` as a;
+
+select order_id, uid, amount, (select count(*) from `data/order_historys.json` c where c.order_id+1=a.order_id+1 and status=0) as history_count,
+       exists(select count(*) from `data/order_historys.json` c where c.order_id=a.order_id and status=0) as history_exists
+    from `data/orders.json` as a where (select sum(amount) from `data/orders.json` as b where a.order_id=(b.order_id+1)-1 and status=0)<5;
+
+select goods_id, goods_name, (select count(*) from `data/orders.json` c where c.goods_id+1=a.goods_id+1 and status=0) as order_count,
+       exists(select count(*) from `data/orders.json` c where c.goods_id=(a.goods_id+1)-1 and status=0) as order_exists
+    from `data/goodses.json` as a;

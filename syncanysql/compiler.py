@@ -995,7 +995,7 @@ class Compiler(object):
         subquery_join_patent_expression, subquery_join_patent_columns, subquery_interceptor_expressions = self.parse_subquery(expression, config,
                                                                                             arguments, primary_table, join_tables)
         if isinstance(expression, sqlglot_expressions.Select):
-            if ((not subquery_join_patent_columns or not subquery_join_patent_expression)
+            if (not subquery_join_patent_columns and not subquery_join_patent_expression and not subquery_interceptor_expressions
                     and not expression.args.get("group") and not expression.args.get("having") and not expression.args.get("order")
                     and not expression.args.get("limit") and not expression.args.get("offset") and not expression.args.get("distinct")):
                 is_subquery, select_expressions = False, expression.args.get("expressions")
