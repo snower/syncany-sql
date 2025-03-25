@@ -223,7 +223,7 @@ def mysql_is_not(a, b):
 @typing_filter(int)
 def mysql_exists(a):
     if a is None:
-        return None
+        return 0
     if isinstance(a, dict):
         return 1
     return 1 if a else 0

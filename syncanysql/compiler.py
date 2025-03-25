@@ -2338,6 +2338,8 @@ class Compiler(object):
             aggregate_expressions.append(expression)
         if not self.is_calculate(expression, config, arguments) and not isinstance(expression, sqlglot_expressions.Paren):
             return
+        if self.is_subquery(expression, config, arguments):
+            return
         for _, child_expression in expression.args.items():
             if isinstance(child_expression, list):
                 for child_expression_item in child_expression:
@@ -2349,6 +2351,8 @@ class Compiler(object):
         if self.is_window_aggregate(expression, config, arguments):
             window_aggregate_expressions.append(expression)
         if not self.is_calculate(expression, config, arguments) and not isinstance(expression, sqlglot_expressions.Paren):
+            return
+        if self.is_subquery(expression, config, arguments):
             return
         for _, child_expression in expression.args.items():
             if isinstance(child_expression, list):
@@ -2434,7 +2438,7 @@ class Compiler(object):
                 right_sql = parse_where_condition(condition_expression.args["expression"], join_parent_columns,
                                                   join_select_columns, interceptor_expressions)
                 if left_sql:
-                    return (left_sql + "AND" + right_sql) if right_sql else left_sql
+                    return (left_sql + " AND " + right_sql) if right_sql else left_sql
                 return right_sql
 
             if (isinstance(condition_expression, sqlglot_expressions.EQ) and
