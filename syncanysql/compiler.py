@@ -997,8 +997,13 @@ class Compiler(object):
         if isinstance(expression, sqlglot_expressions.Select):
             if (not subquery_join_patent_columns and not subquery_join_patent_expression and not subquery_interceptor_expressions
                     and not expression.args.get("group") and not expression.args.get("having") and not expression.args.get("order")
-                    and not expression.args.get("limit") and not expression.args.get("offset") and not expression.args.get("distinct")):
-                is_subquery, select_expressions = False, expression.args.get("expressions")
+                    and not expression.args.get("limit") and not expression.args.get("offset") and not expression.args.get("distinct")
+                    and expression.args.get("from") and expression.args.get("expressions")):
+                from_expression = expression.args["from"]
+                if isinstance(from_expression, sqlglot_expressions.From) and from_expression.expressions and len(from_expression.expressions) == 1:
+                    is_subquery, select_expressions = False, expression.args.get("expressions")
+                else:
+                    is_subquery, select_expressions = True, None
             else:
                 is_subquery, select_expressions = True, None
         else:
@@ -1066,17 +1071,7 @@ class Compiler(object):
             return [join_key_cloumns, ["&.:=@execute_query_tasker::" + "+".join(join_keys), {},
                                        {"task_config": subquery_config}], subquery_interceptor_column, "$." + column_name]
 
-        if not select_expressions:
-            raise SyncanySqlCompileException('error subquery, there must be only one query field, related sql "%s"'
-                                             % self.to_sql(expression))
-        from_expression = expression.args.get("from")
-        if not isinstance(from_expression, sqlglot_expressions.From) or not from_expression.expressions:
-            raise SyncanySqlCompileException('error subquery, unknown select from table, related sql "%s"'
-                                             % self.to_sql(expression))
-        if len(from_expression.expressions) > 1:
-            raise SyncanySqlCompileException('error subquery, there must be only one select from table, related sql "%s"'
-                                             % self.to_sql(expression))
-        table_info = self.parse_table(from_expression.expressions[0], config, arguments)
+        table_info = self.parse_table(expression.args["from"].expressions[0], config, arguments)
         if isinstance(select_expressions[0], sqlglot_expressions.Alias):
             column_info = self.parse_column(select_expressions[0].args["this"], config, arguments)
         else:
@@ -2368,7 +2363,7 @@ class Compiler(object):
             sub_expression = expression.args["this"]
         where_expression = sub_expression.args.get("where")
         if not where_expression or not where_expression.args.get("this"):
-            return None, None, None
+            return None, {}, []
 
         parent_tables = {primary_table["table_name"]: primary_table}
         if join_tables:
@@ -2480,7 +2475,7 @@ class Compiler(object):
         where_sql = parse_where_condition(where_expression.args["this"], join_parent_columns, join_select_columns,
                                           interceptor_expressions)
         if not join_parent_columns and not join_select_columns and not interceptor_expressions:
-            return None, None, None
+            return None, {}, []
 
         sql = ["SELECT"]
         if sub_expression.args.get("distinct"):
