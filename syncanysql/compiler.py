@@ -842,6 +842,17 @@ class Compiler(object):
                     config["where_schema"] = {}
                 config["where_schema"][calculate_name] = copy.deepcopy(config["schema"][calculate_name])
                 return calculate_expression
+            if self.is_subquery(calculate_expression, config, arguments):
+                calculate_name = "__where_condition_value_%d__" % id(calculate_expression)
+                value_column = self.compile_query_condition(calculate_expression, config, arguments, primary_table,
+                                                            join_tables, None)
+                setattr(calculate_expression, "syncany_valuer", ["$." + calculate_name])
+                if "where_schema" not in config:
+                    config["where_schema"] = {}
+                if isinstance(config["schema"], dict):
+                    config["schema"][calculate_name] = value_column
+                config["where_schema"][calculate_name] = copy.deepcopy(value_column)
+                return calculate_expression
             if not self.is_calculate(calculate_expression, config, arguments):
                 return calculate_expression
             for _, child_expression in calculate_expression.args.items():
@@ -858,6 +869,8 @@ class Compiler(object):
                 left_expression, right_expression = expression.args["this"], expression.args["expressions"]
             elif expression.args.get("query"):
                 left_expression, right_expression = expression.args["this"], expression.args["query"]
+            elif expression.args.get("field"):
+                left_expression, right_expression = expression.args["this"], expression.args["field"]
             else:
                 left_expression, right_expression = expression.args["this"], expression.args["expression"]
 
@@ -898,8 +911,8 @@ class Compiler(object):
                     left_calculater = self.compile_calculate(parse_calucate(left_expression), config, arguments, primary_table, [])
                 right_calculater = self.compile_calculate(parse_calucate(right_expression), config, arguments, primary_table, [])
                 return False, left_column, left_calculater, right_calculater
-            if isinstance(right_expression, (sqlglot_expressions.Select, sqlglot_expressions.Subquery, sqlglot_expressions.Union)):
-                value_column = self.compile_query_condition(right_expression, config, arguments, primary_table,
+            if self.is_subquery(right_expression, config, arguments):
+                value_column = self.compile_query_condition(right_expression, config, arguments, primary_table, join_tables,
                                                             left_column["typing_filters"] if left_column else None)
                 if isinstance(expression, sqlglot_expressions.In):
                     return is_query_column, left_column, left_calculater, ["@convert_array", value_column]
@@ -978,41 +991,80 @@ class Compiler(object):
         else:
             return self.compile_calculate(parse_calucate(expression), config, arguments, primary_table, [])
 
-    def compile_query_condition(self, expression, config, arguments, primary_table, typing_filters):
+    def compile_query_condition(self, expression, config, arguments, primary_table, join_tables, typing_filters):
+        subquery_join_patent_expression, subquery_join_patent_columns, subquery_interceptor_expressions = self.parse_subquery(expression, config,
+                                                                                            arguments, primary_table, join_tables)
         if isinstance(expression, sqlglot_expressions.Select):
-            select_expressions = expression.args.get("expressions")
-            if not select_expressions or len(select_expressions) != 1 or \
-                    (not isinstance(select_expressions[0], sqlglot_expressions.Alias) and
-                     not self.is_column(select_expressions[0], config, arguments)):
-                raise SyncanySqlCompileException('error subquery, there must be only one query field, related sql "%s"'
-                                                 % self.to_sql(expression))
-            if expression.args.get("group") or expression.args.get("having") or expression.args.get("order") \
-                    or expression.args.get("limit") or expression.args.get("offset") or expression.args.get("distinct"):
-                is_subquery = True
+            if ((not subquery_join_patent_columns or not subquery_join_patent_expression)
+                    and not expression.args.get("group") and not expression.args.get("having") and not expression.args.get("order")
+                    and not expression.args.get("limit") and not expression.args.get("offset") and not expression.args.get("distinct")):
+                is_subquery, select_expressions = False, expression.args.get("expressions")
             else:
-                is_subquery = False
+                is_subquery, select_expressions = True, None
         else:
             select_expressions, is_subquery = None, True
 
         if is_subquery:
-            subquery_name, subquery_config = self.compile_subquery(expression, arguments)
+            def parse_subquery_schema(subquery_config):
+                if isinstance(subquery_config["schema"], dict):
+                    subquery_schema = subquery_config["schema"]
+                else:
+                    subquery_schema = {}
+                    for dependency in subquery_config.get("dependencys", []):
+                        if not isinstance(dependency, dict) or not isinstance(dependency["schema"], dict):
+                            continue
+                        subquery_schema.update(dependency["schema"])
+                return subquery_schema
+
+            func_expression = expression.parent
+            is_not_extracting_value = (func_expression and isinstance(func_expression, (sqlglot_expressions.Anonymous,
+                                                                                   sqlglot_expressions.Binary, sqlglot_expressions.Condition)) \
+                                       and func_expression.key.lower() in ("exists", "yield_array"))
+            subquery_interceptor_column = None
+            for interceptor_expression in subquery_interceptor_expressions[::-1]:
+                interceptor_column = self.compile_query_condition_column(interceptor_expression, config,
+                                                                         arguments, primary_table, join_tables, None, -2)
+                if subquery_interceptor_column is None:
+                    subquery_interceptor_column = ["#if", interceptor_column, ["#const", 1], ["#const", 0]]
+                else:
+                    subquery_interceptor_column = ["#if", interceptor_column, subquery_interceptor_column, ["#const", 0]]
+            if not subquery_join_patent_columns or not subquery_join_patent_expression:
+                subquery_name, subquery_config = self.compile_subquery(subquery_join_patent_expression or expression, arguments)
+                if not isinstance(subquery_config, dict):
+                    raise SyncanySqlCompileException('error subquery, unknown select columns, related sql "%s"' % self.to_sql(expression))
+                subquery_schema = parse_subquery_schema(subquery_config)
+                column_name = list(subquery_schema.keys())[0]
+                db_table = "&.--." + subquery_name + "::" + column_name
+                config["dependencys"].append(subquery_config)
+                if is_not_extracting_value:
+                    column_name= "*"
+                if subquery_interceptor_column:
+                    return [db_table, subquery_interceptor_column, "$." + column_name]
+                return [db_table, "$." + column_name]
+
+            if join_tables is None:
+                raise SyncanySqlCompileException('error subquery, Only supported in select and where, related sql "%s"'
+                                             % self.to_sql(expression))
+            subquery_name, subquery_config = self.compile_subquery(subquery_join_patent_expression, arguments)
             if not isinstance(subquery_config, dict):
-                raise SyncanySqlCompileException('error subquery, unknown select columns, related sql "%s"' % self.to_sql(expression))
-            if isinstance(subquery_config["schema"], dict):
-                subquery_schema = subquery_config["schema"]
+                raise SyncanySqlCompileException(
+                    'error subquery, unknown select columns, related sql "%s"' % self.to_sql(expression))
+            join_keys, join_key_cloumns = [], []
+            for _, join_parent_column in subquery_join_patent_columns.items():
+                join_keys.append(join_parent_column["column_alias"])
+                join_key_cloumns.append(self.compile_query_condition_column(join_parent_column["parent_column"]["expression"],
+                                                                                   config, arguments, primary_table, join_tables,
+                                                                                   join_parent_column["parent_column"]))
+            if is_not_extracting_value:
+                column_name = "*"
             else:
-                subquery_schema = {}
-                for dependency in subquery_config.get("dependencys", []):
-                    if not isinstance(dependency, dict) or not isinstance(dependency["schema"], dict):
-                        continue
-                    subquery_schema.update(dependency["schema"])
-            if len(subquery_schema) != 1:
-                raise SyncanySqlCompileException('error subquery, there must be only one query field, related sql "%s"'
-                                                 % self.to_sql(expression))
-            column_name = list(subquery_schema.keys())[0]
-            db_table = "&.--." + subquery_name + "::" + column_name
-            config["dependencys"].append(subquery_config)
-            return [db_table, "$." + column_name]
+                subquery_schema = parse_subquery_schema(subquery_config)
+                column_name = [c for c in subquery_schema if c not in join_keys][0]
+            if len(join_keys) == 1:
+                return [join_key_cloumns[0], ["&.:=@execute_query_tasker::" + join_keys[0], subquery_interceptor_column or {},
+                                              {"task_config": subquery_config}], subquery_interceptor_column, "$." + column_name]
+            return [join_key_cloumns, ["&.:=@execute_query_tasker::" + "+".join(join_keys), {},
+                                       {"task_config": subquery_config}], subquery_interceptor_column, "$." + column_name]
 
         if not select_expressions:
             raise SyncanySqlCompileException('error subquery, there must be only one query field, related sql "%s"'
@@ -1041,6 +1093,36 @@ class Compiler(object):
         if querys.get("querys"):
             return [[db_table, querys["querys"]], self.compile_column(select_expressions[0], config, arguments, column_info)]
         return [db_table, self.compile_column(select_expressions[0], config, arguments, column_info)]
+
+    def compile_query_condition_column(self, expression, config, arguments, primary_table, join_tables, expression_column=None, join_index=-1):
+        if not expression_column and self.is_column(expression, config, arguments):
+            expression_column = self.parse_column(expression, config, arguments)
+        if expression_column:
+            if isinstance(config["schema"], dict) and not expression_column["table_name"] \
+                    and expression_column["column_name"] in config["schema"]:
+                return config["schema"][expression_column["column_name"]]
+            if not expression_column["table_name"] or expression_column["table_name"] == primary_table["table_name"]:
+                return self.compile_column(expression, config, arguments, expression_column)
+
+        calculate_fields = []
+        self.parse_calculate(expression, config, arguments, primary_table, calculate_fields)
+        calculate_fields = [calculate_field for calculate_field in calculate_fields if calculate_field["table_name"]
+                            and calculate_field["table_name"] != primary_table["table_name"]]
+        if not calculate_fields:
+            return self.compile_calculate(expression, config, arguments, primary_table, [], join_index=join_index)
+
+        column_join_tables = []
+        calculate_table_names = set([])
+        for calculate_field in calculate_fields:
+            if calculate_field["table_name"] not in join_tables:
+                raise SyncanySqlCompileException('error join column, join table %s unknown, related sql "%s"' %
+                                                 (calculate_field["table_name"], self.to_sql(expression)))
+            calculate_table_names.add(calculate_field["table_name"])
+        self.compile_join_column_tables(expression, config, arguments, primary_table,
+                                        [join_tables[calculate_table_name] for calculate_table_name in
+                                         calculate_table_names], join_tables, column_join_tables)
+        calculate_column = self.compile_calculate(expression, config, arguments, primary_table, column_join_tables)
+        return self.compile_join_column(expression, config, arguments, primary_table, calculate_column, column_join_tables)
 
     def compile_group_column(self, expression, config, arguments, primary_table, join_tables):
         column_alias = None
@@ -1666,8 +1748,8 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Distinct):
             return [self.compile_calculate(distinct_expression, config, arguments, primary_table, column_join_tables, join_index)
                     for distinct_expression in expression.args["expressions"]]
-        elif isinstance(expression, (sqlglot_expressions.Select, sqlglot_expressions.Subquery, sqlglot_expressions.Union)):
-            return self.compile_query_condition(expression, config, arguments, primary_table, None)
+        elif self.is_subquery(expression, config, arguments):
+            return self.compile_query_condition(expression, config, arguments, primary_table, column_join_tables, None)
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
         elif isinstance(expression, sqlglot_expressions.Between):
@@ -1739,6 +1821,12 @@ class Compiler(object):
                                for item_expression in expression.args["expressions"]]]
                 ]
             if not expression.args.get("expression"):
+                if self.is_subquery(expression.args["this"], config, arguments):
+                    return [
+                        "#make", {"value": self.compile_calculate(expression.args["this"], config, arguments, primary_table,
+                                                                  column_join_tables, join_index)},
+                        [(":@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name), "$.value"]
+                    ]
                 return [
                     ("@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name),
                     self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
@@ -1816,8 +1904,8 @@ class Compiler(object):
                                                      % self.to_sql(expression))
                 config["aggregate"]["having_columns"].add(right_column["column_name"])
                 return left_calculater, self.compile_column(right_expression, config, arguments, right_column)
-            if isinstance(right_expression, (sqlglot_expressions.Select, sqlglot_expressions.Subquery, sqlglot_expressions.Union)):
-                value_column = self.compile_query_condition(right_expression, config, arguments, primary_table,
+            if self.is_subquery(right_expression, config, arguments):
+                value_column = self.compile_query_condition(right_expression, config, arguments, primary_table, None,
                                                             left_column["typing_filters"] if left_column else None)
                 if isinstance(expression, sqlglot_expressions.In):
                     return left_calculater, ["@convert_array", value_column]
@@ -2086,8 +2174,7 @@ class Compiler(object):
                 return True, condition_column, None
 
             calculate_fields = []
-            if condition_column and not isinstance(value_expression, (sqlglot_expressions.Select,
-                                                                      sqlglot_expressions.Subquery, sqlglot_expressions.Union, list)):
+            if condition_column and not self.is_subquery(value_expression, config, arguments) and not isinstance(value_expression, list):
                 self.parse_calculate(value_expression, config, arguments, primary_table, calculate_fields)
             if not condition_column or calculate_fields:
                 self.parse_calculate(right_expression if value_expression is left_expression else left_expression,
@@ -2100,8 +2187,9 @@ class Compiler(object):
                 join_table["having_expressions"].append(expression)
                 return False, None, None
 
-            if isinstance(value_expression, (sqlglot_expressions.Select, sqlglot_expressions.Subquery, sqlglot_expressions.Union)):
-                value_column = self.compile_query_condition(value_expression, config, arguments, primary_table, condition_column["typing_filters"])
+            if self.is_subquery(value_expression, config, arguments):
+                value_column = self.compile_query_condition(value_expression, config, arguments, primary_table, None,
+                                                            condition_column["typing_filters"])
                 if isinstance(expression, sqlglot_expressions.In):
                     value_column = ["@convert_array", value_column]
                 else:
@@ -2222,8 +2310,8 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Parameter):
             if isinstance(expression, AssignParameter):
                 self.parse_calculate(expression.args["expression"], config, arguments, primary_table, calculate_fields)
-        elif isinstance(expression, (sqlglot_expressions.Select, sqlglot_expressions.Union, sqlglot_expressions.Subquery,
-                                     sqlglot_expressions.Star, sqlglot_expressions.Interval, sqlglot_expressions.DataType)):
+        elif self.is_subquery(expression, config, arguments) or isinstance(expression, (sqlglot_expressions.Star,
+                                                                                        sqlglot_expressions.Interval, sqlglot_expressions.DataType)):
             pass
         elif self.is_const(expression, config, arguments):
             pass
@@ -2268,6 +2356,171 @@ class Compiler(object):
                     self.parse_window_aggregate(child_expression_item, config, arguments, window_aggregate_expressions)
             else:
                 self.parse_window_aggregate(child_expression, config, arguments, window_aggregate_expressions)
+
+    def parse_subquery(self, expression, config, arguments, primary_table, join_tables):
+        if isinstance(expression, sqlglot_expressions.Select):
+            sub_expression = expression
+        else:
+            sub_expression = expression.args["this"]
+        where_expression = sub_expression.args.get("where")
+        if not where_expression or not where_expression.args.get("this"):
+            return None, None, None
+
+        parent_tables = {primary_table["table_name"]: primary_table}
+        if join_tables:
+            for join_table_name, join_table in join_tables.items():
+                parent_tables[join_table_name] = join_table
+        current_tables = {}
+        from_expression = sub_expression.args.get("from")
+        if from_expression and from_expression.args.get("expressions"):
+            for expression in from_expression.args["expressions"]:
+                table_info = self.parse_table(expression, config, arguments)
+                current_tables[table_info["table_name"]] = table_info
+        if sub_expression.args.get("joins"):
+            for join_expression in sub_expression.args["joins"]:
+                table_info = self.parse_table(join_expression.args["this"], config, arguments)
+                current_tables[table_info["table_name"]] = table_info
+
+        def parse_parent_caculate_condition(condition_expression, join_parent_columns):
+            if self.is_column(condition_expression, config, arguments):
+                condition_column = self.parse_column(condition_expression, config, arguments)
+                if condition_column["table_name"] not in parent_tables:
+                    return
+                join_parent_columns.append(condition_expression)
+                return
+            if self.is_subquery(condition_expression, config, arguments):
+                return
+            for _, child_expression in condition_expression.args.items():
+                if self.is_const(child_expression, config, arguments):
+                    continue
+                if isinstance(child_expression, list):
+                    for child_expression_item in child_expression:
+                        parse_parent_caculate_condition(child_expression_item, join_parent_columns)
+                else:
+                    parse_parent_caculate_condition(child_expression, join_parent_columns)
+
+        def parse_caculate_condition(condition_expression, join_select_columns):
+            if self.is_column(condition_expression, config, arguments):
+                condition_column = self.parse_column(condition_expression, config, arguments)
+                if condition_column["table_name"] not in current_tables:
+                    return
+                column_key = self.generate_sql(condition_expression)
+                if column_key in join_select_columns:
+                    column_alias = join_select_columns[column_key]["column_alias"]
+                else:
+                    column_alias = "__subquery_select_column_" + str(id(condition_expression))
+                    join_select_columns[column_key] = {
+                        "column_alias": column_alias,
+                        "column": condition_column,
+                        "column_expression": condition_expression,
+                    }
+                setattr(condition_expression, "syncany_valuer", ["$." + column_alias])
+                return
+            if self.is_subquery(condition_expression, config, arguments):
+                return
+            for _, child_expression in condition_expression.args.items():
+                if self.is_const(child_expression, config, arguments):
+                    continue
+                if isinstance(child_expression, list):
+                    for child_expression_item in child_expression:
+                        parse_caculate_condition(child_expression_item, join_select_columns)
+                else:
+                    parse_caculate_condition(child_expression, join_select_columns)
+
+        def parse_where_condition(condition_expression, join_parent_columns, join_select_columns, interceptor_expressions):
+            if isinstance(condition_expression, sqlglot_expressions.And):
+                left_sql = parse_where_condition(condition_expression.args["this"], join_parent_columns,
+                                                 join_select_columns, interceptor_expressions)
+                right_sql = parse_where_condition(condition_expression.args["expression"], join_parent_columns,
+                                                  join_select_columns, interceptor_expressions)
+                if left_sql:
+                    return (left_sql + "AND" + right_sql) if right_sql else left_sql
+                return right_sql
+
+            if (isinstance(condition_expression, sqlglot_expressions.EQ) and
+                    self.is_column(condition_expression.args["this"], config, arguments) and
+                    self.is_column(condition_expression.args["expression"], config, arguments)):
+                left_condition_column = self.parse_column(condition_expression.args["this"], config, arguments)
+                right_condition_column = self.parse_column(condition_expression.args["expression"], config, arguments)
+                if right_condition_column["table_name"] in current_tables:
+                    if left_condition_column["table_name"] in current_tables:
+                        return self.generate_sql(condition_expression)
+                    left_condition_column, right_condition_column = right_condition_column, left_condition_column
+                if right_condition_column["table_name"] not in parent_tables:
+                    return self.generate_sql(condition_expression)
+                current_column = self.generate_sql(left_condition_column["expression"])
+                parent_column = self.generate_sql(right_condition_column["expression"])
+                column_key = (current_column, parent_column)
+                if column_key in join_parent_columns:
+                    column_alias = join_parent_columns[column_key][1]
+                else:
+                    column_alias = "_subquery_join_parent_" + str(id(condition_expression))
+                    join_parent_columns[column_key] = {
+                        "current_expression": left_condition_column["expression"],
+                        "current_column": left_condition_column,
+                        "parent_expression": right_condition_column["expression"],
+                        "parent_column": right_condition_column,
+                        "column_alias": column_alias,
+                    }
+                return current_column + " IN @" + column_alias
+
+            current_join_parent_columns = []
+            parse_parent_caculate_condition(condition_expression, current_join_parent_columns)
+            if not current_join_parent_columns:
+                return self.generate_sql(condition_expression)
+            parse_caculate_condition(condition_expression, join_select_columns)
+            interceptor_expressions.append(condition_expression)
+            return ""
+
+        join_parent_columns, join_select_columns, interceptor_expressions = {}, {}, []
+        where_sql = parse_where_condition(where_expression.args["this"], join_parent_columns, join_select_columns,
+                                          interceptor_expressions)
+        if not join_parent_columns and not join_select_columns and not interceptor_expressions:
+            return None, None, None
+
+        sql = ["SELECT"]
+        if sub_expression.args.get("distinct"):
+            sql.append(self.generate_sql(sub_expression.args["distinct"]))
+
+        select_sql, has_aggregate_column = [], False
+        for select_expression in sub_expression.args["expressions"]:
+            select_sql.append(self.generate_sql(select_expression))
+            if not has_aggregate_column:
+                has_aggregate_column = self.is_aggregate(select_expression.args["this"] if isinstance(select_expression,
+                                                                                         sqlglot_expressions.Alias) else select_expression,
+                                                         config, arguments)
+        for _, join_parent_column in join_parent_columns.items():
+            select_sql.append(self.generate_sql(join_parent_column["current_expression"]) + " AS " + join_parent_column["column_alias"])
+        for _, join_select_column in join_select_columns.items():
+            select_sql.append(self.generate_sql(join_select_column["column_expression"]) + " AS " + join_select_column["column_alias"])
+        sql.append(", ".join(select_sql))
+        sql.append(self.generate_sql(from_expression))
+        if sub_expression.args.get("joins"):
+            for join_expression in sub_expression.args["joins"]:
+                sql.append(self.generate_sql(join_expression))
+        if where_sql:
+            sql.append("WHERE " + where_sql)
+        if sub_expression.args.get("group") or has_aggregate_column:
+            group_sql = []
+            for _, join_parent_column in join_parent_columns.items():
+                group_sql.append(self.generate_sql(join_parent_column["current_expression"]))
+            for _, join_select_column in join_select_columns.items():
+                group_sql.append(self.generate_sql(join_select_column["column_expression"]))
+            if sub_expression.args.get("group"):
+                for group_expression in sub_expression.args["group"].args["expressions"]:
+                    group_sql.append(self.generate_sql(group_expression))
+            sql.append("GROUP BY")
+            sql.append(", ".join(group_sql))
+        if sub_expression.args.get("having"):
+            sql.append(self.generate_sql(sub_expression.args["having"]))
+        if sub_expression.args.get("order"):
+            sql.append(self.generate_sql(sub_expression.args["order"]))
+        if sub_expression.args.get("limit"):
+            sql.append(self.generate_sql(sub_expression.args.get("limit")))
+        if sub_expression.args.get("offset"):
+            sql.append(self.generate_sql(sub_expression.args.get("offset")))
+        return maybe_parse(" ".join(sql), dialect=CompilerDialect), join_parent_columns, interceptor_expressions
+
 
     def parse_table(self, expression, config, arguments):
         db_name = expression.args["db"].name if expression.args.get("db") else None
@@ -2590,7 +2843,7 @@ class Compiler(object):
             return isinstance(expression, (sqlglot_expressions.EQ, sqlglot_expressions.NEQ, sqlglot_expressions.GT, sqlglot_expressions.GTE,
                                            sqlglot_expressions.LT, sqlglot_expressions.LTE, sqlglot_expressions.In, sqlglot_expressions.Not,
                                            sqlglot_expressions.Is, sqlglot_expressions.Between, sqlglot_expressions.Like, sqlglot_expressions.Func,
-                                           sqlglot_expressions.Binary))
+                                           sqlglot_expressions.Binary, sqlglot_expressions.SubqueryPredicate))
         return isinstance(expression, (sqlglot_expressions.Neg, sqlglot_expressions.Binary, sqlglot_expressions.Select,
                                        sqlglot_expressions.Subquery, sqlglot_expressions.Union,
                                        sqlglot_expressions.BitwiseNot, sqlglot_expressions.Tuple, sqlglot_expressions.Parameter))
@@ -2617,6 +2870,9 @@ class Compiler(object):
 
     def is_window_aggregate(self, expression, config, arguments):
         return isinstance(expression, sqlglot_expressions.Window)
+
+    def is_subquery(self, expression, config, arguments):
+        return isinstance(expression, (sqlglot_expressions.Subquery, sqlglot_expressions.Select, sqlglot_expressions.Union))
 
     def optimize_rewrite(self, expression, config, arguments):
         from_expression = expression.args.get("from")

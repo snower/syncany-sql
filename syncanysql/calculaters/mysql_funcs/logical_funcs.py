@@ -220,5 +220,13 @@ def mysql_is_not(a, b):
         return 0 if a is b else 1
     return mysql_neq(a, b)
 
+@typing_filter(int)
+def mysql_exists(a):
+    if a is None:
+        return None
+    if isinstance(a, dict):
+        return 1
+    return 1 if a else 0
+
 
 funcs = {key[6:]: value for key, value in globals().items() if key.startswith("mysql_")}
