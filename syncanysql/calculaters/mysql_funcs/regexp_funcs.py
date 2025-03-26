@@ -71,7 +71,7 @@ def mysql_regexp_replace(s, r, rs, pos=1, occurrence=0, match_type=None):
         flags = parse_flags(match_type)
         cs = s[pos-1:]
         if occurrence <= 0:
-            return re.sub(r, rs, cs, 0, flags)
+            return re.sub(r, rs, cs, count=0, flags=flags)
         while cs:
             m = re.search(r, cs, flags)
             if not m:
