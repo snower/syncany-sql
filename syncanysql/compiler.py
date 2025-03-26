@@ -392,8 +392,6 @@ class Compiler(object):
             primary_table["table_name"] = "--"
             config["loader"] = "const_loader"
             config["loader_arguments"] = {"datas": [{}]}
-            arguments["@limit"] = 1
-            arguments["@batch"] = 0
         else:
             if not isinstance(from_expression, sqlglot_expressions.From) or not from_expression.expressions:
                 raise SyncanySqlCompileException('unknown select table, related sql "%s"' % self.to_sql(expression))
@@ -992,102 +990,69 @@ class Compiler(object):
             return self.compile_calculate(parse_calucate(expression), config, arguments, primary_table, [])
 
     def compile_query_condition(self, expression, config, arguments, primary_table, join_tables, typing_filters):
-        subquery_join_patent_expression, subquery_join_patent_columns, subquery_interceptor_expressions = self.parse_subquery(expression, config,
-                                                                                            arguments, primary_table, join_tables)
-        if isinstance(expression, sqlglot_expressions.Select):
-            if (not subquery_join_patent_columns and not subquery_join_patent_expression and not subquery_interceptor_expressions
-                    and not expression.args.get("group") and not expression.args.get("having") and not expression.args.get("order")
-                    and not expression.args.get("limit") and not expression.args.get("offset") and not expression.args.get("distinct")
-                    and expression.args.get("from") and expression.args.get("expressions")):
-                from_expression = expression.args["from"]
-                if isinstance(from_expression, sqlglot_expressions.From) and from_expression.expressions and len(from_expression.expressions) == 1:
-                    is_subquery, select_expressions = False, expression.args.get("expressions")
-                else:
-                    is_subquery, select_expressions = True, None
+        def parse_subquery_select_column_name(subquery_config, exclude_keys=None):
+            if isinstance(subquery_config["schema"], dict):
+                subquery_schema = subquery_config["schema"]
+                subquery_where_schema = subquery_config["where_schema"] if "where_schema" in subquery_schema \
+                                                                           and isinstance(subquery_config["where_schema"], dict) else {}
             else:
-                is_subquery, select_expressions = True, None
-        else:
-            select_expressions, is_subquery = None, True
+                subquery_schema, subquery_where_schema = {}, {}
+                for dependency in subquery_config.get("dependencys", []):
+                    if not isinstance(dependency, dict) or not isinstance(dependency["schema"], dict):
+                        continue
+                    subquery_schema.update(dependency["schema"])
+                    if "where_schema" in dependency and isinstance(dependency["where_schema"], dict):
+                        subquery_where_schema.update(dependency["where_schema"])
+            for key in subquery_schema:
+                if (exclude_keys and key in exclude_keys) or key in subquery_where_schema:
+                    continue
+                return key
+            return "*"
 
-        if is_subquery:
-            def parse_subquery_schema(subquery_config):
-                if isinstance(subquery_config["schema"], dict):
-                    subquery_schema = subquery_config["schema"]
-                else:
-                    subquery_schema = {}
-                    for dependency in subquery_config.get("dependencys", []):
-                        if not isinstance(dependency, dict) or not isinstance(dependency["schema"], dict):
-                            continue
-                        subquery_schema.update(dependency["schema"])
-                return subquery_schema
+        subquery_join_parent_expression, subquery_join_patent_columns, subquery_interceptor_expressions = self.parse_subquery(
+            expression, config, arguments, primary_table, join_tables)
+        func_expression = expression.parent
+        is_not_extracting_value = (func_expression and isinstance(func_expression, (sqlglot_expressions.Anonymous,
+                                                                               sqlglot_expressions.Binary, sqlglot_expressions.Condition))
+                                   and func_expression.key.lower() in ("exists", "yield_array"))
+        subquery_interceptor_column = None
+        for interceptor_expression in subquery_interceptor_expressions[::-1]:
+            interceptor_column = self.compile_query_condition_column(interceptor_expression, config, arguments, primary_table,
+                                                                     join_tables, None, -2)
+            if subquery_interceptor_column is None:
+                subquery_interceptor_column = ["#if", interceptor_column, ["#const", 1], ["#const", 0]]
+            else:
+                subquery_interceptor_column = ["#if", interceptor_column, subquery_interceptor_column, ["#const", 0]]
 
-            func_expression = expression.parent
-            is_not_extracting_value = (func_expression and isinstance(func_expression, (sqlglot_expressions.Anonymous,
-                                                                                   sqlglot_expressions.Binary, sqlglot_expressions.Condition)) \
-                                       and func_expression.key.lower() in ("exists", "yield_array"))
-            subquery_interceptor_column = None
-            for interceptor_expression in subquery_interceptor_expressions[::-1]:
-                interceptor_column = self.compile_query_condition_column(interceptor_expression, config,
-                                                                         arguments, primary_table, join_tables, None, -2)
-                if subquery_interceptor_column is None:
-                    subquery_interceptor_column = ["#if", interceptor_column, ["#const", 1], ["#const", 0]]
-                else:
-                    subquery_interceptor_column = ["#if", interceptor_column, subquery_interceptor_column, ["#const", 0]]
-            if not subquery_join_patent_columns or not subquery_join_patent_expression:
-                subquery_name, subquery_config = self.compile_subquery(subquery_join_patent_expression or expression, arguments)
-                if not isinstance(subquery_config, dict):
-                    raise SyncanySqlCompileException('error subquery, unknown select columns, related sql "%s"' % self.to_sql(expression))
-                subquery_schema = parse_subquery_schema(subquery_config)
-                column_name = list(subquery_schema.keys())[0]
-                db_table = "&.--." + subquery_name + "::" + column_name
-                config["dependencys"].append(subquery_config)
-                if is_not_extracting_value:
-                    column_name= "*"
-                if subquery_interceptor_column:
-                    return [db_table, subquery_interceptor_column, "$." + column_name]
-                return [db_table, "$." + column_name]
-
-            if join_tables is None:
-                raise SyncanySqlCompileException('error subquery, Only supported in select and where, related sql "%s"'
-                                             % self.to_sql(expression))
-            subquery_name, subquery_config = self.compile_subquery(subquery_join_patent_expression, arguments)
+        if not subquery_join_patent_columns or not subquery_join_parent_expression:
+            subquery_name, subquery_config = self.compile_subquery(subquery_join_parent_expression or expression, arguments)
             if not isinstance(subquery_config, dict):
-                raise SyncanySqlCompileException(
-                    'error subquery, unknown select columns, related sql "%s"' % self.to_sql(expression))
-            join_keys, join_key_cloumns = [], []
-            for _, join_parent_column in subquery_join_patent_columns.items():
-                join_keys.append(join_parent_column["column_alias"])
-                join_key_cloumns.append(self.compile_query_condition_column(join_parent_column["parent_column"]["expression"],
-                                                                                   config, arguments, primary_table, join_tables,
-                                                                                   join_parent_column["parent_column"]))
+                raise SyncanySqlCompileException('error subquery, unknown select columns, related sql "%s"' % self.to_sql(expression))
+            column_name = parse_subquery_select_column_name(subquery_config)
+            db_table = "&.--." + subquery_name + "::" + column_name
+            config["dependencys"].append(subquery_config)
             if is_not_extracting_value:
-                column_name = "*"
-            else:
-                subquery_schema = parse_subquery_schema(subquery_config)
-                column_name = [c for c in subquery_schema if c not in join_keys][0]
-            if len(join_keys) == 1:
-                return [join_key_cloumns[0], ["&.:=@execute_query_tasker::" + join_keys[0], subquery_interceptor_column or {},
-                                              {"task_config": subquery_config}], subquery_interceptor_column, "$." + column_name]
-            return [join_key_cloumns, ["&.:=@execute_query_tasker::" + "+".join(join_keys), {},
-                                       {"task_config": subquery_config}], subquery_interceptor_column, "$." + column_name]
+                column_name= "*"
+            if subquery_interceptor_column:
+                return [db_table, subquery_interceptor_column, "$." + column_name]
+            return [db_table, "$." + column_name]
 
-        table_info = self.parse_table(expression.args["from"].expressions[0], config, arguments)
-        if isinstance(select_expressions[0], sqlglot_expressions.Alias):
-            column_info = self.parse_column(select_expressions[0].args["this"], config, arguments)
-        else:
-            column_info = self.parse_column(select_expressions[0], config, arguments)
-        if column_info["typing_filters"] and typing_filters:
-            column_info["typing_filters"] = typing_filters
-        querys = {"querys": {}}
-        where_expression = expression.args.get("where")
-        if where_expression and isinstance(where_expression, sqlglot_expressions.Where):
-            self.compile_where_condition(where_expression.args["this"], querys, arguments, primary_table, [])
-            self.parse_condition_typing_filter(expression, querys, arguments)
-        db_table = "&." + table_info["db"] + "." + table_info["name"] + "::" + \
-                   self.compile_foreign_column(expression, config, arguments, column_info)
-        if querys.get("querys"):
-            return [[db_table, querys["querys"]], self.compile_column(select_expressions[0], config, arguments, column_info)]
-        return [db_table, self.compile_column(select_expressions[0], config, arguments, column_info)]
+        if join_tables is None:
+            raise SyncanySqlCompileException('error subquery, Only supported in select and where, related sql "%s"' % self.to_sql(expression))
+        subquery_name, subquery_config = self.compile_subquery(subquery_join_parent_expression, arguments)
+        if not isinstance(subquery_config, dict):
+            raise SyncanySqlCompileException('error subquery, unknown select columns, related sql "%s"' % self.to_sql(expression))
+        join_keys, join_key_cloumns = [], []
+        for _, join_parent_column in subquery_join_patent_columns.items():
+            join_keys.append(join_parent_column["column_alias"])
+            join_key_cloumns.append(self.compile_query_condition_column(join_parent_column["parent_column"]["expression"], config, arguments,
+                                                                        primary_table, join_tables, join_parent_column["parent_column"]))
+        column_name = "*" if is_not_extracting_value else parse_subquery_select_column_name(subquery_config, join_keys)
+        if len(join_keys) == 1:
+            return [join_key_cloumns[0], ["&.:=@execute_query_tasker::" + join_keys[0], subquery_interceptor_column or {}, {"task_config": subquery_config}],
+                    subquery_interceptor_column, "$." + column_name]
+        return [join_key_cloumns, ["&.:=@execute_query_tasker::" + "+".join(join_keys), {}, {"task_config": subquery_config}],
+                subquery_interceptor_column, "$." + column_name]
 
     def compile_query_condition_column(self, expression, config, arguments, primary_table, join_tables, expression_column=None, join_index=-1):
         if not expression_column and self.is_column(expression, config, arguments):
