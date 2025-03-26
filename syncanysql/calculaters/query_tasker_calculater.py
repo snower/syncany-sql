@@ -3,7 +3,6 @@
 # create by: snower
 
 import copy
-from syncany.database import find_database, DatabaseUnknownException
 from syncany.taskers.tasker import _thread_local
 from syncany.calculaters.calculater import Calculater
 
@@ -26,29 +25,17 @@ class ExecuteQueryTaskerCalculater(Calculater):
                         executor.env_variables["@" + value[0]] = value[1]
                 task_config = copy.deepcopy(task_config)
                 collection_name = "--.__queryTasker_" + str(id(executor))
-                task_config["output"] = "&." + collection_name + "::" + task_config["output"].split("::")[-1].split(" ")[0]
+                task_config["output"] = "&." + collection_name + "::" + task_config["output"].split("::")[-1]
                 task_config["name"] = task_config["name"] + "#queryTasker"
                 tasker = QueryTasker(task_config, is_inner_subquery=True)
                 executor.runners.extend(tasker.start(task_config.get("name"), executor, executor.session_config,
                                                      executor.manager, current_tasker.arguments))
+                database = tasker.tasker.outputer.db
                 executor.execute()
-
-                try:
-                    database_config = dict(**[database for database in current_executor.session_config.get()["databases"]
-                                              if database["name"] == "--"][0])
-                except (TypeError, KeyError, IndexError):
-                    raise DatabaseUnknownException("memory db is unknown")
-                database_cls = find_database(database_config.pop("driver"))
-                if not database_cls:
-                    return
-                database = database_cls(executor.manager.database_manager, database_config).build()
-                try:
-                    query = database.query(collection_name, ["id"])
-                    datas = query.commit()
-                    delete = database.delete(collection_name, ["id"])
-                    delete.commit()
-                    return datas
-                finally:
-                    database.close()
+                query = database.query(collection_name, ["id"])
+                datas = query.commit()
+                delete = database.delete(collection_name, ["id"])
+                delete.commit()
+                return datas
         finally:
             _thread_local.current_tasker = current_tasker

@@ -235,8 +235,7 @@ class Compiler(object):
             table_name = sub_expression.args["alias"].name
             subquery_arguments = {key: arguments[key] for key in CONST_CONFIG_KEYS if key in arguments}
             subquery_config = self.compile_query(sub_expression.args["this"], subquery_arguments)
-            subquery_config["output"] = "&.--." + table_name + "::" + \
-                                        subquery_config["output"].split("::")[-1].split(" use ")[0] + " use I"
+            subquery_config["output"] = "&.--." + table_name + "::" + subquery_config["output"].split("::")[-1].split(" use ")[0] + " use I"
             subquery_config["name"] = subquery_config["name"] + "#" + table_name + "#select"
             arguments.update({subquery_config["name"] + "@" + key: value for key, value in subquery_arguments.items()})
             output_db_table_name = subquery_config["output"].split("::")[0]
@@ -259,7 +258,7 @@ class Compiler(object):
         subquery_arguments = {key: arguments[key] for key in CONST_CONFIG_KEYS if key in arguments}
         subquery_config = self.compile_query(expression if not isinstance(expression, sqlglot_expressions.Subquery)
                                              else expression.args["this"], subquery_arguments)
-        subquery_config["output"] = "&.--." + subquery_name + "::" + subquery_config["output"].split("::")[-1]
+        subquery_config["output"] = "&.--." + subquery_name + "::" + subquery_config["output"].split("::")[-1].split(" use ")[0] + " use I"
         subquery_config["name"] = subquery_config["name"] + "#" + subquery_name[2:]
         arguments.update({subquery_config["name"] + "@" + key: value for key, value in subquery_arguments.items()})
         arguments["@primary_order"] = False
