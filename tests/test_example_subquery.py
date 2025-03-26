@@ -36,3 +36,8 @@ class SubqueryExampleTestCase(ExampleTestCase):
                          "data error")
         self.assert_data(23, [{'total_amount': 15.6, 'uid': 1}, {'total_amount': 27.6, 'uid': 2}],
                          "data error")
+        self.assert_data(28, [{'amount': 3,
+                               'has_history': 1,
+                               'history_exists': 1,
+                               'order_id': 3,
+                               'uid': 2}], "data error")
