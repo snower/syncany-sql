@@ -15,15 +15,15 @@ class ExecuteQueryTaskerCalculater(Calculater):
         current_tasker = _thread_local.current_tasker
         current_executor = Executor.current()
         try:
-            with Executor(current_executor.manager, current_executor.session_config.session(), current_executor) as executor:
-                if "in" in query["filters"]:
-                    for value in query["filters"]["in"]:
-                        if not isinstance(value, tuple):
-                            continue
-                        if not value[1]:
-                            return []
-                        executor.env_variables["@" + value[0]] = value[1]
+            with Executor(current_executor.manager, current_executor.session_config, current_executor) as executor:
                 task_config = copy.deepcopy(task_config)
+                for exp, values in query["filters"].items():
+                    if not exp:
+                        continue
+                    for key, value in values:
+                        if not key or not isinstance(key, str):
+                            continue
+                        executor.env_variables["@" + key] = value
                 collection_name = "--.__queryTasker_" + str(id(executor))
                 task_config["output"] = "&." + collection_name + "::" + task_config["output"].split("::")[-1]
                 task_config["name"] = task_config["name"] + "#queryTasker"
