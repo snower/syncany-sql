@@ -84,7 +84,7 @@ class QueryTaskerTemporaryMemoryManager(object):
 class QueryTasker(object):
     ENV_ARGUMENTS = {key.lower(): value for key, value in os.environ.items()}
 
-    def __init__(self, config, sql_expression=None, temporary_memory_manager=None):
+    def __init__(self, config, sql_expression=None, temporary_memory_manager=None, is_inner_subquery=False):
         self.name = config.get("name", "")
         self.config = config
         self.sql_expression = sql_expression
@@ -95,6 +95,7 @@ class QueryTasker(object):
         self.tasker_generator = None
         self.updaters = []
         self.temporary_memory_manager = temporary_memory_manager or QueryTaskerTemporaryMemoryManager()
+        self.is_inner_subquery = is_inner_subquery
         self.run_start_time = 0
 
     def start(self, name, executor, session_config, manager, arguments):
@@ -102,7 +103,7 @@ class QueryTasker(object):
         if aggregate and aggregate.get("distinct_keys"):
             self.config, distinct_config = self.compile_distinct_config(where_schema, aggregate), self.config
             distinct_config["name"] = distinct_config["name"] + "#select@distinct"
-            distinct_tasker = QueryTasker(distinct_config, temporary_memory_manager=self.temporary_memory_manager)
+            distinct_tasker = QueryTasker(distinct_config, temporary_memory_manager=self.temporary_memory_manager, is_inner_subquery=True)
             distinct_tasker.start(name, executor, session_config, manager, copy.deepcopy(arguments))
             dependency_taskers.append(distinct_tasker)
             arguments["@limit"] = 0
@@ -115,7 +116,7 @@ class QueryTasker(object):
                     continue
                 dependency_arguments[key[knl:]] = value
                 dependency_arguments.pop(key, None)
-            dependency_tasker = QueryTasker(dependency_config, temporary_memory_manager=self.temporary_memory_manager)
+            dependency_tasker = QueryTasker(dependency_config, temporary_memory_manager=self.temporary_memory_manager, is_inner_subquery=True)
             dependency_tasker.start(name, executor, session_config, manager, dependency_arguments)
             dependency_taskers.append(dependency_tasker)
 
@@ -138,7 +139,7 @@ class QueryTasker(object):
             elif [aggregate_column["final_value"] for aggregate_column in aggregate["window_schema"].values()
                   if aggregate_column["final_value"]]:
                 require_reduce = True
-        if where_schema:
+        if where_schema and not self.is_inner_subquery:
             require_reduce = True
         if require_reduce and isinstance(self.config["schema"], dict) and not arguments.get("@streaming"):
             if not aggregate:

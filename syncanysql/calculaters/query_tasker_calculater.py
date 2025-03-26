@@ -28,7 +28,7 @@ class ExecuteQueryTaskerCalculater(Calculater):
                 collection_name = "--.__queryTasker_" + str(id(executor))
                 task_config["output"] = "&." + collection_name + "::" + task_config["output"].split("::")[-1].split(" ")[0]
                 task_config["name"] = task_config["name"] + "#queryTasker"
-                tasker = QueryTasker(task_config)
+                tasker = QueryTasker(task_config, is_inner_subquery=True)
                 executor.runners.extend(tasker.start(task_config.get("name"), executor, executor.session_config,
                                                      executor.manager, current_tasker.arguments))
                 executor.execute()
