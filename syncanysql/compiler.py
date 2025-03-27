@@ -1784,7 +1784,7 @@ class Compiler(object):
                     return [
                         "#make", {"value": self.compile_calculate(expression.args["this"], config, arguments, primary_table,
                                                                   column_join_tables, join_index)},
-                        [(":@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name), "$.value"]
+                        [(":@mysql::" + func_name) if is_mysql_func(func_name) else (":@" + func_name), "$.value"]
                     ]
                 return [
                     ("@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name),
