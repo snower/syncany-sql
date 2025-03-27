@@ -115,7 +115,6 @@ class QueryTasker(object):
                 if key[:knl] != kn:
                     continue
                 dependency_arguments[key[knl:]] = value
-                dependency_arguments.pop(key, None)
             dependency_tasker = QueryTasker(dependency_config, temporary_memory_manager=self.temporary_memory_manager, is_inner_subquery=True)
             dependency_tasker.start(name, executor, session_config, manager, dependency_arguments)
             dependency_taskers.append(dependency_tasker)
