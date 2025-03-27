@@ -2344,10 +2344,11 @@ class Compiler(object):
                 table_info = self.parse_table(join_expression.args["this"], config, arguments)
                 current_tables[table_info["table_name"]] = table_info
 
-        def parse_parent_caculate_condition(condition_expression, join_parent_columns):
+        def parse_parent_calculate_condition(condition_expression, join_parent_columns):
             if self.is_column(condition_expression, config, arguments):
                 condition_column = self.parse_column(condition_expression, config, arguments)
-                if condition_column["table_name"] not in parent_tables:
+                if (not condition_column["table_name"] or condition_column["table_name"] in current_tables
+                        or condition_column["table_name"] not in parent_tables):
                     return
                 join_parent_columns.append(condition_expression)
                 return
@@ -2358,14 +2359,14 @@ class Compiler(object):
                     continue
                 if isinstance(child_expression, list):
                     for child_expression_item in child_expression:
-                        parse_parent_caculate_condition(child_expression_item, join_parent_columns)
+                        parse_parent_calculate_condition(child_expression_item, join_parent_columns)
                 else:
-                    parse_parent_caculate_condition(child_expression, join_parent_columns)
+                    parse_parent_calculate_condition(child_expression, join_parent_columns)
 
-        def parse_caculate_condition(condition_expression, join_select_columns):
+        def parse_calculate_condition(condition_expression, join_select_columns):
             if self.is_column(condition_expression, config, arguments):
                 condition_column = self.parse_column(condition_expression, config, arguments)
-                if condition_column["table_name"] not in current_tables:
+                if condition_column["table_name"] and condition_column["table_name"] not in current_tables:
                     return
                 column_key = self.generate_sql(condition_expression)
                 if column_key in join_select_columns:
@@ -2386,9 +2387,9 @@ class Compiler(object):
                     continue
                 if isinstance(child_expression, list):
                     for child_expression_item in child_expression:
-                        parse_caculate_condition(child_expression_item, join_select_columns)
+                        parse_calculate_condition(child_expression_item, join_select_columns)
                 else:
-                    parse_caculate_condition(child_expression, join_select_columns)
+                    parse_calculate_condition(child_expression, join_select_columns)
 
         def parse_where_condition(condition_expression, join_parent_columns, join_select_columns, interceptor_expressions):
             if isinstance(condition_expression, sqlglot_expressions.And):
@@ -2405,11 +2406,11 @@ class Compiler(object):
                     self.is_column(condition_expression.args["expression"], config, arguments)):
                 left_condition_column = self.parse_column(condition_expression.args["this"], config, arguments)
                 right_condition_column = self.parse_column(condition_expression.args["expression"], config, arguments)
-                if right_condition_column["table_name"] in current_tables:
-                    if left_condition_column["table_name"] in current_tables:
+                if not right_condition_column["table_name"] or right_condition_column["table_name"] in current_tables:
+                    if not left_condition_column["table_name"] or left_condition_column["table_name"] in current_tables:
                         return self.generate_sql(condition_expression)
                     left_condition_column, right_condition_column = right_condition_column, left_condition_column
-                if right_condition_column["table_name"] not in parent_tables:
+                if not right_condition_column["table_name"] or right_condition_column["table_name"] not in parent_tables:
                     return self.generate_sql(condition_expression)
                 current_column = self.generate_sql(left_condition_column["expression"])
                 parent_column = self.generate_sql(right_condition_column["expression"])
@@ -2428,10 +2429,10 @@ class Compiler(object):
                 return current_column + " IN @" + column_alias
 
             current_join_parent_columns = []
-            parse_parent_caculate_condition(condition_expression, current_join_parent_columns)
+            parse_parent_calculate_condition(condition_expression, current_join_parent_columns)
             if not current_join_parent_columns:
                 return self.generate_sql(condition_expression)
-            parse_caculate_condition(condition_expression, join_select_columns)
+            parse_calculate_condition(condition_expression, join_select_columns)
             interceptor_expressions.append(condition_expression)
             return ""
 

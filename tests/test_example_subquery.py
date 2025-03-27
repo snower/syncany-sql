@@ -41,3 +41,8 @@ class SubqueryExampleTestCase(ExampleTestCase):
                                'history_exists': 1,
                                'order_id': 3,
                                'uid': 2}], "data error")
+        self.assert_data(36, [{'amount': 3,
+                               'has_history': 1,
+                               'history_exists': 1,
+                               'order_id': 3,
+                               'uid': 2}], "data error")
