@@ -40,3 +40,11 @@ select order_id, uid, amount, (select count(*) from `data/order_historys.json` w
             select uid from `data/users.json` where b.uid=uid
         )
     )<5;
+
+select order_id, uid, amount, (select count(*) from `data/order_historys.json` where order_id+1=a.order_id+1 and status=0)>0 as has_history,
+       exists(select count(*) from `data/order_historys.json` where order_id=convert_int(a.order_id) and status=0) as history_exists
+    from `data/orders.json` as a where (
+        select sum(amount) from `data/orders.json` as b where convert_int(a.order_id)=convert_int((b.order_id+1)-1) and status=0 and exists(
+            select uid from `data/users.json` where b.uid=uid
+        )
+    )<5;

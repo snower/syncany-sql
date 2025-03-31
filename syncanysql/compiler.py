@@ -855,8 +855,12 @@ class Compiler(object):
             for _, child_expression in calculate_expression.args.items():
                 if isinstance(child_expression, list):
                     for child_expression_item in child_expression:
+                        if not isinstance(child_expression_item, sqlglot_expressions.Expression):
+                            continue
                         parse_calucate(child_expression_item)
                 else:
+                    if not isinstance(child_expression, sqlglot_expressions.Expression):
+                        continue
                     parse_calucate(child_expression)
             return calculate_expression
 
@@ -2018,14 +2022,18 @@ class Compiler(object):
                                     primary_keys.append(item_column["column_name"])
                             return
                         for child_item_expressions in item_expression.args.values():
-                            if self.is_const(child_item_expressions, config, arguments):
-                                continue
-                            if self.is_subquery(child_item_expressions, config, arguments):
-                                continue
                             if isinstance(child_item_expressions, list):
                                 for child_item_expression in child_item_expressions:
+                                    if not isinstance(child_item_expression, sqlglot_expressions.Expression) or self.is_const(child_item_expression, config, arguments):
+                                        continue
+                                    if self.is_subquery(child_item_expression, config, arguments):
+                                        continue
                                     find_primary_keys(child_item_expression, primary_keys)
                             else:
+                                if not isinstance(child_item_expressions, sqlglot_expressions.Expression) or self.is_const(child_item_expressions, config, arguments):
+                                    continue
+                                if self.is_subquery(child_item_expressions, config, arguments):
+                                    continue
                                 find_primary_keys(child_item_expressions, primary_keys)
 
                     primary_keys = []
@@ -2275,15 +2283,11 @@ class Compiler(object):
             for arg_expression in expression.args.values():
                 if isinstance(arg_expression, list):
                     for item_arg_expression in arg_expression:
-                        if not isinstance(item_arg_expression, sqlglot_expressions.Expression):
-                            continue
-                        if self.is_const(item_arg_expression, config, arguments):
+                        if not isinstance(item_arg_expression, sqlglot_expressions.Expression) or self.is_const(item_arg_expression, config, arguments):
                             continue
                         self.parse_calculate(item_arg_expression, config, arguments, primary_table, calculate_fields)
                 else:
-                    if not isinstance(arg_expression, sqlglot_expressions.Expression):
-                        continue
-                    if self.is_const(arg_expression, config, arguments):
+                    if not isinstance(arg_expression, sqlglot_expressions.Expression) or self.is_const(arg_expression, config, arguments):
                         continue
                     self.parse_calculate(arg_expression, config, arguments, primary_table, calculate_fields)
 
@@ -2297,8 +2301,12 @@ class Compiler(object):
         for _, child_expression in expression.args.items():
             if isinstance(child_expression, list):
                 for child_expression_item in child_expression:
+                    if not isinstance(child_expression_item, sqlglot_expressions.Expression):
+                        continue
                     self.parse_aggregate(child_expression_item, config, arguments, aggregate_expressions)
             else:
+                if not isinstance(child_expression, sqlglot_expressions.Expression):
+                    continue
                 self.parse_aggregate(child_expression, config, arguments, aggregate_expressions)
 
     def parse_window_aggregate(self, expression, config, arguments, window_aggregate_expressions):
@@ -2311,8 +2319,12 @@ class Compiler(object):
         for _, child_expression in expression.args.items():
             if isinstance(child_expression, list):
                 for child_expression_item in child_expression:
+                    if not isinstance(child_expression_item, sqlglot_expressions.Expression):
+                        continue
                     self.parse_window_aggregate(child_expression_item, config, arguments, window_aggregate_expressions)
             else:
+                if not isinstance(child_expression, sqlglot_expressions.Expression):
+                    continue
                 self.parse_window_aggregate(child_expression, config, arguments, window_aggregate_expressions)
 
     def parse_subquery(self, expression, config, arguments, primary_table, join_tables):
@@ -2350,12 +2362,14 @@ class Compiler(object):
             if self.is_subquery(condition_expression, config, arguments):
                 return
             for _, child_expression in condition_expression.args.items():
-                if self.is_const(child_expression, config, arguments):
-                    continue
                 if isinstance(child_expression, list):
                     for child_expression_item in child_expression:
+                        if not isinstance(child_expression_item, sqlglot_expressions.Expression) or self.is_const(child_expression_item, config, arguments):
+                            continue
                         parse_parent_calculate_condition(child_expression_item, join_parent_columns)
                 else:
+                    if not isinstance(child_expression, sqlglot_expressions.Expression) or self.is_const(child_expression, config, arguments):
+                        continue
                     parse_parent_calculate_condition(child_expression, join_parent_columns)
 
         def parse_calculate_condition(condition_expression, join_select_columns):
@@ -2378,12 +2392,14 @@ class Compiler(object):
             if self.is_subquery(condition_expression, config, arguments):
                 return
             for _, child_expression in condition_expression.args.items():
-                if self.is_const(child_expression, config, arguments):
-                    continue
                 if isinstance(child_expression, list):
                     for child_expression_item in child_expression:
+                        if not isinstance(child_expression_item, sqlglot_expressions.Expression) or self.is_const(child_expression_item, config, arguments):
+                            continue
                         parse_calculate_condition(child_expression_item, join_select_columns)
                 else:
+                    if not isinstance(child_expression, sqlglot_expressions.Expression) or self.is_const(child_expression, config, arguments):
+                        continue
                     parse_calculate_condition(child_expression, join_select_columns)
 
         def parse_where_condition(condition_expression, join_parent_columns, join_select_columns, interceptor_expressions):
