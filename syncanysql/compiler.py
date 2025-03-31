@@ -1032,26 +1032,33 @@ class Compiler(object):
             config["dependencys"].append(subquery_config)
             if is_not_extracting_value:
                 column_name= "*"
+            elif typing_filters:
+                column_name = column_name + "|" + typing_filters
             if subquery_interceptor_column:
-                return [db_table, subquery_interceptor_column, "$." + column_name]
-            return [db_table, "$." + column_name]
+                return [db_table, subquery_interceptor_column, ":$." + column_name]
+            return [db_table, ":$." + column_name]
 
         if join_tables is None:
             raise SyncanySqlCompileException('error subquery, Only supported in select and where, related sql "%s"' % self.to_sql(expression))
         subquery_name, subquery_config = self.compile_subquery(subquery_join_parent_expression, arguments)
         if not isinstance(subquery_config, dict):
             raise SyncanySqlCompileException('error subquery, unknown select columns, related sql "%s"' % self.to_sql(expression))
-        join_keys, join_key_cloumns = [], []
+        join_keys, join_key_columns = [], []
         for _, join_parent_column in subquery_join_patent_columns.items():
             join_keys.append(join_parent_column["column_alias"])
-            join_key_cloumns.append(self.compile_query_condition_column(join_parent_column["parent_column"]["expression"], config, arguments,
+            join_key_columns.append(self.compile_query_condition_column(join_parent_column["parent_column"]["expression"], config, arguments,
                                                                         primary_table, join_tables, join_parent_column["parent_column"]))
-        column_name = "*" if is_not_extracting_value else parse_subquery_select_column_name(subquery_config, join_keys)
+        if is_not_extracting_value:
+            column_name = "*"
+        else:
+            column_name = parse_subquery_select_column_name(subquery_config, join_keys)
+            if typing_filters:
+                column_name = column_name + "|" + typing_filters
         if len(join_keys) == 1:
-            return [join_key_cloumns[0], ["&.:=@execute_query_tasker::" + join_keys[0], subquery_interceptor_column or {}, {"task_config": subquery_config}],
-                    subquery_interceptor_column, "$." + column_name]
-        return [join_key_cloumns, ["&.:=@execute_query_tasker::" + "+".join(join_keys), {}, {"task_config": subquery_config}],
-                subquery_interceptor_column, "$." + column_name]
+            return [join_key_columns[0], ["&.:=@execute_query_tasker::" + join_keys[0], subquery_interceptor_column or {}, {"task_config": subquery_config}],
+                    subquery_interceptor_column, ":$." + column_name]
+        return [join_key_columns, ["&.:=@execute_query_tasker::" + "+".join(join_keys), {}, {"task_config": subquery_config}],
+                subquery_interceptor_column, ":$." + column_name]
 
     def compile_query_condition_column(self, expression, config, arguments, primary_table, join_tables, expression_column=None, join_index=-1):
         if not expression_column and self.is_column(expression, config, arguments):
