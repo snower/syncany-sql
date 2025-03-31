@@ -8,7 +8,7 @@ from .example import ExampleTestCase
 class SubqueryExampleTestCase(ExampleTestCase):
     example_name = "subquery"
 
-    def test_strings(self):
+    def test_subquery(self):
         self.execute("subquery.sql")
 
         self.assert_data(1, [{'cnt': 4, 'latest_order_id': 6, 'total_amount': 27.6, 'uid': 2}], "data error")

@@ -36,3 +36,9 @@ select a.order_id, c.name from `data/orders.json` a
     left join `data/devices.json` b on a.order_id=b.`out_order_no[varchar]` and b.order_type=1
     left join `data/services.json` c on b.code=c.device_code
 where c.name is not null;
+
+select a.code, c.name, d.goods_name from `data/devices.json` a
+    left join `data/orders.json` b on a.uid=b.uid and concat(a.out_order_no, 'HHH')=concat(b.`order_id[int]`, 'HHH')
+    left join `data/users.json` c on a.uid=c.uid
+    left join `data/goodses.json` d on b.goods_id=d.goods_id
+where d.goods_name is not null;

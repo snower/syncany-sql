@@ -98,7 +98,7 @@ class CompilerDialect(sqlglot_dialects.Dialect):
 
 class Compiler(object):
     ESCAPE_CHARS = ['\\\\a', '\\\\b', '\\\\f', '\\\\n', '\\\\r', '\\\\t', '\\\\v', '\\\\0']
-    TYPE_FILTERS = {"int": "int", "float": "float", "str": "str", "bytes": "bytes", 'bool': 'bool', 'array': 'array', 'set': 'set',
+    TYPE_FILTERS = {"int": "int", "float": "float", "str": "str", "string": "str", "bytes": "bytes", 'bool': 'bool', 'array': 'array', 'set': 'set',
                    'map': 'map', "objectid": "objectid", "uuid": "uuid", "datetime": "datetime", "date": "date", "time": "time",
                    "char": "str", "varchar": "str", "nchar": "str", "text": "str", "mediumtext": "str", "tinytext": "str",
                    "bigint": "int", "mediumint": "int", "smallint": "int", "tinyint": "int", "decimal": "decimal", "double": "float",
@@ -1512,6 +1512,9 @@ class Compiler(object):
     def compile_calculate(self, expression, config, arguments, primary_table, column_join_tables, join_index=-1):
         if hasattr(expression, "syncany_valuer"):
             return expression.syncany_valuer
+        if hasattr(expression, 'syncany_column'):
+            return self.compile_join_column_field(expression, config, arguments, primary_table, join_index,
+                                                  expression.syncany_column, column_join_tables)
         if isinstance(expression, sqlglot_expressions.Neg):
             return ["@neg", self.compile_calculate(expression.args["this"], config, arguments, primary_table, 
                                                    column_join_tables, join_index)]
@@ -1604,30 +1607,7 @@ class Compiler(object):
                 self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index),
             ]
         elif isinstance(expression, sqlglot_expressions.Cast):
-            to_type = expression.args["to"].args["this"]
-            if to_type in sqlglot_expressions.DataType.FLOAT_TYPES:
-                typing_filter = "float"
-            elif to_type in sqlglot_expressions.DataType.INTEGER_TYPES:
-                typing_filter = "int"
-            elif to_type == sqlglot_expressions.DataType.Type.DATE:
-                typing_filter = "date"
-            elif to_type in sqlglot_expressions.DataType.TEMPORAL_TYPES:
-                typing_filter = "datetime"
-            elif to_type == sqlglot_expressions.DataType.Type.TIME:
-                typing_filter = "time"
-            elif to_type in sqlglot_expressions.DataType.TEXT_TYPES:
-                typing_filter = "str"
-            elif to_type == sqlglot_expressions.DataType.Type.BOOLEAN:
-                typing_filter = "bool"
-            elif to_type in (sqlglot_expressions.DataType.Type.DECIMAL, sqlglot_expressions.DataType.Type.BIGDECIMAL):
-                typing_filter = "decimal"
-            elif to_type == sqlglot_expressions.DataType.Type.UUID:
-                typing_filter = "uuid"
-            elif to_type in (sqlglot_expressions.DataType.Type.BINARY, sqlglot_expressions.DataType.Type.VARBINARY,
-                             sqlglot_expressions.DataType.Type.MEDIUMBLOB, sqlglot_expressions.DataType.Type.LONGBLOB):
-                typing_filter = "bytes"
-            else:
-                typing_filter = None
+            typing_filter = self.parse_cast_typing_filter(expression, config, arguments)
             value_column = self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
             if typing_filter:
                 return ["#if", ["#const", 1], value_column, None, ":$.*|" + typing_filter]
@@ -2026,7 +2006,7 @@ class Compiler(object):
                 self.parse_condition_typing_filter(expression, join_table, arguments)
             if not join_table["primary_keys"]:
                 if join_table["columns"]:
-                    join_table["primary_keys"].append(list(join_table["columns"].keys()))
+                    join_table["primary_keys"] = list(join_table["columns"].keys())
                 else:
                     def find_primary_keys(item_expression, primary_keys):
                         if not isinstance(item_expression, sqlglot_expressions.Expression):
@@ -2106,33 +2086,33 @@ class Compiler(object):
             if self.is_column(right_expression, config, arguments):
                 right_column = self.parse_column(right_expression, config, arguments)
 
-            condition_column, join_on_expression, value_expression = left_column, None, right_expression
+            condition_column, value_column, join_on_expression, value_expression = left_column, None, None, right_expression
             if isinstance(expression, sqlglot_expressions.EQ):
-                if left_column and left_column["table_name"] == join_table["name"]:
-                    condition_column, value_expression = left_column, right_expression
-                    if not self.is_const(right_expression, config, arguments) and not isinstance(right_expression, list) \
-                            and not isinstance(right_expression, sqlglot_expressions.Select):
+                if left_column and left_column["table_name"] == join_table["name"] and not left_column["convert_typing_filter"]:
+                    condition_column, value_column, value_expression = left_column, right_column, right_expression
+                    if not value_column and not self.is_const(right_expression, config, arguments) and not isinstance(right_expression, list) \
+                            and not self.is_subquery(right_expression, config, arguments):
                         join_on_expression = right_expression
-                else:
-                    if right_column and right_column["table_name"] == join_table["name"]:
-                        condition_column, value_expression = right_column, left_expression
-                        if not self.is_const(left_expression, config, arguments) and not isinstance(left_expression, list) \
-                                and not isinstance(left_expression, sqlglot_expressions.Select):
-                            join_on_expression = left_expression
+                elif right_column and right_column["table_name"] == join_table["name"] and not right_column["convert_typing_filter"]:
+                    condition_column, value_column, value_expression = right_column, left_column, left_expression
+                    if not value_column and not self.is_const(left_expression, config, arguments) and not isinstance(left_expression, list) \
+                            and not self.is_subquery(left_expression, config, arguments):
+                        join_on_expression = left_expression
             if condition_column and not condition_column["table_name"]:
                 raise SyncanySqlCompileException('unkonw join on condition, related sql "%s"' % self.to_sql(expression))
 
-            if condition_column and join_on_expression:
-                if self.is_column(join_on_expression, config, arguments):
-                    if condition_column["column_name"] in join_table["primary_keys"]:
-                        raise SyncanySqlCompileException(
-                            'error join on condition, primary_key duplicate, related sql "%s"' % self.to_sql(expression))
-                    join_table["join_columns"].append(self.parse_column(join_on_expression, config, arguments))
-                    join_table["primary_keys"].append(condition_column["column_name"])
-                    join_table["columns"][condition_column["column_name"]] = condition_column
-                    join_table["calculate_expressions"].append(join_on_expression)
-                    return True, condition_column, None
+            if condition_column and value_column:
+                if condition_column["column_name"] in join_table["primary_keys"]:
+                    raise SyncanySqlCompileException(
+                        'error join on condition, primary_key duplicate, related sql "%s"' % self.to_sql(expression))
+                join_table["join_columns"].append(value_column)
+                join_table["primary_keys"].append(condition_column["column_name"])
+                join_table["columns"][condition_column["column_name"]] = condition_column
+                setattr(value_expression, "syncany_column", value_column)
+                join_table["calculate_expressions"].append(value_expression)
+                return True, condition_column, None
 
+            if condition_column and join_on_expression:
                 calculate_fields = []
                 self.parse_calculate(join_on_expression, config, arguments, primary_table, calculate_fields)
                 if not calculate_fields and condition_column["table_name"] == join_table["name"]:
@@ -2421,27 +2401,32 @@ class Compiler(object):
                     self.is_column(condition_expression.args["expression"], config, arguments)):
                 left_condition_column = self.parse_column(condition_expression.args["this"], config, arguments)
                 right_condition_column = self.parse_column(condition_expression.args["expression"], config, arguments)
-                if not right_condition_column["table_name"] or right_condition_column["table_name"] in current_tables:
-                    if not left_condition_column["table_name"] or left_condition_column["table_name"] in current_tables:
-                        return self.generate_sql(condition_expression)
+                if ((not left_condition_column["table_name"] or left_condition_column["table_name"] in current_tables) and
+                        right_condition_column["table_name"] and right_condition_column["table_name"] in parent_tables and
+                        not left_condition_column["convert_typing_filter"]):
+                    left_condition_column, right_condition_column = left_condition_column, right_condition_column
+                elif ((not right_condition_column["table_name"] or right_condition_column["table_name"] in current_tables) and
+                      left_condition_column["table_name"] and left_condition_column["table_name"] in parent_tables and
+                      not right_condition_column["convert_typing_filter"]):
                     left_condition_column, right_condition_column = right_condition_column, left_condition_column
-                if not right_condition_column["table_name"] or right_condition_column["table_name"] not in parent_tables:
-                    return self.generate_sql(condition_expression)
-                current_column = self.generate_sql(left_condition_column["expression"])
-                parent_column = self.generate_sql(right_condition_column["expression"])
-                column_key = (current_column, parent_column)
-                if column_key in join_parent_columns:
-                    column_alias = join_parent_columns[column_key][1]
                 else:
-                    column_alias = "_subquery_join_parent_" + str(id(condition_expression))
-                    join_parent_columns[column_key] = {
-                        "current_expression": left_condition_column["expression"],
-                        "current_column": left_condition_column,
-                        "parent_expression": right_condition_column["expression"],
-                        "parent_column": right_condition_column,
-                        "column_alias": column_alias,
-                    }
-                return current_column + " IN @" + column_alias
+                    left_condition_column, right_condition_column = None, None
+                if left_condition_column and right_condition_column:
+                    current_column = self.generate_sql(left_condition_column["expression"])
+                    parent_column = self.generate_sql(right_condition_column["expression"])
+                    column_key = (current_column, parent_column)
+                    if column_key in join_parent_columns:
+                        column_alias = join_parent_columns[column_key][1]
+                    else:
+                        column_alias = "_subquery_join_parent_" + str(id(condition_expression))
+                        join_parent_columns[column_key] = {
+                            "current_expression": left_condition_column["expression"],
+                            "current_column": left_condition_column,
+                            "parent_expression": right_condition_column["expression"],
+                            "parent_column": right_condition_column,
+                            "column_alias": column_alias,
+                        }
+                    return current_column + " IN @" + column_alias
 
             current_join_parent_columns = []
             parse_parent_calculate_condition(condition_expression, current_join_parent_columns)
@@ -2613,7 +2598,7 @@ class Compiler(object):
         }
         
     def parse_column(self, expression, config, arguments):
-        dot_keys = []
+        dot_keys, convert_typing_filter = [], None
         if isinstance(expression, sqlglot_expressions.Dot):
             def parse_dot(dot_expression):
                 if isinstance(dot_expression.args["this"], sqlglot_expressions.Column):
@@ -2625,14 +2610,22 @@ class Compiler(object):
                     dot_keys.append(dot_expression.args["expression"].name)
                 return column_expression
             expression = parse_dot(expression)
+        elif isinstance(expression, sqlglot_expressions.Cast):
+            convert_typing_filter = self.parse_cast_typing_filter(expression, config, arguments)
+            expression = expression.args["this"]
+        elif isinstance(expression, sqlglot_expressions.Anonymous):
+            calculater_name = expression.args["this"].lower()
+            if calculater_name[:8] == "convert_" and calculater_name[8:] in self.TYPE_FILTERS:
+                convert_typing_filter = self.TYPE_FILTERS[calculater_name[8:]]
+                expression = expression.args["expressions"][0]
 
+        typing_filters = [convert_typing_filter] if convert_typing_filter else []
         db_name = expression.args["db"].name if expression.args.get("db") else None
         table_name = expression.args["table"].name if expression.args.get("table") else None
         column_name = expression.args["this"].name
         origin_name = self.mapping[column_name] if column_name in self.mapping else column_name
         try:
             start_index, end_index = origin_name.index("["), origin_name.rindex("]")
-            typing_filters = []
             for typing_filter in origin_name[start_index+1: end_index].split(";"):
                 typing_filter = typing_filter.split(" ")
                 if not typing_filter:
@@ -2649,7 +2642,6 @@ class Compiler(object):
             column_name = origin_name[:start_index]
             typing_name = (column_name + "|" + typing_filters[0]) if typing_filters else column_name
         except ValueError:
-            typing_filters = []
             column_name = origin_name
             typing_name = column_name
         try:
@@ -2665,7 +2657,8 @@ class Compiler(object):
             "dot_keys": dot_keys,
             "typing_filters": typing_filters,
             "typing_options": typing_options,
-            "expression": expression
+            "expression": expression,
+            "convert_typing_filter": convert_typing_filter,
         }
     
     def parse_const(self, expression, config, arguments):
@@ -2719,6 +2712,33 @@ class Compiler(object):
             "typing_filter": typing_filter,
             "expression": expression,
         }
+
+    def parse_cast_typing_filter(self, expression, config, arguments):
+        to_type = expression.args["to"].args["this"]
+        if to_type in sqlglot_expressions.DataType.FLOAT_TYPES:
+            typing_filter = "float"
+        elif to_type in sqlglot_expressions.DataType.INTEGER_TYPES:
+            typing_filter = "int"
+        elif to_type == sqlglot_expressions.DataType.Type.DATE:
+            typing_filter = "date"
+        elif to_type in sqlglot_expressions.DataType.TEMPORAL_TYPES:
+            typing_filter = "datetime"
+        elif to_type == sqlglot_expressions.DataType.Type.TIME:
+            typing_filter = "time"
+        elif to_type in sqlglot_expressions.DataType.TEXT_TYPES:
+            typing_filter = "str"
+        elif to_type == sqlglot_expressions.DataType.Type.BOOLEAN:
+            typing_filter = "bool"
+        elif to_type in (sqlglot_expressions.DataType.Type.DECIMAL, sqlglot_expressions.DataType.Type.BIGDECIMAL):
+            typing_filter = "decimal"
+        elif to_type == sqlglot_expressions.DataType.Type.UUID:
+            typing_filter = "uuid"
+        elif to_type in (sqlglot_expressions.DataType.Type.BINARY, sqlglot_expressions.DataType.Type.VARBINARY,
+                         sqlglot_expressions.DataType.Type.MEDIUMBLOB, sqlglot_expressions.DataType.Type.LONGBLOB):
+            typing_filter = "bytes"
+        else:
+            typing_filter = None
+        return typing_filter
 
     def parse_condition_typing_filter(self, expression, config, arguments):
         for key in list(config["querys"].keys()):
@@ -2794,9 +2814,19 @@ class Compiler(object):
                 break
         return "".join(segments)
 
-    def is_column(self, expression, config, arguments):
+    def is_column(self, expression, config, arguments, check_convert_type=True):
         if isinstance(expression, sqlglot_expressions.Column):
             return True
+        if check_convert_type:
+            if isinstance(expression, sqlglot_expressions.Cast) and self.is_column(expression.args["this"],
+                                                                                   config, arguments, check_convert_type=False):
+                return True
+            if isinstance(expression, sqlglot_expressions.Anonymous):
+                calculater_name = expression.args["this"].lower()
+                if (calculater_name[:8] == "convert_" and calculater_name[8:] in self.TYPE_FILTERS and
+                        expression.args.get("expressions") and len(expression.args["expressions"]) == 1 and
+                        self.is_column(expression.args["expressions"][0], config, arguments, check_convert_type=False)):
+                    return True
         if not isinstance(expression, sqlglot_expressions.Dot):
             return False
 
