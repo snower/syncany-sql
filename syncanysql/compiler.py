@@ -2026,28 +2026,36 @@ class Compiler(object):
                 self.parse_condition_typing_filter(expression, join_table, arguments)
             if not join_table["primary_keys"]:
                 if join_table["columns"]:
-                    join_table["primary_keys"].append(list(join_table["columns"].keys())[0])
+                    join_table["primary_keys"].append(list(join_table["columns"].keys()))
                 else:
-                    def find_primary_key(item_expression):
+                    def find_primary_keys(item_expression, primary_keys):
                         if not isinstance(item_expression, sqlglot_expressions.Expression):
-                            return None
-                        if isinstance(item_expression, sqlglot_expressions.Column):
+                            return
+                        if self.is_column(item_expression, config, arguments):
                             item_column = self.parse_column(item_expression, config, arguments)
                             if item_column["table_name"] and item_column["table_name"] == join_table["name"]:
-                                return item_column["column_name"]
-                            return None
+                                if item_column["column_name"] not in primary_keys:
+                                    primary_keys.append(item_column["column_name"])
+                            return
                         for child_item_expressions in item_expression.args.values():
-                            if not isinstance(child_item_expressions, list):
-                                child_item_expressions = [child_item_expressions]
-                            for child_item_expression in child_item_expressions:
-                                column_name = find_primary_key(child_item_expression)
-                                if column_name is not None:
-                                    return column_name
-                        return None
-                    primary_key = find_primary_key(expression)
-                    if not primary_key:
-                        raise SyncanySqlCompileException('unknown join expression, related sql "%s"' % self.to_sql(join_expression))
-                    join_table["primary_keys"].append(primary_key)
+                            if self.is_const(child_item_expressions, config, arguments):
+                                continue
+                            if self.is_subquery(child_item_expressions, config, arguments):
+                                continue
+                            if isinstance(child_item_expressions, list):
+                                for child_item_expression in child_item_expressions:
+                                    find_primary_keys(child_item_expression, primary_keys)
+                            else:
+                                find_primary_keys(child_item_expressions, primary_keys)
+
+                    primary_keys = []
+                    find_primary_keys(join_expression.args.get("on"), primary_keys)
+                    if not primary_keys:
+                        find_primary_keys(expression, primary_keys)
+                        if not primary_keys:
+                            raise SyncanySqlCompileException('unknown join expression, related sql "%s"' % self.to_sql(join_expression))
+                        primary_keys = primary_keys[:1]
+                    join_table["primary_keys"] = primary_keys
             join_tables[join_table["name"]] = join_table
 
         for name, join_table in join_tables.items():
