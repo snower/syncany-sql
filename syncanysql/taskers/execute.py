@@ -15,7 +15,7 @@ class ExecuteTasker(object):
 
     def start(self, name, executor, session_config, manager, arguments):
         if self.config["filename"].endswith("sql") or self.config["filename"].endswith("sqlx"):
-            if self.executor != executor:
+            if self.executor is None:
                 from ..executor import Executor
                 self.executor = Executor(manager, session_config.session(), executor)
 
@@ -29,12 +29,14 @@ class ExecuteTasker(object):
             finally:
                 session_config.merge()
                 get_logger().info("execute file %s finish %.2fms", self.config["filename"], (time.time() - start_time) * 1000)
-        else:
-            os.system(self.config["filename"])
         return [self]
 
     def run(self, executor, session_config, manager):
         if not self.executor:
+            try:
+                os.system(self.config["filename"])
+            except Exception as e:
+                get_logger().warning("execute system command error: %s", str(e))
             return
         with self.executor as executor:
             return executor.execute()
