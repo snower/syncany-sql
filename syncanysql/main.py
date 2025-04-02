@@ -13,7 +13,6 @@ from syncany.database.database import DatabaseManager
 from .config import GlobalConfig
 from syncanysql.executor import Executor
 from .parser import SqlParser, FileParser
-from .prompt import CliPrompt
 
 
 def main():
@@ -80,6 +79,7 @@ def main():
                     else:
                         get_logger().info("execute file %s finish %.2fms", sys.argv[1], (time.time() - start_time) * 1000)
                 else:
+                    from .prompt import CliPrompt
                     cli_prompt = CliPrompt(manager, global_config.session(), executor)
                     cli_prompt.run()
         finally:
