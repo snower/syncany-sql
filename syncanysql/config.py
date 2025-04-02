@@ -264,11 +264,11 @@ class GlobalConfig(object):
                 self.config[k] = v
 
     def config_logging(self, isatty=True):
-        logfile = self.config.get("logfile", None)
+        logfile = self.config.get("logfile", os.environ.get("SYNCANY_LOGFILE", None))
         if not logfile or logfile == "-":
             logfile = None
         logformat = self.config.get("logformat", "%(asctime)s %(process)d %(levelname)s %(message)s")
-        loglevel = self.config.get("loglevel", None)
+        loglevel = self.config.get("loglevel", os.environ.get("SYNCANY_LOGLEVEL", None))
         if "logger" in self.config and isinstance(self.config["logger"], dict):
             logging.config.dictConfig(self.config["logger"])
         else:

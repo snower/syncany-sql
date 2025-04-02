@@ -14,6 +14,7 @@ from prompt_toolkit.filters import Condition
 from prompt_toolkit.cursor_shapes import CursorShape
 from .version import version
 from .parser import SqlParser, SqlSegment
+from .calculaters import mysql_funcs
 
 SQL_COMPLETER_WORDS = [
     "abort",
@@ -202,7 +203,7 @@ class CliPrompt(object):
             os.mkdir(home_config_path)
         database_completer_words = [database["name"] for database in (self.session_config.get().get("databases") or [])
                                     if database["name"] not in ("-", "--")]
-        sql_completer = WordCompleter(SQL_COMPLETER_WORDS + database_completer_words, ignore_case=True)
+        sql_completer = WordCompleter(list(set(SQL_COMPLETER_WORDS + list(mysql_funcs.funcs.keys()) + database_completer_words)), ignore_case=True)
         history = CliFileHistory(os.path.join(home_config_path, "history"))
         session = PromptSession(
             lexer=PygmentsLexer(SqlLexer), completer=sql_completer, style=style, history=history
