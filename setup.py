@@ -36,7 +36,7 @@ setup(
     packages=find_packages(exclude=['*tests*']),
     zip_safe=False,
     install_requires=[
-        "pyyaml>=5.1.2",
+        "pyyaml>=6.0",
         "sqlglot>=11.5.5,<12",
         "syncany>=0.2.23",
         'Pygments>=2.14.0',
