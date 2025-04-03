@@ -2243,6 +2243,8 @@ class Compiler(object):
     def parse_calculate(self, expression, config, arguments, primary_table, calculate_fields):
         if hasattr(expression, "syncany_valuer"):
             return
+        if hasattr(expression, 'syncany_column'):
+            return
         if isinstance(expression, sqlglot_expressions.Anonymous):
             for arg_expression in expression.args.get("expressions", []):
                 self.parse_calculate(arg_expression, config, arguments, primary_table, calculate_fields)
