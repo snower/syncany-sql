@@ -2,6 +2,7 @@
 # 2023/3/2
 # create by: snower
 
+import os
 import types
 from syncany.calculaters import CALCULATERS, Calculater, TypeFormatCalculater, TypingCalculater, MathematicalCalculater
 from syncany.calculaters import register_calculater, find_calculater, CalculaterUnknownException
@@ -49,6 +50,9 @@ SQL_CALCULATERS = {
     "execute_query_tasker": ExecuteQueryTaskerCalculater,
 }
 CALCULATERS.update(SQL_CALCULATERS)
+if not os.environ.get("SYNCANY_PYEVAL_DISABLED"):
+    from .pyeval_calculater import PyEvalCalculater
+    CALCULATERS["pyeval"] = PyEvalCalculater
 
 
 def is_mysql_func(name):
