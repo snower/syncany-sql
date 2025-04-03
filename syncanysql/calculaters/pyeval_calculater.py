@@ -10,9 +10,8 @@ from syncany.calculaters.calculater import Calculater
 class PyEvalCalculater(Calculater):
     globals = None
 
-    def __init__(self, *args, **kwargs):
-        super(PyEvalCalculater, self).__init__(*args, **kwargs)
-
+    @classmethod
+    def init_globals(cls):
         import datetime
         import time
         import math
@@ -25,7 +24,7 @@ class PyEvalCalculater(Calculater):
         import json
         import re
 
-        self.__class__.globals = {
+        cls.globals = {
             "datetime": datetime,
             "time": time,
             "math": math,
@@ -39,8 +38,14 @@ class PyEvalCalculater(Calculater):
             "re": re,
         }
 
+    def __init__(self, *args, **kwargs):
+        Calculater.__init__(self, *args, **kwargs)
+
+        if self.globals is None:
+            self.init_globals()
+
     def calculate(self, *args):
-        if not args:
+        if not args or not args[0]:
             return None
         try:
             return eval(args[0], self.globals, {"args": args[1:]})
@@ -51,5 +56,5 @@ class PyEvalCalculater(Calculater):
 
 def register_pyeval_module(name, module):
     if PyEvalCalculater.globals is None:
-        PyEvalCalculater.globals = {}
+        PyEvalCalculater.init_globals()
     PyEvalCalculater.globals[name] = module
