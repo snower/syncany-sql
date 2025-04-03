@@ -6,7 +6,7 @@ import sys
 import os
 from setuptools import find_packages, setup
 
-version = "0.1.21"
+version = "0.1.22"
 
 if os.path.exists("README.md"):
     if sys.version_info[0] >= 3:
