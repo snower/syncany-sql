@@ -99,9 +99,9 @@ class QueryTasker(object):
         self.run_start_time = 0
 
     def start(self, name, executor, session_config, manager, arguments):
-        dependency_taskers, where_schema, aggregate = [], self.config.get("where_schema", None), self.config.pop("aggregate", None)
+        dependency_taskers, aggregate = [], self.config.pop("aggregate", None)
         if aggregate and aggregate.get("distinct_keys"):
-            self.config, distinct_config = self.compile_distinct_config(where_schema, aggregate), self.config
+            self.config, distinct_config = self.compile_distinct_config(aggregate), self.config
             distinct_config["name"] = distinct_config["name"] + "#select@distinct"
             distinct_tasker = QueryTasker(distinct_config, temporary_memory_manager=self.temporary_memory_manager, is_inner_subquery=True)
             distinct_tasker.start(name, executor, session_config, manager, copy.deepcopy(arguments))
@@ -119,16 +119,8 @@ class QueryTasker(object):
             dependency_tasker.start(name, executor, session_config, manager, dependency_arguments)
             dependency_taskers.append(dependency_tasker)
 
-        where_schema = self.config.pop("where_schema", None)
         limit, batch = int(arguments.get("@limit", 0)), int(arguments.get("@batch", 0))
-        require_reduce, reduce_intercept = False, False
-        if self.config.get("intercepts"):
-            if aggregate and aggregate.get("schema") and aggregate.get("having_columns"):
-                if [having_column for having_column in aggregate["having_columns"]
-                    if having_column in aggregate["schema"] or having_column in aggregate["window_schema"]]:
-                    require_reduce, reduce_intercept = True, True
-            if batch > 0:
-                require_reduce = True
+        require_reduce = False
         if aggregate and (aggregate.get("schema") or aggregate["window_schema"]):
             if batch > 0:
                 require_reduce = True
@@ -138,21 +130,14 @@ class QueryTasker(object):
             elif [aggregate_column["final_value"] for aggregate_column in aggregate["window_schema"].values()
                   if aggregate_column["final_value"]]:
                 require_reduce = True
-        if where_schema and not self.is_inner_subquery:
-            require_reduce = True
         if require_reduce and isinstance(self.config["schema"], dict) and not arguments.get("@streaming"):
             if not aggregate:
                 aggregate = copy.deepcopy(DEAULT_AGGREGATE)
-            self.compile_reduce_config(where_schema, aggregate)
-            if reduce_intercept:
-                intercepts = self.config.pop("intercepts", [])
-                self.config["intercepts"], self.reduce_config["intercepts"] = intercepts[:1], intercepts[1:]
+            self.compile_reduce_config(aggregate)
+            self.reduce_config["intercept"] = self.config.pop("intercept", None)
             self.reduce_config["pipelines"] = self.config.pop("pipelines", [])
         elif 0 < limit < batch:
             arguments["@batch"] = limit
-        if "intercepts" in self.config:
-            self.config["intercepts"] = [intercept for intercept in self.config["intercepts"] if
-                                         intercept != ["#const", True]]
         tasker = CoreTasker(self.config, manager)
         if "#" not in tasker.config["name"]:
             tasker.config["name"] = tasker.config["name"] + "#select"
@@ -228,7 +213,7 @@ class QueryTasker(object):
         self.tasker.terminate()
         self.tasker = None
 
-    def compile_distinct_config(self, where_schema, aggregate):
+    def compile_distinct_config(self, aggregate):
         subquery_name = "__subquery_" + str(uuid.uuid1().int) + "_distinct"
         config = copy.deepcopy(self.config)
         config.pop("loader", None)
@@ -237,8 +222,9 @@ class QueryTasker(object):
             "input": "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0],
             "output": self.config["output"],
             "querys": [],
-            "intercepts": [],
+            "predicate": None,
             "schema": {},
+            "intercept": None,
             "orders": [],
             "pipelines": [],
             "options": {},
@@ -277,8 +263,6 @@ class QueryTasker(object):
                                              aggregate["schema"][key]["reduce"]]
                 else:
                     config["schema"][key] = ["#aggregate", "$._aggregate_distinct_key_", aggregate["schema"][key]["reduce"]]
-            elif where_schema and key in where_schema:
-                continue
             else:
                 config["schema"][key] = "$." + key
 
@@ -303,21 +287,16 @@ class QueryTasker(object):
         }
         self.config["aggregate"] = distinct_aggregate
         if [having_column for having_column in aggregate["having_columns"] if having_column in aggregate["schema"]]:
-            intercepts = self.config.pop("intercepts", [])
-            if intercepts and len(intercepts) >= 1:
-                self.config["intercepts"] = [intercepts[0], ["#const", True]]
-            if intercepts and len(intercepts) >= 2:
-                config["intercepts"] = [["#const", True], intercepts[1]]
+            config["intercept"] = self.config.pop("intercept", None)
         else:
             distinct_aggregate["having_columns"] = aggregate["having_columns"]
-        config.pop("where_schema", None)
         config["pipelines"] = self.config.pop("pipelines", [])
         self.config["output"] = "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0] + " use I"
         self.config.pop("outputer", None)
         self.config.pop("outputer_arguments", None)
         return config
 
-    def compile_reduce_config(self, where_schema, aggregate):
+    def compile_reduce_config(self, aggregate):
         subquery_name = "__subquery_" + str(uuid.uuid1().int) + "_reduce"
         config = copy.deepcopy(self.config)
         config.pop("loader", None)
@@ -326,8 +305,9 @@ class QueryTasker(object):
             "input": "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0],
             "output": self.config["output"],
             "querys": [],
-            "intercepts": [],
+            "predicate": None,
             "schema": {},
+            "intercept": None,
             "orders": [],
             "pipelines": [],
             "options": {},
@@ -353,7 +333,6 @@ class QueryTasker(object):
             config["schema"]["_aggregate_key_"] = "$._aggregate_key_"
             self.config["schema"]["_aggregate_key_"] = aggregate["key"]
         config["aggregate"] = aggregate
-        config["where_schema"] = where_schema
         self.config["output"] = "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0] + " use I"
         self.config.pop("outputer", None)
         self.config.pop("outputer_arguments", None)
@@ -361,12 +340,9 @@ class QueryTasker(object):
 
     def run_reduce(self, executor, session_config, manager, arguments, final_reduce=False):
         config, arguments = copy.deepcopy(self.reduce_config), copy.deepcopy(arguments)
-        where_schema, aggregate = config.pop("where_schema", None), config.pop("aggregate", None)
+        aggregate = config.pop("aggregate", None)
         if final_reduce:
             config["schema"].pop("_aggregate_key_", None)
-            if where_schema:
-                for key in where_schema:
-                    config["schema"].pop(key, None)
             for key, column in config["schema"].items():
                 if key in aggregate["schema"] and aggregate["schema"][key]["final_value"]:
                     config["schema"][key] = aggregate["schema"][key]["final_value"]
@@ -381,11 +357,8 @@ class QueryTasker(object):
         else:
             config["output"] = config["input"] + " use DI"
             config["name"] = config["name"] + "#select@reduce"
-            config["intercepts"] = []
+            config["intercept"] = None
             config["pipelines"] = []
-        if "intercepts" in config:
-            config["intercepts"] = [intercept for intercept in config["intercepts"] if
-                                    intercept != ["#const", True]]
         tasker = CoreTasker(config, manager)
         arguments["@primary_order"] = False
         arguments["@limit"] = 0

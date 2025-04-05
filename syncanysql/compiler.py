@@ -187,8 +187,9 @@ class Compiler(object):
             "output": "&.-.&1::id",
             "querys": {},
             "databases": [],
+            "predicate": None,
             "schema": "$.*",
-            "intercepts": [],
+            "intercept": None,
             "orders": [],
             "dependencys": [],
             "pipelines": []
@@ -211,8 +212,9 @@ class Compiler(object):
             "output": "&.-.&1::id",
             "querys": {},
             "databases": [],
+            "predicate": None,
             "schema": "$.*",
-            "intercepts": [],
+            "intercept": None,
             "orders": [],
             "dependencys": [],
             "pipelines": []
@@ -516,23 +518,14 @@ class Compiler(object):
         if where_expression and isinstance(where_expression, sqlglot_expressions.Where):
             where_condition = self.compile_where_condition(where_expression.args["this"], config, arguments, primary_table, join_tables)
             if where_condition:
-                if not config["intercepts"]:
-                    config["intercepts"] = [["#const", 1], ["#const", 1]]
-                config["intercepts"][0] = where_condition
+                config["predicate"] = where_condition
             self.parse_condition_typing_filter(expression, config, arguments)
 
         having_expression = expression.args.get("having")
         if having_expression:
             having_condition = self.compile_having_condition(having_expression.args["this"], config, arguments, primary_table)
-            if config.get("aggregate") and config["aggregate"]["having_columns"]:
-                if len({True if having_column in config["aggregate"]["schema"] or having_column in config["aggregate"]["window_schema"] else False
-                        for having_column in config["aggregate"]["having_columns"]}) != 1:
-                    raise SyncanySqlCompileException(
-                        'error having condition, cannot contain the values before and after the aggregate calculation at the same time, related sql "%s"'
-                        % self.to_sql(expression))
-            if not config["intercepts"]:
-                config["intercepts"] = [["#const", 1], ["#const", 1]]
-            config["intercepts"][1] = having_condition
+            if having_condition:
+                config["intercept"] = having_condition
 
         order_expression = expression.args.get("order")
         if order_expression:
@@ -541,7 +534,8 @@ class Compiler(object):
         offset_value = max(int(expression.args.get("offset").args["expression"].args["this"]), 0) if expression.args.get("offset") else 0
         limit_value = int(expression.args.get("limit").args["expression"].args["this"]) if expression.args.get("limit") else 0
         if limit_value != 0 or offset_value > 0:
-            if config["intercepts"] or (config.get("aggregate") and (config["aggregate"]["schema"] or config["aggregate"]["window_schema"])) \
+            if config["predicate"] or config["intercept"] or (config.get("aggregate") and
+                                                              (config["aggregate"]["schema"] or config["aggregate"]["window_schema"])) \
                     or config["pipelines"] or limit_value <= 0:
                 if limit_value != 0:
                     config["pipelines"].append([">>@array::slice", "$.*|array", offset_value,
@@ -827,43 +821,6 @@ class Compiler(object):
                                                            primary_table, join_tables, False)
             return ["#if", left_condition, ["#const", 1], right_condition]
 
-        def parse_calucate(calculate_expression):
-            if not isinstance(config.get("schema"), dict):
-                return calculate_expression
-            if self.is_column(calculate_expression, config, arguments):
-                calculate_name = "__where_condition_value_%d__" % id(calculate_expression)
-                self.compile_select_calculate_column(calculate_expression, config, arguments, primary_table,
-                                                     calculate_name, join_tables, False)
-                setattr(calculate_expression, "syncany_valuer", ["$." + calculate_name])
-                if "where_schema" not in config:
-                    config["where_schema"] = {}
-                config["where_schema"][calculate_name] = copy.deepcopy(config["schema"][calculate_name])
-                return calculate_expression
-            if self.is_subquery(calculate_expression, config, arguments):
-                calculate_name = "__where_condition_value_%d__" % id(calculate_expression)
-                value_column = self.compile_query_condition(calculate_expression, config, arguments, primary_table,
-                                                            join_tables, None)
-                setattr(calculate_expression, "syncany_valuer", ["$." + calculate_name])
-                if "where_schema" not in config:
-                    config["where_schema"] = {}
-                if isinstance(config["schema"], dict):
-                    config["schema"][calculate_name] = value_column
-                config["where_schema"][calculate_name] = copy.deepcopy(value_column)
-                return calculate_expression
-            if not self.is_calculate(calculate_expression, config, arguments):
-                return calculate_expression
-            for _, child_expression in calculate_expression.args.items():
-                if isinstance(child_expression, list):
-                    for child_expression_item in child_expression:
-                        if not isinstance(child_expression_item, sqlglot_expressions.Expression):
-                            continue
-                        parse_calucate(child_expression_item)
-                else:
-                    if not isinstance(child_expression, sqlglot_expressions.Expression):
-                        continue
-                    parse_calucate(child_expression)
-            return calculate_expression
-
         def parse(expression):
             is_query_column, left_column, left_calculater = False, None, None
             if expression.args.get("expressions"):
@@ -877,40 +834,27 @@ class Compiler(object):
 
             if self.is_column(left_expression, config, arguments):
                 left_column = self.parse_column(left_expression, config, arguments)
-                if is_query_condition and ((left_column["table_name"]
-                                            and primary_table["table_name"] == left_column["table_name"]) or not left_column["table_name"]):
+                if is_query_condition and ((left_column["table_name"] and primary_table["table_name"] == left_column["table_name"]) or not left_column["table_name"]):
                     is_query_column = True
             if not is_query_column and self.is_column(right_expression, config, arguments):
                 right_column = self.parse_column(right_expression, config, arguments)
-                if is_query_condition and ((right_column["table_name"]
-                                            and primary_table["table_name"] == right_column["table_name"]) or not right_column["table_name"]):
+                if is_query_condition and ((right_column["table_name"] and primary_table["table_name"] == right_column["table_name"]) or not right_column["table_name"]):
                     left_expression, right_expression, is_query_column, left_column = right_expression, left_expression, True, right_column
             if not is_query_column:
-                if not isinstance(config["schema"], dict):
-                    raise SyncanySqlCompileException(
-                        'error where condition, only "=,!=,>,>=,<,<=,in" operations executed by the database cannot be transparently transmitted,'
-                        ' and it is executed with the having statement, column unkown, related sql "%s"'
-                        % self.to_sql(expression))
-                left_calculater = self.compile_calculate(parse_calucate(left_expression), config, arguments,
-                                                         primary_table, [])
+                left_calculater = self.compile_where_condition_column(left_expression, config, arguments, primary_table, join_tables)
 
             if isinstance(right_expression, list):
                 if all([self.is_const(value_expression_item, config, arguments) for value_expression_item in right_expression]):
                     value_items = [self.parse_const(value_expression_item, config, arguments)["value"]
                                    for value_expression_item in right_expression]
                     return is_query_column, left_column, left_calculater, ["#const", value_items]
-                value_items = [self.compile_calculate(parse_calucate(value_expression_item), config, arguments, primary_table, [])
+                value_items = [self.compile_where_condition_column(value_expression_item, config, arguments, primary_table, join_tables)
                                for value_expression_item in right_expression]
                 return is_query_column, left_column, left_calculater, ["#make", value_items]
             if self.is_column(right_expression, config, arguments):
-                if not isinstance(config["schema"], dict):
-                    raise SyncanySqlCompileException(
-                        'error where condition, only "=,!=,>,>=,<,<=,in" operations executed by the database cannot be transparently transmitted,'
-                        ' and it is executed with the having statement, column unkown, related sql "%s"'
-                        % self.to_sql(expression))
                 if not left_calculater:
-                    left_calculater = self.compile_calculate(parse_calucate(left_expression), config, arguments, primary_table, [])
-                right_calculater = self.compile_calculate(parse_calucate(right_expression), config, arguments, primary_table, [])
+                    left_calculater = self.compile_where_condition_column(left_expression, config, arguments, primary_table, join_tables)
+                right_calculater = self.compile_where_condition_column(right_expression, config, arguments, primary_table, join_tables)
                 return False, left_column, left_calculater, right_calculater
             if self.is_subquery(right_expression, config, arguments):
                 value_column = self.compile_query_condition(right_expression, config, arguments, primary_table, join_tables,
@@ -922,17 +866,10 @@ class Compiler(object):
             self.parse_calculate(right_expression, config, arguments, primary_table, calculate_fields)
             if is_query_column and not calculate_fields:
                 return (is_query_column, left_column, left_calculater,
-                        self.compile_calculate(parse_calucate(right_expression), config, arguments, primary_table, []))
-            if not isinstance(config["schema"], dict):
-                raise SyncanySqlCompileException(
-                    'error where condition, only "=,!=,>,>=,<,<=,in" operations executed by the database cannot be transparently transmitted,'
-                    ' and it is executed with the having statement, column must be in the query result, related sql "%s"'
-                    % self.to_sql(expression))
+                        self.compile_where_condition_column(right_expression, config, arguments, primary_table, join_tables))
             if not left_calculater:
-                left_calculater = self.compile_calculate(parse_calucate(left_expression), config, arguments,
-                                                      primary_table, [])
-            right_calculater = self.compile_calculate(parse_calucate(right_expression), config, arguments,
-                                                      primary_table, [])
+                left_calculater = self.compile_where_condition_column(left_expression, config, arguments, primary_table, join_tables)
+            right_calculater = self.compile_where_condition_column(right_expression, config, arguments, primary_table, join_tables)
             return False, left_column, left_calculater, right_calculater
 
         def build_query_condition(condition_column, condition_exp, condition_calculater):
@@ -990,24 +927,50 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_where_condition(expression.args.get("this"), config, arguments, primary_table, join_tables, False)
         else:
-            return self.compile_calculate(parse_calucate(expression), config, arguments, primary_table, [])
+            return self.compile_where_condition_column(expression, config, arguments, primary_table, join_tables)
+
+    def compile_where_condition_column(self, expression, config, arguments, primary_table, join_tables, expression_column=None, join_index=-1):
+        if not expression_column and self.is_column(expression, config, arguments):
+            expression_column = self.parse_column(expression, config, arguments)
+        if expression_column:
+            if isinstance(config["schema"], dict) and not expression_column["table_name"] \
+                    and expression_column["column_name"] in config["schema"]:
+                return config["schema"][expression_column["column_name"]]
+            if not expression_column["table_name"] or expression_column["table_name"] == primary_table["table_name"]:
+                return self.compile_column(expression, config, arguments, expression_column)
+
+        calculate_fields = []
+        self.parse_calculate(expression, config, arguments, primary_table, calculate_fields)
+        calculate_fields = [calculate_field for calculate_field in calculate_fields if calculate_field["table_name"]
+                            and calculate_field["table_name"] != primary_table["table_name"]]
+        if not calculate_fields:
+            return self.compile_calculate(expression, config, arguments, primary_table, [], join_index=join_index)
+
+        column_join_tables = []
+        calculate_table_names = set([])
+        for calculate_field in calculate_fields:
+            if calculate_field["table_name"] not in join_tables:
+                raise SyncanySqlCompileException('error join column, join table %s unknown, related sql "%s"' %
+                                                 (calculate_field["table_name"], self.to_sql(expression)))
+            calculate_table_names.add(calculate_field["table_name"])
+        self.compile_join_column_tables(expression, config, arguments, primary_table,
+                                        [join_tables[calculate_table_name] for calculate_table_name in
+                                         calculate_table_names], join_tables, column_join_tables)
+        calculate_column = self.compile_calculate(expression, config, arguments, primary_table, column_join_tables)
+        return self.compile_join_column(expression, config, arguments, primary_table, calculate_column, column_join_tables)
 
     def compile_query_condition(self, expression, config, arguments, primary_table, join_tables, typing_filters):
         def parse_subquery_select_column_name(subquery_config, exclude_keys=None):
             if isinstance(subquery_config["schema"], dict):
                 subquery_schema = subquery_config["schema"]
-                subquery_where_schema = subquery_config["where_schema"] if "where_schema" in subquery_schema \
-                                                                           and isinstance(subquery_config["where_schema"], dict) else {}
             else:
-                subquery_schema, subquery_where_schema = {}, {}
+                subquery_schema = {}
                 for dependency in subquery_config.get("dependencys", []):
                     if not isinstance(dependency, dict) or not isinstance(dependency["schema"], dict):
                         continue
                     subquery_schema.update(dependency["schema"])
-                    if "where_schema" in dependency and isinstance(dependency["where_schema"], dict):
-                        subquery_where_schema.update(dependency["where_schema"])
             for key in subquery_schema:
-                if (exclude_keys and key in exclude_keys) or key in subquery_where_schema:
+                if exclude_keys and key in exclude_keys:
                     continue
                 return key
             return "*"
