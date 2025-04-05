@@ -859,14 +859,13 @@ class Compiler(object):
             if self.is_subquery(right_expression, config, arguments):
                 value_column = self.compile_query_condition(right_expression, config, arguments, primary_table, join_tables,
                                                             left_column["typing_filters"] if left_column else None)
+                if is_query_column and isinstance(value_column, list) and value_column and isinstance(value_column[0], str) and value_column[0][:2] == "&.":
+                    if isinstance(expression, sqlglot_expressions.In):
+                        return True, left_column, left_calculater, ["@convert_array", value_column]
+                    return True, left_column, left_calculater, ["@convert_array", value_column, ":$.:0"]
                 if isinstance(expression, sqlglot_expressions.In):
-                    return is_query_column, left_column, left_calculater, ["@convert_array", value_column]
-                return is_query_column, left_column, left_calculater, ["@convert_array", value_column, ":$.:0"]
-            calculate_fields = []
-            self.parse_calculate(right_expression, config, arguments, primary_table, calculate_fields)
-            if is_query_column and not calculate_fields:
-                return (is_query_column, left_column, left_calculater,
-                        self.compile_where_condition_column(right_expression, config, arguments, primary_table, join_tables))
+                    return False, left_column, left_calculater, ["#make", {"value": value_column}, [":@convert_array", "$.value"]]
+                return False, left_column, left_calculater, ["#make", {"value": value_column}, [":@convert_array", "$.value", ":$.:0"]]
             if not left_calculater:
                 left_calculater = self.compile_where_condition_column(left_expression, config, arguments, primary_table, join_tables)
             right_calculater = self.compile_where_condition_column(right_expression, config, arguments, primary_table, join_tables)
@@ -929,10 +928,9 @@ class Compiler(object):
         else:
             return self.compile_where_condition_column(expression, config, arguments, primary_table, join_tables)
 
-    def compile_where_condition_column(self, expression, config, arguments, primary_table, join_tables, expression_column=None, join_index=-1):
-        if not expression_column and self.is_column(expression, config, arguments):
+    def compile_where_condition_column(self, expression, config, arguments, primary_table, join_tables):
+        if self.is_column(expression, config, arguments):
             expression_column = self.parse_column(expression, config, arguments)
-        if expression_column:
             if isinstance(config["schema"], dict) and not expression_column["table_name"] \
                     and expression_column["column_name"] in config["schema"]:
                 return config["schema"][expression_column["column_name"]]
@@ -944,7 +942,7 @@ class Compiler(object):
         calculate_fields = [calculate_field for calculate_field in calculate_fields if calculate_field["table_name"]
                             and calculate_field["table_name"] != primary_table["table_name"]]
         if not calculate_fields:
-            return self.compile_calculate(expression, config, arguments, primary_table, [], join_index=join_index)
+            return self.compile_calculate(expression, config, arguments, primary_table, [])
 
         column_join_tables = []
         calculate_table_names = set([])

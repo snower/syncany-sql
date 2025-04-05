@@ -134,8 +134,6 @@ class QueryTasker(object):
             if not aggregate:
                 aggregate = copy.deepcopy(DEAULT_AGGREGATE)
             self.compile_reduce_config(aggregate)
-            self.reduce_config["intercept"] = self.config.pop("intercept", None)
-            self.reduce_config["pipelines"] = self.config.pop("pipelines", [])
         elif 0 < limit < batch:
             arguments["@batch"] = limit
         tasker = CoreTasker(self.config, manager)
@@ -222,7 +220,6 @@ class QueryTasker(object):
             "input": "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0],
             "output": self.config["output"],
             "querys": [],
-            "predicate": None,
             "schema": {},
             "intercept": None,
             "orders": [],
@@ -286,11 +283,7 @@ class QueryTasker(object):
             "final_value": None
         }
         self.config["aggregate"] = distinct_aggregate
-        if [having_column for having_column in aggregate["having_columns"] if having_column in aggregate["schema"]]:
-            config["intercept"] = self.config.pop("intercept", None)
-        else:
-            distinct_aggregate["having_columns"] = aggregate["having_columns"]
-        config["pipelines"] = self.config.pop("pipelines", [])
+        config["predicate"] = self.config.pop("predicate", None)
         self.config["output"] = "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0] + " use I"
         self.config.pop("outputer", None)
         self.config.pop("outputer_arguments", None)
@@ -307,7 +300,6 @@ class QueryTasker(object):
             "querys": [],
             "predicate": None,
             "schema": {},
-            "intercept": None,
             "orders": [],
             "pipelines": [],
             "options": {},
@@ -333,6 +325,8 @@ class QueryTasker(object):
             config["schema"]["_aggregate_key_"] = "$._aggregate_key_"
             self.config["schema"]["_aggregate_key_"] = aggregate["key"]
         config["aggregate"] = aggregate
+        config["intercept"] = self.config.pop("intercept", None)
+        config["pipelines"] = self.config.pop("pipelines", [])
         self.config["output"] = "&.--." + subquery_name + "::" + self.config["output"].split("::")[-1].split(" ")[0] + " use I"
         self.config.pop("outputer", None)
         self.config.pop("outputer_arguments", None)
