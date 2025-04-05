@@ -821,8 +821,53 @@ class Compiler(object):
                                                            primary_table, join_tables, False)
             return ["#if", left_condition, ["#const", 1], right_condition]
 
-        def parse(expression):
-            is_query_column, left_column, left_calculater = False, None, None
+        def has_column_expression(condition_expression):
+            if not isinstance(condition_expression, sqlglot_expressions.Expression):
+                return False
+            if self.is_column(condition_expression, config, arguments):
+                return True
+            if self.is_subquery(condition_expression, config, arguments):
+                return True
+            for _, child_expression in condition_expression.args.items():
+                if isinstance(child_expression, list):
+                    for child_expression_item in child_expression:
+                        if (not isinstance(child_expression_item, sqlglot_expressions.Expression) or
+                                self.is_const(child_expression_item, config, arguments)):
+                            continue
+                        if has_column_expression(child_expression_item):
+                            return True
+                else:
+                    if (not isinstance(child_expression, sqlglot_expressions.Expression) or
+                            self.is_const(child_expression, config, arguments)):
+                        continue
+                    if has_column_expression(child_expression):
+                        return True
+            return False
+
+        def compile_where_condition_calculater(left_expression, right_expression):
+            left_calculater = self.compile_where_condition_column(left_expression, config, arguments, primary_table,
+                                                                  join_tables)
+            if isinstance(right_expression, list):
+                if all([self.is_const(value_expression_item, config, arguments) for value_expression_item in right_expression]):
+                    value_items = [self.parse_const(value_expression_item, config, arguments)["value"]
+                                   for value_expression_item in right_expression]
+                    right_calculater = ["#const", value_items]
+                else:
+                    value_items = [self.compile_where_condition_column(value_expression_item, config, arguments, primary_table, join_tables)
+                                   for value_expression_item in right_expression]
+                    right_calculater = ["#make", value_items]
+            elif self.is_subquery(right_expression, config, arguments):
+                value_column = self.compile_query_condition(right_expression, config, arguments, primary_table, join_tables, None)
+                if isinstance(expression, sqlglot_expressions.In):
+                    right_calculater = ["#make", {"value": value_column}, [":@convert_array", "$.value"]]
+                else:
+                    right_calculater = ["#make", {"value": value_column}, [":@convert_array", "$.value", ":$.:0"]]
+            else:
+                right_calculater = self.compile_where_condition_column(right_expression, config, arguments,
+                                                                   primary_table, join_tables)
+            return False, None, left_calculater, right_calculater
+
+        def parse_condition(expression):
             if expression.args.get("expressions"):
                 left_expression, right_expression = expression.args["this"], expression.args["expressions"]
             elif expression.args.get("query"):
@@ -831,45 +876,46 @@ class Compiler(object):
                 left_expression, right_expression = expression.args["this"], expression.args["field"]
             else:
                 left_expression, right_expression = expression.args["this"], expression.args["expression"]
+            if not is_query_condition:
+                return compile_where_condition_calculater(left_expression, right_expression)
 
+            left_column = None
             if self.is_column(left_expression, config, arguments):
                 left_column = self.parse_column(left_expression, config, arguments)
-                if is_query_condition and ((left_column["table_name"] and primary_table["table_name"] == left_column["table_name"]) or not left_column["table_name"]):
-                    is_query_column = True
-            if not is_query_column and self.is_column(right_expression, config, arguments):
+                if left_column["table_name"] and primary_table["table_name"] != left_column["table_name"]:
+                    return compile_where_condition_calculater(left_expression, right_expression)
+            if left_column is None and self.is_column(right_expression, config, arguments):
                 right_column = self.parse_column(right_expression, config, arguments)
-                if is_query_condition and ((right_column["table_name"] and primary_table["table_name"] == right_column["table_name"]) or not right_column["table_name"]):
-                    left_expression, right_expression, is_query_column, left_column = right_expression, left_expression, True, right_column
-            if not is_query_column:
-                left_calculater = self.compile_where_condition_column(left_expression, config, arguments, primary_table, join_tables)
+                if right_column["table_name"] and primary_table["table_name"] != right_column["table_name"]:
+                    return compile_where_condition_calculater(left_expression, right_expression)
+                left_expression, right_expression, left_column = right_expression, left_expression, right_column
+            if left_column is None:
+                return compile_where_condition_calculater(left_expression, right_expression)
 
             if isinstance(right_expression, list):
                 if all([self.is_const(value_expression_item, config, arguments) for value_expression_item in right_expression]):
                     value_items = [self.parse_const(value_expression_item, config, arguments)["value"]
                                    for value_expression_item in right_expression]
-                    return is_query_column, left_column, left_calculater, ["#const", value_items]
+                    return True, left_column, None, ["#const", value_items]
                 value_items = [self.compile_where_condition_column(value_expression_item, config, arguments, primary_table, join_tables)
                                for value_expression_item in right_expression]
-                return is_query_column, left_column, left_calculater, ["#make", value_items]
-            if self.is_column(right_expression, config, arguments):
-                if not left_calculater:
-                    left_calculater = self.compile_where_condition_column(left_expression, config, arguments, primary_table, join_tables)
-                right_calculater = self.compile_where_condition_column(right_expression, config, arguments, primary_table, join_tables)
-                return False, left_column, left_calculater, right_calculater
+                return True, left_column, None, ["#make", value_items]
             if self.is_subquery(right_expression, config, arguments):
                 value_column = self.compile_query_condition(right_expression, config, arguments, primary_table, join_tables,
                                                             left_column["typing_filters"] if left_column else None)
-                if is_query_column and isinstance(value_column, list) and value_column and isinstance(value_column[0], str) and value_column[0][:2] == "&.":
+                if isinstance(value_column, list) and value_column and isinstance(value_column[0], str) and value_column[0][:2] == "&.":
                     if isinstance(expression, sqlglot_expressions.In):
-                        return True, left_column, left_calculater, ["@convert_array", value_column]
-                    return True, left_column, left_calculater, ["@convert_array", value_column, ":$.:0"]
+                        return True, left_column, None, ["@convert_array", value_column]
+                    return True, left_column, None, ["@convert_array", value_column, ":$.:0"]
+                left_calculater = self.compile_where_condition_column(left_expression, config, arguments, primary_table,
+                                                                      join_tables)
                 if isinstance(expression, sqlglot_expressions.In):
-                    return False, left_column, left_calculater, ["#make", {"value": value_column}, [":@convert_array", "$.value"]]
-                return False, left_column, left_calculater, ["#make", {"value": value_column}, [":@convert_array", "$.value", ":$.:0"]]
-            if not left_calculater:
-                left_calculater = self.compile_where_condition_column(left_expression, config, arguments, primary_table, join_tables)
-            right_calculater = self.compile_where_condition_column(right_expression, config, arguments, primary_table, join_tables)
-            return False, left_column, left_calculater, right_calculater
+                    return False, None, left_calculater, ["#make", {"value": value_column}, [":@convert_array", "$.value"]]
+                return False, None, left_calculater, ["#make", {"value": value_column}, [":@convert_array", "$.value", ":$.:0"]]
+            if not has_column_expression(right_expression):
+                right_calculater = self.compile_where_condition_column(right_expression, config, arguments, primary_table, join_tables)
+                return True, left_column, None, right_calculater
+            return compile_where_condition_calculater(left_expression, right_expression)
 
         def build_query_condition(condition_column, condition_exp, condition_calculater):
             if condition_column["typing_name"] not in config["querys"]:
@@ -889,37 +935,37 @@ class Compiler(object):
             return None
 
         if isinstance(expression, sqlglot_expressions.EQ):
-            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            is_query_column, condition_column, left_calculater, right_calculater = parse_condition(expression)
             if is_query_condition and is_query_column:
                 return build_query_condition(condition_column, "==", right_calculater)
             return ["@mysql::eq", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.NEQ):
-            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            is_query_column, condition_column, left_calculater, right_calculater = parse_condition(expression)
             if is_query_condition and is_query_column:
                 return build_query_condition(condition_column, "!=", right_calculater)
             return ["@mysql::neq", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.GT):
-            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            is_query_column, condition_column, left_calculater, right_calculater = parse_condition(expression)
             if is_query_condition and is_query_column:
                 return build_query_condition(condition_column, ">", right_calculater)
             return ["@mysql::gt", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.GTE):
-            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            is_query_column, condition_column, left_calculater, right_calculater = parse_condition(expression)
             if is_query_condition and is_query_column:
                 return build_query_condition(condition_column, ">=", right_calculater)
             return ["@mysql::gte", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.LT):
-            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            is_query_column, condition_column, left_calculater, right_calculater = parse_condition(expression)
             if is_query_condition and is_query_column:
                 return build_query_condition(condition_column, "<", right_calculater)
             return ["@mysql::lt", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.LTE):
-            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            is_query_column, condition_column, left_calculater, right_calculater = parse_condition(expression)
             if is_query_condition and is_query_column:
                 return build_query_condition(condition_column, "<=", right_calculater)
             return ["@mysql::lte", left_calculater, right_calculater]
         elif isinstance(expression, sqlglot_expressions.In):
-            is_query_column, condition_column, left_calculater, right_calculater = parse(expression)
+            is_query_column, condition_column, left_calculater, right_calculater = parse_condition(expression)
             if is_query_condition and is_query_column:
                 return build_query_condition(condition_column, "in", ["@convert_array", right_calculater])
             return ["@mysql::in", left_calculater, ["@convert_array", right_calculater]]
