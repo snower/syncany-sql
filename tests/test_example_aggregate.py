@@ -140,7 +140,7 @@ class AggregateExampleTestCase(ExampleTestCase):
                               {'name': '李四', 'goods_name': '白菜', 'names': {'李四'}, 'goods_namees': '白菜,白菜'}],
                          "data error")
 
-    def test_aggregate(self):
+    def test_window_aggregate(self):
         self.execute("window_aggregate.sql")
 
         self.assert_data(1, [{'cnt': 2,

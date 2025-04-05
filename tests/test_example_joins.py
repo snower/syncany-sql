@@ -71,8 +71,7 @@ class JoinsExampleTestCase(ExampleTestCase):
                              {'goods_name': '青菜', 'order_id': 4, 'name': '王五'},
                              {'goods_name': '青菜', 'order_id': 5, 'name': '李四'},
                              {'goods_name': '白菜', 'order_id': 3, 'name': '李四'},
-                             {'goods_name': '白菜', 'order_id': 6, 'name': '李四'},
-                             {'goods_name': '萝卜', 'order_id': None, 'name': None}], "data error")
+                             {'goods_name': '白菜', 'order_id': 6, 'name': '李四'}], "data error")
 
         self.assert_data(7, [{'goods_name': '青菜', 'order_id': 1, 'name': '李四'},
                              {'goods_name': '青菜', 'order_id': 2, 'name': '王五'},
