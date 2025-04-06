@@ -48,4 +48,4 @@ select order_id, name, goods_name, history_type, count(*) as cnt, sum(amount) as
         left join `data/orders.json` b on a.uid = b.uid
         left join `data/order_historys.json` c on b.order_id = c.order_id
         left join `data/goodses.json` d on b.goods_id = d.goods_id
-) aa where order_id <= 3 group by order_id, history_type order by order_id;
+) aa where order_id <= 10 group by order_id, history_type having cnt>1 order by order_id;
