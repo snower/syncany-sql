@@ -815,7 +815,9 @@ class Compiler(object):
                 if right_calculate_expression is None:
                     return None
                 return right_calculate_expression
-            return left_calculate_expression
+            if right_calculate_expression is None:
+                return left_calculate_expression
+            return expression
         if isinstance(expression, sqlglot_expressions.Or):
             return expression
 
