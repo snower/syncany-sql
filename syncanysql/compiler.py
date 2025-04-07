@@ -968,6 +968,27 @@ class Compiler(object):
             if not expression_column["table_name"] or expression_column["table_name"] == primary_table["table_name"]:
                 return self.compile_column(expression, config, arguments, expression_column)
 
+        def parse_calculate_expression(condition_expression):
+            if not isinstance(condition_expression, sqlglot_expressions.Expression):
+                return
+            if self.is_subquery(condition_expression, config, arguments):
+                condition_query_condition = self.compile_query_condition(condition_expression, config, arguments, primary_table, join_tables, None)
+                setattr(condition_expression, "syncany_valuer", condition_query_condition)
+                return
+            if self.is_column(condition_expression, config, arguments) or self.is_const(condition_expression, config, arguments):
+                return
+            for _, child_expression in condition_expression.args.items():
+                if isinstance(child_expression, list):
+                    for child_expression_item in child_expression:
+                        if not isinstance(child_expression_item, sqlglot_expressions.Expression) or self.is_const(child_expression_item, config, arguments):
+                            continue
+                        parse_calculate_expression(child_expression_item)
+                else:
+                    if not isinstance(child_expression, sqlglot_expressions.Expression) or self.is_const(child_expression, config, arguments):
+                        continue
+                    parse_calculate_expression(child_expression)
+        parse_calculate_expression(expression)
+
         calculate_fields = []
         self.parse_calculate(expression, config, arguments, primary_table, calculate_fields)
         calculate_fields = [calculate_field for calculate_field in calculate_fields if calculate_field["table_name"]
@@ -1691,7 +1712,9 @@ class Compiler(object):
             return [self.compile_calculate(distinct_expression, config, arguments, primary_table, column_join_tables, join_index)
                     for distinct_expression in expression.args["expressions"]]
         elif self.is_subquery(expression, config, arguments):
-            return self.compile_query_condition(expression, config, arguments, primary_table, column_join_tables, None)
+            return self.compile_query_condition(expression, config, arguments, primary_table,
+                                                {column_join_table["name"]: column_join_table for column_join_table in column_join_tables},
+                                                None)
         elif isinstance(expression, sqlglot_expressions.Paren):
             return self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
         elif isinstance(expression, sqlglot_expressions.Between):
@@ -1762,23 +1785,25 @@ class Compiler(object):
                     ["#make", [self.compile_calculate(item_expression, config, arguments, primary_table, column_join_tables, join_index)
                                for item_expression in expression.args["expressions"]]]
                 ]
+            if expression.args.get("query"):
+                query_value_calculate = self.compile_calculate(expression.args["query"], config, arguments, primary_table, column_join_tables, join_index)
+                return [
+                    ("@mysql::" + func_name) if is_mysql_func(func_name) else (":@" + func_name),
+                    self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
+                    ["@convert_array", query_value_calculate] if isinstance(expression, sqlglot_expressions.In) else query_value_calculate
+                ]
             if not expression.args.get("expression"):
-                if self.is_subquery(expression.args["this"], config, arguments):
-                    return [
-                        "#make", {"value": self.compile_calculate(expression.args["this"], config, arguments, primary_table,
-                                                                  column_join_tables, join_index)},
-                        [(":@mysql::" + func_name) if is_mysql_func(func_name) else (":@" + func_name), "$.value"]
-                    ]
                 return [
                     ("@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name),
                     self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index)
                 ]
             if isinstance(expression.args["expression"], sqlglot_expressions.Interval):
                 func_name = "date" + func_name
+            value_calculate = self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index)
             return [
                 ("@mysql::" + func_name) if is_mysql_func(func_name) else ("@" + func_name),
                 self.compile_calculate(expression.args["this"], config, arguments, primary_table, column_join_tables, join_index),
-                self.compile_calculate(expression.args["expression"], config, arguments, primary_table, column_join_tables, join_index)
+                ["@convert_array", value_calculate] if isinstance(expression, sqlglot_expressions.In) else value_calculate
             ]
         else:
             raise SyncanySqlCompileException('unknown calculate expression, related sql "%s"' % self.to_sql(expression))
