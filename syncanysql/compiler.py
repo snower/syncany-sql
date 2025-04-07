@@ -969,6 +969,8 @@ class Compiler(object):
                 return self.compile_column(expression, config, arguments, expression_column)
 
         def parse_calculate_expression(condition_expression):
+            if hasattr(condition_expression, "syncany_valuer"):
+                return
             if not isinstance(condition_expression, sqlglot_expressions.Expression):
                 return
             if self.is_subquery(condition_expression, config, arguments):
