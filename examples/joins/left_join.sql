@@ -43,6 +43,12 @@ select a.code, c.name, d.goods_name from `data/devices.json` a
     left join `data/goodses.json` d on b.goods_id=d.goods_id
 where d.goods_name is not null;
 
+select a.name, b.order_id, c.history_type, d.goods_name, count(*) as cnt, sum(c.amount) as total_amount from `data/users.json` a
+        left join `data/orders.json` b on a.uid = b.uid
+        left join `data/order_historys.json` c on b.order_id = c.order_id
+        left join `data/goodses.json` d on b.goods_id = d.goods_id
+where a.uid>0 and b.order_id <= 10 group by b.order_id, c.history_type having cnt>1 order by order_id;
+
 select order_id, name, goods_name, history_type, count(*) as cnt, sum(amount) as total_amount from (
     select a.name, b.order_id, c.history_type, c.amount, d.goods_name from `data/users.json` a
         left join `data/orders.json` b on a.uid = b.uid

@@ -46,10 +46,23 @@ class JoinsExampleTestCase(ExampleTestCase):
                               {'code': '124', 'name': '李四', 'goods_name': '青菜'},
                               {'code': '125', 'name': '李四', 'goods_name': '青菜'}], "data error")
 
-        self.assert_data(46, [{'cnt': 2, 'goods_name': '青菜', 'history_type': 1, 'name': '李四', 'order_id': 1, 'total_amount': 28.700000000000003},
-                              {'cnt': 2, 'goods_name': '白菜', 'history_type': 1, 'name': '李四', 'order_id': 3, 'total_amount': 7.3},
-                              {'cnt': 3, 'goods_name': '白菜', 'history_type': 0, 'name': '李四', 'order_id': 3, 'total_amount': 37.4},
-                              {'cnt': 2, 'goods_name': '青菜', 'history_type': 1, 'name': '李四', 'order_id': 5, 'total_amount': 89.9}], "data error")
+        self.assert_data(46, [{'cnt': 2, 'goods_name': '青菜', 'history_type': 1, 'name': '李四', 'order_id': 1,
+                               'total_amount': 28.700000000000003},
+                              {'cnt': 2, 'goods_name': '白菜', 'history_type': 1, 'name': '李四', 'order_id': 3,
+                               'total_amount': 7.3},
+                              {'cnt': 3, 'goods_name': '白菜', 'history_type': 0, 'name': '李四', 'order_id': 3,
+                               'total_amount': 37.4},
+                              {'cnt': 2, 'goods_name': '青菜', 'history_type': 1, 'name': '李四', 'order_id': 5,
+                               'total_amount': 89.9}], "data error")
+
+        self.assert_data(52, [{'cnt': 2, 'goods_name': '青菜', 'history_type': 1, 'name': '李四', 'order_id': 1,
+                               'total_amount': 28.700000000000003},
+                              {'cnt': 2, 'goods_name': '白菜', 'history_type': 1, 'name': '李四', 'order_id': 3,
+                               'total_amount': 7.3},
+                              {'cnt': 3, 'goods_name': '白菜', 'history_type': 0, 'name': '李四', 'order_id': 3,
+                               'total_amount': 37.4},
+                              {'cnt': 2, 'goods_name': '青菜', 'history_type': 1, 'name': '李四', 'order_id': 5,
+                               'total_amount': 89.9}], "data error")
 
     def test_right_join(self):
         self.execute("right_join.sql")
