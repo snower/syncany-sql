@@ -2945,7 +2945,7 @@ class Compiler(object):
         if not primary_table["table_name"]:
             return expression
 
-        join_tables = []
+        join_tables, can_on_expressions_tables = [], [primary_table["table_name"]]
         for from_table_expression in from_expression.expressions[1:]:
             join_table = {"table_name": self.optimize_rewrite_parse_table(expression, config, arguments,
                                                                           from_table_expression)["table_name"],
@@ -2956,8 +2956,9 @@ class Compiler(object):
                 self.optimize_rewrite_parse_condition(expression, config, arguments, primary_table, expression.args["where"].args["this"],
                                                       join_table["table_name"], join_table["related_tables"],
                                                       join_table["on_expressions"], join_table["const_expressions"],
-                                                      join_table["calcuate_expressions"])
+                                                      join_table["calcuate_expressions"], can_on_expressions_tables)
             join_tables.append(join_table)
+            can_on_expressions_tables.append(join_table["table_name"])
 
         sql = ["SELECT"]
         if expression.args.get("distinct"):
@@ -2969,20 +2970,8 @@ class Compiler(object):
             if join_table["on_expressions"]:
                 sql.append("ON " + " AND ".join([self.generate_sql(on_expression) for on_expression in join_table["on_expressions"]]))
 
-        where_expressions = []
-        for join_table in join_tables:
-            for const_expression in join_table["const_expressions"]:
-                if const_expression not in where_expressions:
-                    where_expressions.append(const_expression)
-        for join_table in join_tables:
-            for calcuate_expression in join_table["calcuate_expressions"]:
-                if calcuate_expression not in where_expressions:
-                    where_expressions.append(calcuate_expression)
-        if where_expressions:
-            sql.append("WHERE " + " AND ".join([("(" + self.generate_sql(where_expression) + ")")
-                                                if isinstance(where_expression, sqlglot_expressions.Or)
-                                                else self.generate_sql(where_expression)
-                                                for where_expression in where_expressions]))
+        if expression.args.get("where"):
+            sql.append(self.generate_sql(expression.args["where"]))
         if expression.args.get("group"):
             sql.append(self.generate_sql(expression.args["group"]))
         if expression.args.get("having"):
@@ -3156,12 +3145,15 @@ class Compiler(object):
         return table
 
     def optimize_rewrite_parse_condition(self, expression, config, arguments, primary_table, condition_expression,
-                                         table_name, related_tables, on_expressions, const_expressions, calcuate_expressions):
+                                         table_name, related_tables, on_expressions, const_expressions, calcuate_expressions,
+                                         can_on_expressions_tables = None):
         if isinstance(condition_expression, sqlglot_expressions.And):
             self.optimize_rewrite_parse_condition(expression, config, arguments, primary_table, condition_expression.args.get("this"),
-                                                  table_name, related_tables, on_expressions, const_expressions, calcuate_expressions)
+                                                  table_name, related_tables, on_expressions, const_expressions, calcuate_expressions,
+                                                  can_on_expressions_tables)
             self.optimize_rewrite_parse_condition(expression, config, arguments, primary_table, condition_expression.args.get("expression"),
-                                                  table_name, related_tables, on_expressions, const_expressions, calcuate_expressions)
+                                                  table_name, related_tables, on_expressions, const_expressions, calcuate_expressions,
+                                                  can_on_expressions_tables)
         elif isinstance(condition_expression, (sqlglot_expressions.EQ, sqlglot_expressions.NEQ, sqlglot_expressions.GT,
                                                sqlglot_expressions.GTE, sqlglot_expressions.LT, sqlglot_expressions.LTE,
                                                sqlglot_expressions.In)):
@@ -3172,15 +3164,24 @@ class Compiler(object):
             else:
                 left_expression, right_expression = condition_expression.args["this"], condition_expression.args["expression"]
 
-            condition_column, value_expression = None, left_expression
+            left_column, condition_column, value_expression = None, None, left_expression
             if self.is_column(left_expression, config, arguments):
                 left_column = self.parse_column(left_expression, config, arguments)
                 if left_column["table_name"] == table_name:
-                    condition_column, value_expression = left_column, right_expression
+                    if can_on_expressions_tables and self.is_column(right_expression, config, arguments):
+                        right_column = self.parse_column(right_expression, config, arguments)
+                        if right_column["table_name"] in can_on_expressions_tables:
+                            condition_column, value_expression = left_column, right_expression
+                    else:
+                        condition_column, value_expression = left_column, right_expression
             if not condition_column and self.is_column(right_expression, config, arguments):
                 right_column = self.parse_column(right_expression, config, arguments)
                 if right_column["table_name"] == table_name:
-                    condition_column, value_expression = right_column, left_expression
+                    if can_on_expressions_tables and left_column:
+                        if left_column["table_name"] in can_on_expressions_tables:
+                            condition_column, value_expression = right_column, left_expression
+                    else:
+                        condition_column, value_expression = right_column, left_expression
             if not condition_column or isinstance(value_expression, (sqlglot_expressions.Select,
                                                                      sqlglot_expressions.Subquery,
                                                                      sqlglot_expressions.Union, list)):
@@ -3190,6 +3191,8 @@ class Compiler(object):
             calculate_fields = []
             self.parse_calculate(value_expression, config, arguments, primary_table, calculate_fields)
             if not calculate_fields:
+                if condition_column:
+                    on_expressions.append(condition_expression)
                 const_expressions.append(condition_expression)
                 return
             on_expressions.append(condition_expression)

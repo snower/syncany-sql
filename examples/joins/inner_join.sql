@@ -20,3 +20,7 @@ select a.goods_name, max(b.order_id) as latest_order_id, c.name, sum(if(b.order_
     left join `data/users.json` c on c.uid=b.uid and c.status=0 and c.uid in (select uid from `data/users.json` where status=0)
 where a.status=0
 group by c.name;
+
+select a.goods_name, b.order_id, c.name from `data/goodses.json` a, `data/orders.json` b, `data/users.json` c
+where a.status=0 and b.goods_id=a.goods_id and b.status=0 and b.uid in (select uid from `data/users.json` where status=0)
+  and c.uid=b.uid and c.status=0 and c.uid in (select uid from `data/users.json` where status=0);

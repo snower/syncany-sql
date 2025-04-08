@@ -112,3 +112,10 @@ class JoinsExampleTestCase(ExampleTestCase):
                                'SUM(CASE WHEN NOT b.order_id IS NULL THEN 1 ELSE 0 END)': 4},
                               {'goods_name': '青菜', 'latest_order_id': 4, 'name': '王五',
                                'SUM(CASE WHEN NOT b.order_id IS NULL THEN 1 ELSE 0 END)': 2}], "data error")
+
+        self.assert_data(24, [{'goods_name': '青菜', 'order_id': 1, 'name': '李四'},
+                             {'goods_name': '青菜', 'order_id': 2, 'name': '王五'},
+                             {'goods_name': '青菜', 'order_id': 4, 'name': '王五'},
+                             {'goods_name': '青菜', 'order_id': 5, 'name': '李四'},
+                             {'goods_name': '白菜', 'order_id': 3, 'name': '李四'},
+                             {'goods_name': '白菜', 'order_id': 6, 'name': '李四'}], "data error")
