@@ -1,0 +1,27 @@
+{
+  "logger": {
+    "version": 1,
+    "formatters": {
+      "console": {
+        "fmt": "%(asctime)s %(process)d %(levelname)s %(message)s",
+        "datefmt": null,
+        "()": "logging.Formatter"
+      }
+    },
+    "handlers": {
+      "console": {
+        "level": "DEBUG",
+        "class": "logging.StreamHandler",
+        "formatter": "console"
+      }
+    },
+    "loggers": {
+      "": {
+        "handlers": [
+          "console"
+        ],
+        "level": "DEBUG"
+      }
+    }
+  }
+}

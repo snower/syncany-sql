@@ -1,0 +1,17 @@
+{
+  "databases": [
+    {
+      "name": "stdio",
+      "driver": "textline"
+    },
+    {
+      "name": "data",
+      "driver": "json",
+      "path": "./data"
+    },
+    {
+      "name": "memory",
+      "driver": "memory"
+    }
+  ]
+}
