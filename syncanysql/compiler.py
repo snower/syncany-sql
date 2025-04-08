@@ -291,9 +291,9 @@ class Compiler(object):
                     typing_filters = []
                 columns.append([column_name, typing_filters[0] if typing_filters else None])
         else:
-            raise SyncanySqlCompileException('unkonw insert into, related sql "%s"' % self.to_sql(expression))
+            raise SyncanySqlCompileException('unknown insert into, related sql "%s"' % self.to_sql(expression))
         if not expression.args.get("expression"):
-            raise SyncanySqlCompileException('unkonw insert into, related sql "%s"' % self.to_sql(expression))
+            raise SyncanySqlCompileException('unknown insert into, related sql "%s"' % self.to_sql(expression))
 
         if table_info["db"] == "-" and table_info["name"] == "_":
             config["output"] = "&.-.&1::id use I"
@@ -317,7 +317,7 @@ class Compiler(object):
         elif isinstance(expression.args["expression"], sqlglot_expressions.Values):
             values_expression = expression.args["expression"]
             if not values_expression.args.get("expressions"):
-                raise SyncanySqlCompileException('unkonw insert into, related sql "%s"' % self.to_sql(expression))
+                raise SyncanySqlCompileException('unknown insert into, related sql "%s"' % self.to_sql(expression))
             datas = []
             for data_expression in values_expression.args["expressions"]:
                 data = {}
@@ -334,7 +334,7 @@ class Compiler(object):
             config["loader"] = "const_loader"
             config["loader_arguments"] = {"datas": datas}
         else:
-            raise SyncanySqlCompileException('unkonw insert into, related sql "%s"' % self.to_sql(expression))
+            raise SyncanySqlCompileException('unknown insert into, related sql "%s"' % self.to_sql(expression))
 
     def compile_union(self, expression, config, arguments):
         select_expressions = []
@@ -2126,7 +2126,7 @@ class Compiler(object):
                             and not self.is_subquery(left_expression, config, arguments):
                         join_on_expression = left_expression
             if condition_column and not condition_column["table_name"]:
-                raise SyncanySqlCompileException('unkonw join on condition, related sql "%s"' % self.to_sql(expression))
+                raise SyncanySqlCompileException('unknown join on condition, related sql "%s"' % self.to_sql(expression))
 
             if condition_column and value_column:
                 if condition_column["column_name"] in join_table["primary_keys"]:
