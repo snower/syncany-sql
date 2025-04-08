@@ -2,10 +2,10 @@
   "extends": ["json/database.json", "json/log.json"],
   "name": "demo",
   "input": "<<&.data.demo.json::_id",
-  "output": ">>&.stdio.&1::site_id use I",
+  "output": ">>&.--.execute_demo_json_data::site_id use I",
   "caches": [{
     "name": "site_amount",
-    "database": "memory",
+    "database": "--",
     "prefix_key": "site:amount",
     "exprie_seconds": 300
   }],

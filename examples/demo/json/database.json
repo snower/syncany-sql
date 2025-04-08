@@ -10,7 +10,7 @@
       "path": "./data"
     },
     {
-      "name": "memory",
+      "name": "--",
       "driver": "memory"
     }
   ]
