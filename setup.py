@@ -6,7 +6,7 @@ import sys
 import os
 from setuptools import find_packages, setup
 
-version = "0.1.23"
+version = "0.1.24"
 
 if os.path.exists("README.md"):
     if sys.version_info[0] >= 3:
@@ -38,7 +38,7 @@ setup(
     install_requires=[
         "pyyaml>=6.0",
         "sqlglot>=11.5.5,<12",
-        "syncany>=0.2.24",
+        "syncany>=0.2.25",
         'Pygments>=2.14.0',
         'prompt-toolkit>=3.0.36',
         "rich>=9.11.1",
