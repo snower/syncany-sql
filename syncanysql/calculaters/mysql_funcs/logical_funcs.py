@@ -7,7 +7,7 @@ from ...utils import NumberDecimalTypes, ensure_number, ensure_str
 
 @typing_filter(int)
 def mysql_eq(a, b):
-    if type(a) is type(b):
+    if a.__class__ == b.__class__:
         if a is None:
             return None
         return 1 if a == b else 0
@@ -35,7 +35,7 @@ def mysql_eq(a, b):
 
 @typing_filter(int)
 def mysql_neq(a, b):
-    if type(a) is type(b):
+    if a.__class__ == b.__class__:
         if a is None:
             return None
         return 1 if a != b else 0
@@ -63,7 +63,7 @@ def mysql_neq(a, b):
 
 @typing_filter(int)
 def mysql_gt(a, b):
-    if type(a) is type(b):
+    if a.__class__ == b.__class__:
         if a is None:
             return None
         try:
@@ -94,7 +94,7 @@ def mysql_gt(a, b):
 
 @typing_filter(int)
 def mysql_gte(a, b):
-    if type(a) is type(b):
+    if a.__class__ == b.__class__:
         if a is None:
             return None
         try:
@@ -125,7 +125,7 @@ def mysql_gte(a, b):
 
 @typing_filter(int)
 def mysql_lt(a, b):
-    if type(a) is type(b):
+    if a.__class__ == b.__class__:
         if a is None:
             return None
         try:
@@ -156,7 +156,7 @@ def mysql_lt(a, b):
 
 @typing_filter(int)
 def mysql_lte(a, b):
-    if type(a) is type(b):
+    if a.__class__ == b.__class__:
         if a is None:
             return None
         try:
@@ -206,7 +206,7 @@ def mysql_not(a):
 
 @typing_filter(int)
 def mysql_is(a, b):
-    if type(a) is type(b):
+    if a.__class__ == b.__class__:
         return 1 if a is b else 0
     if a is None or b is None:
         return 1 if a is b else 0
@@ -214,7 +214,7 @@ def mysql_is(a, b):
 
 @typing_filter(int)
 def mysql_is_not(a, b):
-    if type(a) is type(b):
+    if a.__class__ == b.__class__:
         return 0 if a is b else 1
     if a is None or b is None:
         return 0 if a is b else 1
