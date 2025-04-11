@@ -171,6 +171,8 @@ def mysql_json_encode(value):
     return json.dumps(value, default=str, ensure_ascii=False)
 
 def mysql_json_decode(content):
+    if not isinstance(content, str):
+        return None
     return json.loads(content)
 
 def mysql_json_array(*values):
