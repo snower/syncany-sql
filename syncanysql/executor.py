@@ -175,8 +175,6 @@ class Executor(object):
                 self.tasker.run(self, self.session_config, self.manager)
             finally:
                 self.tasker = None
-        if self.parent_executor is None:
-            self.tasker_index = 0
 
     def terminate(self):
         if not self.tasker:
@@ -218,7 +216,7 @@ class Executor(object):
         self.tasker_index += 1
         return self.tasker_index
 
-    def get_tasker_count(self):
+    def get_tasker_index(self):
         if self.parent_executor is not None:
-            return self.parent_executor.get_tasker_count()
+            return self.parent_executor.get_tasker_index()
         return self.tasker_index
