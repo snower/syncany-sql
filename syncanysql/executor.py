@@ -214,11 +214,11 @@ class Executor(object):
 
     def distribute_tasker_index(self):
         if self.parent_executor is not None:
-            return self.distribute_tasker_index()
+            return self.parent_executor.distribute_tasker_index()
         self.tasker_index += 1
         return self.tasker_index
 
     def get_tasker_count(self):
         if self.parent_executor is not None:
-            return self.get_tasker_count()
+            return self.parent_executor.get_tasker_count()
         return self.tasker_index
