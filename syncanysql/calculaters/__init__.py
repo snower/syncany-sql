@@ -10,7 +10,7 @@ from syncany.calculaters.import_calculater import ImportCalculater
 from .env_variable_calculater import CurrentEnvVariableCalculater
 from .query_tasker_calculater import ExecuteQueryTaskerCalculater
 from .row_calculater import *
-from .mysql_calculater import MysqlCalculater
+from .mysql_calculater import MysqlCalculater, register_mysql_func
 from .generate_calculater import *
 from .aggregate_calculater import *
 from .window_calculater import *
@@ -51,7 +51,7 @@ SQL_CALCULATERS = {
 }
 CALCULATERS.update(SQL_CALCULATERS)
 if not os.environ.get("SYNCANY_PYEVAL_DISABLED"):
-    from .pyeval_calculater import PyEvalCalculater
+    from .pyeval_calculater import PyEvalCalculater, register_pyeval_module
     CALCULATERS["pyeval"] = PyEvalCalculater
 
 

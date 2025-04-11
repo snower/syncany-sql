@@ -111,3 +111,12 @@ class MysqlCalculater(Calculater):
                              "sysdate", "unix_timestamp", "utc_date", "utc_time", "utc_timestamp"}:
             return True
         return False
+
+
+def register_mysql_func(name, func):
+    if not isinstance(func, types.FunctionType):
+        raise TypeError("func must be a function")
+    if MysqlCalculater.funcs is None:
+        from . import mysql_funcs
+        MysqlCalculater.funcs = mysql_funcs.funcs
+    MysqlCalculater.funcs[name] = func

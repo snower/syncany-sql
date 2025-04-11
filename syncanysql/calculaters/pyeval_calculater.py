@@ -12,6 +12,8 @@ class PyEvalCalculater(Calculater):
 
     @classmethod
     def init_globals(cls):
+        import sys
+        import os
         import datetime
         import time
         import math
@@ -23,8 +25,14 @@ class PyEvalCalculater(Calculater):
         import pickle
         import json
         import re
+        try:
+            import requests
+        except:
+            requests = None
 
         cls.globals = {
+            "sys": sys,
+            "os": os,
             "datetime": datetime,
             "time": time,
             "math": math,
@@ -37,6 +45,8 @@ class PyEvalCalculater(Calculater):
             "json": json,
             "re": re,
         }
+        if requests is not None:
+            cls.globals["requests"] = requests
 
     def __init__(self, *args, **kwargs):
         Calculater.__init__(self, *args, **kwargs)
