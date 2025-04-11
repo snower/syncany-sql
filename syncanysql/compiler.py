@@ -301,7 +301,7 @@ class Compiler(object):
             update_type = "I"
             if table_info["typing_options"]:
                 for typing_option in table_info["typing_options"]:
-                    if typing_option.upper() not in ("I", "UI", "UDI", "DI"):
+                    if typing_option.upper() not in ("I", "U", "UI", "UDI", "DI"):
                         continue
                     update_type = typing_option
                     break
@@ -2557,7 +2557,7 @@ class Compiler(object):
         use_output_type = arguments.get("@use_output_type")
         if use_output_type and isinstance(use_output_type, str):
             use_output_type = use_output_type.upper()
-            output_type_names = {"INSERT": "I", "UPDATE_INSERT": "UI", "UPDATE_DELETE_INSERT": "UDI", "DELETE_INSERT": "DI"}
+            output_type_names = {"INSERT": "I", "UPDATE": "U", "UPDATE_INSERT": "UI", "UPDATE_DELETE_INSERT": "UDI", "DELETE_INSERT": "DI"}
             if use_output_type in output_type_names:
                 use_output_type = output_type_names[use_output_type]
             if use_output_type not in typing_options:
