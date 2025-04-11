@@ -57,6 +57,7 @@ def main():
                     sql_parser = SqlParser(content[1:-1] if content[0] in ('"', "'") and content[-1] in ('"', "'") else content)
                     sqls = sql_parser.split()
                     executor.run("pipe", sqls)
+                    get_logger().info("execute pipe sql start %d task", sys.argv[1], executor.get_tasker_count())
                     try:
                         executor.execute()
                     except Exception as e:
@@ -70,6 +71,7 @@ def main():
                     file_parser = FileParser(sys.argv[1])
                     sqls = file_parser.load()
                     executor.run(sys.argv[1], sqls)
+                    get_logger().info("execute file %s start %d task", sys.argv[1], executor.get_tasker_count())
                     try:
                         executor.execute()
                     except Exception as e:

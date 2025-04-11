@@ -143,6 +143,8 @@ class QueryTasker(object):
             tasker.add_hooker(ReduceHooker(executor, session_config, manager, arguments,
                                            self, copy.deepcopy(self.config), batch, aggregate))
         arguments = self.compile_tasker(arguments, tasker)
+        setattr(tasker, "tasker_index", executor.distribute_tasker_index())
+        tasker.name = "[%s]%s" % (tasker.tasker_index, tasker.name)
         self.tasker, self.dependency_taskers, self.arguments = tasker, dependency_taskers, arguments
         return [self]
 
@@ -353,10 +355,15 @@ class QueryTasker(object):
             config["name"] = config["name"] + "#select@reduce"
             config["intercept"] = None
             config["pipelines"] = []
+
+        current_tasker = _thread_local.current_tasker
         tasker = CoreTasker(config, manager)
         arguments["@primary_order"] = False
         arguments["@limit"] = 0
         self.compile_tasker(arguments, tasker)
+        if current_tasker and hasattr(current_tasker, "tasker_index"):
+            setattr(tasker, "tasker_index", executor.distribute_tasker_index())
+            tasker.name = "[%s]%s" % (current_tasker.tasker_index, tasker.name)
         tasker_generator = self.run_tasker(executor, session_config, manager, tasker, [])
         while True:
             try:
