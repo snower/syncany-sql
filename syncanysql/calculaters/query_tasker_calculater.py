@@ -15,6 +15,7 @@ class ExecuteQueryTaskerCalculater(LoaderCalculater):
         self.arguments = None
         self.executor = None
         self.tasker = None
+        self.tasker_index = 0
 
     def start(self, tasker, loader, arguments, task_config, **kwargs):
         current_tasker = _thread_local.current_tasker
@@ -26,7 +27,7 @@ class ExecuteQueryTaskerCalculater(LoaderCalculater):
                 if key[:knl] != kn:
                     continue
                 self.arguments[key[knl:]] = value
-            self.create_executor_tasker(current_tasker)
+            self.create_executor_tasker()
         finally:
             _thread_local.current_tasker = current_tasker
 
@@ -34,7 +35,7 @@ class ExecuteQueryTaskerCalculater(LoaderCalculater):
         current_tasker = _thread_local.current_tasker
         try:
             if self.executor is None:
-                self.create_executor_tasker(current_tasker)
+                self.create_executor_tasker()
             with self.executor as executor:
                 for exp, values in query["filters"].items():
                     if not exp:
@@ -54,19 +55,19 @@ class ExecuteQueryTaskerCalculater(LoaderCalculater):
             self.executor, self.tasker = None, None
             _thread_local.current_tasker = current_tasker
 
-    def create_executor_tasker(self, current_tasker):
+    def create_executor_tasker(self):
         from ..executor import Executor
         from ..taskers.query import QueryTasker
 
         current_executor = Executor.current()
+        if self.tasker_index <= 0:
+            self.tasker_index = current_executor.distribute_tasker_index()
         with Executor(current_executor.manager, current_executor.session_config, current_executor) as executor:
             config = copy.deepcopy(self.config)
             config["output"] = "&.--.__queryTasker_" + str(id(executor)) + "::" + config["output"].split("::")[-1]
             config["name"] = config["name"] + "#queryTasker"
             tasker = QueryTasker(config, is_inner_subquery=True)
-            if current_tasker and hasattr(current_tasker, "tasker_index"):
-                setattr(tasker, "tasker_index", executor.distribute_tasker_index())
-                tasker.name = "[%s]%s" % (current_tasker.tasker_index, tasker.name)
+            tasker.tasker_index = self.tasker_index
             executor.runners.extend(tasker.start(config.get("name"), executor, executor.session_config,
                                                  executor.manager, self.arguments))
             self.tasker, self.executor = tasker, executor

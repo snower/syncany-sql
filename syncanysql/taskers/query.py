@@ -97,6 +97,7 @@ class QueryTasker(object):
         self.temporary_memory_manager = temporary_memory_manager or QueryTaskerTemporaryMemoryManager()
         self.is_inner_subquery = is_inner_subquery
         self.run_start_time = 0
+        self.tasker_index = 0
 
     def start(self, name, executor, session_config, manager, arguments):
         dependency_taskers, aggregate = [], self.config.pop("aggregate", None)
@@ -136,6 +137,9 @@ class QueryTasker(object):
             self.compile_reduce_config(aggregate)
         elif 0 < limit < batch:
             arguments["@batch"] = limit
+
+        if self.tasker_index <= 0:
+            self.tasker_index = executor.distribute_tasker_index()
         tasker = CoreTasker(self.config, manager)
         if "#" not in tasker.config["name"]:
             tasker.config["name"] = tasker.config["name"] + "#select"
@@ -143,9 +147,6 @@ class QueryTasker(object):
             tasker.add_hooker(ReduceHooker(executor, session_config, manager, arguments,
                                            self, copy.deepcopy(self.config), batch, aggregate))
         arguments = self.compile_tasker(arguments, tasker)
-        if not hasattr(tasker, "tasker_index"):
-            setattr(tasker, "tasker_index", executor.distribute_tasker_index())
-            tasker.name = "[%s]%s" % (tasker.tasker_index, tasker.name)
         self.tasker, self.dependency_taskers, self.arguments = tasker, dependency_taskers, arguments
         return [self]
 
@@ -357,14 +358,10 @@ class QueryTasker(object):
             config["intercept"] = None
             config["pipelines"] = []
 
-        current_tasker = _thread_local.current_tasker
         tasker = CoreTasker(config, manager)
         arguments["@primary_order"] = False
         arguments["@limit"] = 0
         self.compile_tasker(arguments, tasker)
-        if current_tasker and hasattr(current_tasker, "tasker_index"):
-            setattr(tasker, "tasker_index", executor.distribute_tasker_index())
-            tasker.name = "[%s]%s" % (current_tasker.tasker_index, tasker.name)
         tasker_generator = self.run_tasker(executor, session_config, manager, tasker, [])
         while True:
             try:
@@ -419,6 +416,8 @@ class QueryTasker(object):
                     obj.name = prefix + table_name_value
                 return _
             self.updaters.append(env_variable_setter(tasker, table_name, loader_or_outputer, db + ".", table_name[16:-1]))
+        tasker.name = "[%s]%s" % (self.tasker_index, tasker.name)
+        setattr(tasker, "running_id", self.tasker_index)
         return compile_arguments
 
     def run_tasker(self, executor, session_config, manager, tasker, dependency_taskers):
