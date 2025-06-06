@@ -29,6 +29,8 @@ class PyEvalCalculater(Calculater):
             import requests
         except:
             requests = None
+        from syncany.taskers.tasker import current_tasker
+        from ..executor import Executor
 
         cls.globals = {
             "sys": sys,
@@ -44,6 +46,11 @@ class PyEvalCalculater(Calculater):
             "pickle": pickle,
             "json": json,
             "re": re,
+            "current_tasker": lambda : current_tasker(),
+            "current_executor": lambda : Executor.current(),
+            "current_manager": lambda: Executor.current().manager,
+            "current_session": lambda: Executor.current().session_config,
+            "current_env_variables": lambda: Executor.current().env_variables,
         }
         if requests is not None:
             cls.globals["requests"] = requests
