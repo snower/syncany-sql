@@ -27,25 +27,58 @@ class InsertTypesExampleTestCase(ExampleTestCase):
     def test_update_delete_insert(self):
         self.execute("update_delete_insert.sql")
 
-        self.assert_data(10, [{'id': 1, 'name': '萝卜', 'create_time': '2023-03-12 10:12:34'},
-                              {'id': 2, 'name': '青菜', 'create_time': '2023-03-12 10:12:34'},
-                              {'id': 3, 'name': '油麦菜', 'create_time': '2023-03-12 10:12:34'}], "data error")
+        self.assert_data(17, [{'create_time': '2023-03-12 10:12:34', 'id': 1, 'name': '萝卜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 2, 'name': '青菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 5, 'name': '白菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 6, 'name': '青菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 3, 'name': '油麦菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 7, 'name': '油麦菜'}], "data error")
 
-        self.assert_data(21, [{'id': 1, 'name': '萝卜', 'create_time': '2023-03-12 10:12:34'},
+        self.assert_data(20, [{'create_time': '2023-03-12 10:12:34', 'id': 1, 'name': '萝卜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 2, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 5, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 6, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 3, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 7, 'name': '玉米'}], "data error")
+
+        self.assert_data(31, [{'id': 1, 'name': '萝卜', 'create_time': '2023-03-12 10:12:34'},
                               {'id': 2, 'name': '青菜', 'create_time': '2023-03-12 10:12:34'},
                               {'id': 3, 'name': '油麦菜', 'create_time': '2023-03-12 10:12:34'}], "data error")
 
     def test_update_insert(self):
         self.execute("update_insert.sql")
 
-        self.assert_data(10, [{'id': 1, 'name': '萝卜', 'create_time': '2023-03-12 10:12:34'},
-                              {'id': 2, 'name': '青菜', 'create_time': '2023-03-12 10:12:34'},
-                              {'id': 4, 'name': '花菜', 'create_time': '2023-03-12 10:12:34'},
-                              {'id': 3, 'name': '油麦菜', 'create_time': '2023-03-12 10:12:34'}], "data error")
+        self.assert_data(17, [{'create_time': '2023-03-12 10:12:34', 'id': 1, 'name': '萝卜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 2, 'name': '青菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 4, 'name': '花菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 5, 'name': '白菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 6, 'name': '青菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 8, 'name': '花菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 3, 'name': '油麦菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 7, 'name': '油麦菜'}], "data error")
+
+        self.assert_data(20, [{'create_time': '2023-03-12 10:12:34', 'id': 1, 'name': '萝卜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 2, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 4, 'name': '花菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 5, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 6, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 8, 'name': '花菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 3, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 7, 'name': '玉米'}], "data error")
 
     def test_update(self):
         self.execute("update.sql")
 
-        self.assert_data(10, [{'id': 1, 'name': '萝卜', 'create_time': '2023-03-12 10:12:34'},
-                              {'id': 2, 'name': '青菜', 'create_time': '2023-03-12 10:12:34'},
-                              {'id': 4, 'name': '花菜', 'create_time': '2023-03-12 10:12:34'}], "data error")
+        self.assert_data(17, [{'create_time': '2023-03-12 10:12:34', 'id': 1, 'name': '萝卜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 2, 'name': '青菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 4, 'name': '花菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 5, 'name': '白菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 6, 'name': '青菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 8, 'name': '花菜'}], "data error")
+
+        self.assert_data(20, [{'create_time': '2023-03-12 10:12:34', 'id': 1, 'name': '萝卜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 2, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 4, 'name': '花菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 5, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 6, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 8, 'name': '花菜'}], "data error")
