@@ -135,7 +135,7 @@ class Compiler(object):
     def compile_expression(self, expression, arguments):
         if isinstance(expression, sqlglot_expressions.Delete):
             return DeleteTasker(self.compile_delete(expression, arguments))
-        elif isinstance(expression, (sqlglot_expressions.Union, sqlglot_expressions.Insert, sqlglot_expressions.Select)):
+        elif isinstance(expression, (sqlglot_expressions.Union, sqlglot_expressions.Insert, sqlglot_expressions.Update, sqlglot_expressions.Select)):
             query_tasker = QueryTasker(self.compile_query(expression, arguments), expression)
             if not expression.args.get("into"):
                 return query_tasker
@@ -227,6 +227,11 @@ class Compiler(object):
         if isinstance(expression, sqlglot_expressions.Union):
             self.compile_union(expression, config, arguments)
         elif isinstance(expression, sqlglot_expressions.Insert):
+            self.compile_insert_into(expression, config, arguments)
+        elif isinstance(expression, sqlglot_expressions.Update):
+            expression = self.optimize_rewrite_update(expression, config, arguments)
+            if not isinstance(expression, sqlglot_expressions.Insert):
+                raise SyncanySqlCompileException('unknown update sql, related sql "%s"' % self.to_sql(expression))
             self.compile_insert_into(expression, config, arguments)
         elif isinstance(expression, sqlglot_expressions.Select):
             self.compile_select(self.optimize_rewrite(expression, config, arguments), config, arguments)
@@ -2678,14 +2683,21 @@ class Compiler(object):
                         pass
             column_name = origin_name[:start_index]
             typing_name = (column_name + "|" + typing_filters[0]) if typing_filters else column_name
+            try:
+                start_index, end_index = origin_name.index("<"), origin_name.rindex(">")
+                typing_options = origin_name[start_index+1: end_index].split(",")
+            except ValueError:
+                typing_options = []
         except ValueError:
-            column_name = origin_name
-            typing_name = column_name
-        try:
-            start_index, end_index = origin_name.index("<"), origin_name.rindex(">")
-            typing_options = origin_name[start_index+1: end_index].split(",")
-        except ValueError:
-            typing_options = []
+            try:
+                start_index, end_index = origin_name.index("<"), origin_name.rindex(">")
+                typing_options = origin_name[start_index+1: end_index].split(",")
+                column_name = origin_name[:start_index]
+                typing_name = column_name
+            except ValueError:
+                typing_options = []
+                column_name = origin_name
+                typing_name = column_name
         return {
             "table_name": (db_name + "." + table_name) if db_name else table_name,
             "column_name": (column_name + "." + ".".join(dot_keys)) if dot_keys else column_name,
@@ -3131,6 +3143,51 @@ class Compiler(object):
             sql.append(self.generate_sql(expression.args.get("limit")))
         if expression.args.get("offset"):
             sql.append(self.generate_sql(expression.args.get("offset")))
+        return maybe_parse(" ".join(sql), dialect=CompilerDialect)
+
+    def optimize_rewrite_update(self, expression, config, arguments):
+        primary_table = self.optimize_rewrite_parse_table(expression, config, arguments, expression.args["this"])
+        if not primary_table["table_name"]:
+            return expression
+
+        primary_keys, set_expressions = [], []
+        for set_expression in expression.args["expressions"]:
+            if not isinstance(set_expression, sqlglot_expressions.EQ):
+                raise SyncanySqlCompileException('error set expression, only supports the = sign assignment operation, related sql "%s"' % self.to_sql(expression))
+            if not isinstance(set_expression.args["this"], sqlglot_expressions.Column):
+                raise SyncanySqlCompileException('error set expression, the assigned item must be a table field, related sql "%s"' % self.to_sql(expression))
+            column = self.parse_column(set_expression.args["this"], config, arguments)
+            if column["table_name"] and column["table_name"] != primary_table["table_name"]:
+                raise SyncanySqlCompileException('error set expression, the assigned item must be a table field, related sql "%s"' % self.to_sql(expression))
+            if self.is_column(set_expression.args["expression"], config, arguments):
+                value_column = self.parse_column(set_expression.args["expression"], config, arguments)
+                if ((not value_column["table_name"] or column["table_name"] == value_column["table_name"])
+                        and column["column_name"] == value_column["column_name"]):
+                    primary_keys.append(column["column_name"])
+                    continue
+            set_expressions.append({"column": column, "expression": set_expression.args["expression"]})
+
+        if not primary_keys:
+            raise SyncanySqlCompileException('unknown primary key, related sql "%s"' % self.to_sql(expression))
+        sql = ["INSERT INTO"]
+        if primary_table.get("db"):
+            sql.append("`" + primary_table["db"] + "`." + '`' + primary_table["name"] + "<U>`")
+        else:
+            sql.append('`' + primary_table["name"] + "<U>`")
+        select_sql = []
+        for primary_key in primary_keys:
+            if primary_table.get("table_alias"):
+                select_sql.append(primary_table["table_alias"] + "." + "`" + primary_key + "<pk>`")
+            else:
+                select_sql.append("`" + primary_key + "<pk>`")
+        for set_expression in set_expressions:
+            select_sql.append(self.generate_sql(set_expression["expression"]) + ' as ' + set_expression["column"]["column_name"])
+        sql.append("SELECT")
+        sql.append(", ".join(select_sql))
+        sql.append("FROM")
+        sql.append(self.generate_sql(expression.args["this"]))
+        if expression.args.get("where"):
+            sql.append(self.generate_sql(expression.args["where"]))
         return maybe_parse(" ".join(sql), dialect=CompilerDialect)
 
     def optimize_rewrite_parse_table(self, expression, config, arguments, table_expression):

@@ -18,3 +18,12 @@ select `id`, `name`, `create_time` from `cdata`;
 
 insert into `cdata<U>` select `id`, '玉米' as `name` from `ndata` where `id`>=2;
 select `id`, `name`, `create_time` from `cdata`;
+
+update `cdata` set id=id, name='花生' where id in (1, 3) and create_time='2023-03-12 10:12:34';
+select `id`, `name`, `create_time` from `cdata`;
+
+update `cdata` set id=id, name='胡萝卜' where id > 5 or name='花生';
+select `id`, `name`, `create_time` from `cdata`;
+
+update `cdata` set id=id, name='青椒' where (id + 1) > 4 and concat(name, '11')='花菜11';
+select `id`, `name`, `create_time` from `cdata`;

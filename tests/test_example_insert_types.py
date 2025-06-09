@@ -82,3 +82,24 @@ class InsertTypesExampleTestCase(ExampleTestCase):
                               {'create_time': '2023-03-12 10:12:34', 'id': 5, 'name': '玉米'},
                               {'create_time': '2023-03-12 10:12:34', 'id': 6, 'name': '玉米'},
                               {'create_time': '2023-03-12 10:12:34', 'id': 8, 'name': '花菜'}], "data error")
+
+        self.assert_data(23, [{'create_time': '2023-03-12 10:12:34', 'id': 1, 'name': '花生'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 2, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 4, 'name': '花菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 5, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 6, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 8, 'name': '花菜'}], "data error")
+
+        self.assert_data(26, [{'create_time': '2023-03-12 10:12:34', 'id': 1, 'name': '胡萝卜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 2, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 4, 'name': '花菜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 5, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 6, 'name': '胡萝卜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 8, 'name': '胡萝卜'}], "data error")
+
+        self.assert_data(29, [{'create_time': '2023-03-12 10:12:34', 'id': 1, 'name': '胡萝卜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 2, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 4, 'name': '青椒'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 5, 'name': '玉米'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 6, 'name': '胡萝卜'},
+                              {'create_time': '2023-03-12 10:12:34', 'id': 8, 'name': '胡萝卜'}], "data error")
