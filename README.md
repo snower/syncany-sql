@@ -5,14 +5,17 @@
 简单易用的SQL执行引擎。
 
 - 可在本地运行MySQL语法结构的SQL
-- 支持查询常用mysql、mongodb、postgresql、sqlserver、elasticsearch、influxdb、clickhouse、sqlite数据库及execl、csv、json和普通文本文件
+- 支持查询常用mysql、mongodb、postgresql、sqlserver、oracle、elasticsearch、influxdb、clickhouse、sqlite数据库及execl、csv、json和普通文本文件
 - 支持本地临时数据表逻辑做中间结果保存
 - 数据库数据加载使用简单条件过滤及IN条件查询
 - 因由本地完成Join匹配所以支持不同库表、不同主机及不同类型数据库间Join关联查询
 - Group By分组聚合计算及Order By排序也由本地执行，保证数据库安全性
-- 数据写Insert Into支持 ”仅插入 I“、”存在更新否则插入 UI“、”存在更新否则插入其余删除 UDI“、”删除后插入 DI“四种模式
+- 数据写Insert Into支持 ”仅插入 I“、”仅更新 U“、”存在更新否则插入 UI“、”存在更新否则插入其余删除 UDI“、”删除后插入 DI“四种模式
 - 大数据量支持批次执行，有Group By或Having条件过滤自动执行Reduce合并结果
 - 支持流式执行
+- 支持使用常用MySQL函数
+- 支持分区窗口函数查询
+- 支持使用pyeval执行python代码（调用的就是python的eval函数）
 
 -----
 
