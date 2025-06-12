@@ -58,6 +58,14 @@ databases:
     password: '123456'
     database: 'example'
     charset: 'utf8'
+    
+  - name: oracle_example # Oracle 示例参数，除name、driver和schema是专有参数，其余连接参数可参照 https://github.com/oracle/python-oracledb 配置，如需使用Oracle Instant Client以Thick模式支持 Oracle 11g、10g 等老版本，可使用init_oracle_client配置项或ORACLE_INSTANTCLIENT_HOME环境变量设置Instant Client安装目录
+    driver: oracle
+    host: '127.0.0.1'
+    port: 1521
+    user: 'system'
+    password: 'oracle'
+    schema: 'system' # schema名称，额外参数，不设置默认同user值
 
   - name: clickhouse_example # ClickHouse 示例参数，除name和driver是专有参数，其余连接参数可参照 https://github.com/mymarilyn/clickhouse-driver 配置
     driver: clickhouse
