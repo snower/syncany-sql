@@ -11,3 +11,4 @@
 - [clickhouse_driver>=0.1.5](https://github.com/mymarilyn/clickhouse-driver)
 - [redis>=3.5.3](https://github.com/redis/redis-py)
 - [pymssql>=2.2.7](https://github.com/pymssql/pymssql)
+- [oracledb>=3.1.1](https://github.com/oracle/python-oracledb)

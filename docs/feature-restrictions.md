@@ -5,13 +5,14 @@
 - 完全在内存中完成Group By分组聚合计算和distinct去重聚合运算
 - Order By排序，如果排序完全是主表字段则使用数据库完成，否则内存中完成排序
 - 支持子查询
-- Where或join on条件支持简单子查询(仅支持and，比较操作符仅支持==、!=、>、>=、<、<=、in)，其条件会被发送到数据库执行
 - Insert Into除支持正常写入数据库表外可直接写入到execl、json和csv中
-- Insert Into支持指定数据合并类型，共支持4中合并算法 （插入 I，更新否则插入 UI，更新否则插入其余删除 UDI，先删除再插入 DI）
+- Insert Into支持指定数据合并类型，共支持4中合并算法 （插入 I，更新否则插入 U，仅更新 UI，更新否则插入其余删除 UDI，先删除再插入 DI）
 - 可以在设定每批数量后支持按批次执行
 - WHere、Join on和Having条件值都支持子查询返回
 - 支持set设置变量值，支持select info给变量赋值，执行访问变量
 - 支持使用常用MySQL函数
+- 支持窗口函数
+- 支持使用pyeval执行python代码（调用的就是python的eval函数）
 
 
 ```
