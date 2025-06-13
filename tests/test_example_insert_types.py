@@ -24,6 +24,18 @@ class InsertTypesExampleTestCase(ExampleTestCase):
                               {'id': 2, 'name': '青菜', 'create_time': '2023-03-12 10:12:34'},
                               {'id': 3, 'name': '油麦菜', 'create_time': '2023-03-12 10:12:34'}], "data error")
 
+        self.assert_data(13, [{'id': 1, 'name': 'a', 'value': 1},
+                              {'id': 2, 'name': 'a', 'value': 2},
+                              {'id': 3, 'name': 'c', 'value': 3}], "data error")
+
+        self.assert_data(16, [{'id': 1, 'name': '1a1', 'value': 1},
+                              {'id': 2, 'name': 'a', 'value': 4},
+                              {'id': 3, 'name': '1b1', 'value': 9}], "data error")
+
+        self.assert_data(19, [{'id': 2, 'name': 'a', 'value': 4},
+                              {'id': 3, 'name': '1b1', 'value': 9},
+                              {'id': 1, 'name': 'a', 'value': 1}], "data error")
+
     def test_update_delete_insert(self):
         self.execute("update_delete_insert.sql")
 

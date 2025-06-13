@@ -103,6 +103,9 @@ class Compiler(object):
                    "char": "str", "varchar": "str", "nchar": "str", "text": "str", "mediumtext": "str", "tinytext": "str",
                    "bigint": "int", "mediumint": "int", "smallint": "int", "tinyint": "int", "decimal": "decimal", "double": "float",
                    "boolean": "bool", "binary": "bytes", "varbinary": "bytes", "blob": "bytes", "timestamp": "datetime"}
+    PRIMARY_TABLE = {"db": None, "name": None, "table_name": None, "table_alias": None, "seted_primary_keys": False,
+                     "loader_primary_keys": [], "outputer_primary_keys": [], "alias_primary_keys": [],
+                     "columns": {}, "subquery": None, "select_columns": {}}
 
     def __init__(self, config, env_variables, name):
         self.config = config
@@ -323,21 +326,66 @@ class Compiler(object):
             values_expression = expression.args["expression"]
             if not values_expression.args.get("expressions"):
                 raise SyncanySqlCompileException('unknown insert into, related sql "%s"' % self.to_sql(expression))
-            datas = []
+            subquery_configs, datas = [], []
+            subquery_name = "__subquery_" + str(uuid.uuid1().int) + "_" + table_info["name"]
             for data_expression in values_expression.args["expressions"]:
-                data = {}
+                const_data, calculate_data = {}, {}
                 for i in range(len(data_expression.args["expressions"])):
                     value_expression = data_expression.args["expressions"][i]
-                    value = self.parse_const(value_expression, config, arguments)["value"]
-                    if columns[i][1] is None:
-                        columns[i][1] = str(type(value).__name__) if isinstance(value, (int, float, bool)) else None
-                    data[columns[i][0]] = value
-                datas.append(data)
-            config["schema"] = {column_name: "$." + column_name + (("|" + column_type) if column_type else "")
-                                for column_name, column_type in columns}
-            config["input"] = "&.--.--::" + columns[0][0]
-            config["loader"] = "const_loader"
-            config["loader_arguments"] = {"datas": datas}
+                    if self.is_const(value_expression, config, arguments):
+                        value = self.parse_const(value_expression, config, arguments)["value"]
+                        if columns[i][1] is None:
+                            columns[i][1] = str(type(value).__name__) if isinstance(value, (int, float, bool)) else None
+                        const_data[columns[i][0]] = value
+                    elif self.is_calculate(value_expression, config, arguments):
+                        calculate_fields = []
+                        self.parse_calculate(value_expression, config, arguments, self.PRIMARY_TABLE, calculate_fields)
+                        if calculate_fields:
+                            raise SyncanySqlCompileException('unknown insert into value, related sql "%s"' % self.to_sql(expression))
+                        calculate_data[columns[i][0]] = self.compile_calculate(value_expression, config, arguments,
+                                                                               self.PRIMARY_TABLE, {})
+                    else:
+                        raise SyncanySqlCompileException('unknown insert into value, related sql "%s"' % self.to_sql(expression))
+
+                if calculate_data:
+                    subquery_config = copy.deepcopy(config)
+                    subquery_config["schema"] = {}
+                    for column_name, column_type in columns:
+                        if column_name in const_data:
+                            subquery_config["schema"][column_name] = ["#const" + (("|" + column_type) if column_type else ""), const_data[column_name]]
+                        elif column_name in calculate_data:
+                            subquery_config["schema"][column_name] = calculate_data[column_name]
+                        else:
+                            subquery_config["schema"][column_name] = ["#const", None]
+                    subquery_config["input"] = "&.--.--::" + columns[0][0]
+                    subquery_config["output"] = "&.--." + subquery_name + "::" + columns[0][0] + " use I"
+                    subquery_config["name"] = config["name"] + "#calculate" + str(len(subquery_configs))
+                    subquery_configs.append(subquery_config)
+                else:
+                    datas.append(const_data)
+
+            if subquery_configs:
+                if datas:
+                    subquery_config = copy.deepcopy(config)
+                    subquery_config["schema"] = {column_name: "$." + column_name + (("|" + column_type) if column_type else "")
+                                        for column_name, column_type in columns}
+                    subquery_config["input"] = "&.--.--::" + columns[0][0]
+                    subquery_config["output"] = "&.--." + subquery_name + "::" + columns[0][0] + " use I"
+                    subquery_config["loader"] = "const_loader"
+                    subquery_config["loader_arguments"] = {"datas": datas}
+                    subquery_config["name"] = config["name"] + "#const"
+                    subquery_configs.append(subquery_config)
+
+                config["dependencys"] = subquery_configs
+                config["schema"] = {column_name: "$." + column_name + (("|" + column_type) if column_type else "")
+                                    for column_name, column_type in columns}
+                config["input"] = "&.--." + subquery_name + "::" + columns[0][0]
+            else:
+                config["schema"] = {column_name: "$." + column_name + (("|" + column_type) if column_type else "")
+                                    for column_name, column_type in columns}
+                config["input"] = "&.--.--::" + columns[0][0]
+                config["loader"] = "const_loader"
+                config["loader_arguments"] = {"datas": datas}
         else:
             raise SyncanySqlCompileException('unknown insert into, related sql "%s"' % self.to_sql(expression))
 
@@ -389,10 +437,7 @@ class Compiler(object):
         arguments["@limit"] = 0
 
     def compile_select(self, expression, config, arguments):
-        primary_table = {"db": None, "name": None, "table_name": None, "table_alias": None, "seted_primary_keys": False,
-                         "loader_primary_keys": [], "outputer_primary_keys": [], "alias_primary_keys": [],
-                         "columns": {}, "subquery": None, "select_columns": {}}
-
+        primary_table = copy.deepcopy(self.PRIMARY_TABLE)
         from_expression = expression.args.get("from")
         if not from_expression:
             primary_table["db"] = "--"

@@ -9,3 +9,11 @@ insert into `ndata` select 3 as `id`, '油麦菜' as `name`, '2023-03-12 10:12:3
 insert into `cdata<I>` select `id`, `name`, `create_time` from `ndata` where `id`>=2;
 select `id`, `name`, `create_time` from `cdata`;
 
+insert into `tdata1` (`id`, `name`, `value`) values (1, 'a', 1), (2, 'a', 2), (3, 'c', 3);
+select `id`, `name`, `value` from `tdata1`;
+
+insert into `tdata2` (`id`, `name`, `value`) values (1, concat(1, 'a', 1), 1), (2, 'a', 1 + 3), (3, concat(1, 'b', 1), 2 * 4 + 1);
+select `id`, `name`, `value` from `tdata2`;
+
+insert into `tdata3` (`id`, `name`, `value`) values (1, 'a', 1), (2, 'a', 1 + 3), (3, concat(1, 'b', 1), 2 * 4 + 1);
+select `id`, `name`, `value` from `tdata3`;
