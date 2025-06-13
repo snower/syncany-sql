@@ -76,6 +76,8 @@ class AggregateExampleTestCase(ExampleTestCase):
         self.assert_data(52, [{'uid': 2, 'agoods_ids': '[1, 2, 1, 2]', 'ogoods_ids': '{"1": 5, "2": 6}'},
                               {'uid': 1, 'agoods_ids': '[1, 1]', 'ogoods_ids': '{"1": 4}'}], "data error")
 
+        self.assert_data(54, [{'uid': 2, 'goods_id': 1}, {'uid': 1, 'goods_id': 1}], "data error")
+
     def test_aggregate_batch(self):
         self.execute("aggregate_batch.sql")
 

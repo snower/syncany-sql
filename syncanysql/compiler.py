@@ -1385,6 +1385,8 @@ class Compiler(object):
             return "@group_concat::aggregate", "@group_concat::reduce", "@group_concat::final_value"
         elif isinstance(expression, sqlglot_expressions.GroupUniqArray):
             return "@group_uniq_array::aggregate", "@group_uniq_array::reduce", "@group_uniq_array::final_value"
+        elif isinstance(expression, sqlglot_expressions.AnyValue):
+            return "@aggregate_any_value::aggregate", "@aggregate_any_value::reduce", "@aggregate_any_value::final_value"
         elif isinstance(expression, sqlglot_expressions.Anonymous):
             aggregate_funcs = {"grouparray": "group_array", "groupuniqarray": "group_uniq_array", "groupbitand": "group_bit_and",
                                "groupbitor": "group_bit_or", "groupbitxor": "group_bit_xor"}
@@ -2981,7 +2983,7 @@ class Compiler(object):
             return False
         if isinstance(expression, (sqlglot_expressions.Count, sqlglot_expressions.Sum, sqlglot_expressions.Max,
                                    sqlglot_expressions.Min, sqlglot_expressions.Avg, sqlglot_expressions.GroupConcat,
-                                   sqlglot_expressions.GroupUniqArray)):
+                                   sqlglot_expressions.GroupUniqArray, sqlglot_expressions.AnyValue)):
             return True
         if isinstance(expression, sqlglot_expressions.Anonymous):
             aggregate_funcs = {"group_array", "grouparray", "group_uniq_array", "groupuniqarray", "group_bit_and", "groupbitand",

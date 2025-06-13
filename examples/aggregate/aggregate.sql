@@ -50,3 +50,5 @@ select b.name, c.goods_name, aggregate_unique(b.name) as names, aggregate_join(c
     join `data/goodses.json` c on a.goods_id=c.goods_id where a.status=0 group by b.name, c.goods_name;
 
 select uid, json_arrayagg(goods_id) as agoods_ids, json_objectagg(goods_id, order_id) as ogoods_ids from `data/orders.json` where status=0 group by uid;
+
+select uid, any_value(goods_id) as goods_id from `data/orders.json` where status=0 group by uid;

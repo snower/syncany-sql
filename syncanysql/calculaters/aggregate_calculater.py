@@ -440,3 +440,20 @@ class AggregateJsonObjectaggCalculater(StateAggregateCalculater):
 
     def get_final_filter(self):
         return StringFilter.default()
+
+
+class AggregateAnyValueCalculater(StateAggregateCalculater):
+    def aggregate(self, state_value, data_value):
+        if state_value is None:
+            return {"value": data_value}
+        return state_value
+
+    def reduce(self, state_value, data_value):
+        if state_value is None:
+            return data_value
+        return state_value
+
+    def final_value(self, state_value):
+        if state_value is None:
+            return None
+        return state_value["value"]

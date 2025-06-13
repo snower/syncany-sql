@@ -36,6 +36,7 @@ SQL_CALCULATERS = {
     "group_bit_xor": AggregateGroupBitXorCalculater,
     "json_arrayagg": AggregateJsonArrayaggCalculater,
     "json_objectagg": AggregateJsonObjectaggCalculater,
+    "aggregate_any_value": AggregateAnyValueCalculater,
     "row_number": WindowAggregateRowNumberCalculater,
     "rank": WindowAggregateRankCalculater,
     "dense_rank": WindowAggregateDenseRankCalculater,
