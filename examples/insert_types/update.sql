@@ -27,3 +27,12 @@ select `id`, `name`, `create_time` from `cdata`;
 
 update `cdata` set id=id, name='青椒' where (id + 1) > 4 and concat(name, '11')='花菜11';
 select `id`, `name`, `create_time` from `cdata`;
+
+insert into `cdata<U>` select `create_time`, `id<pk>`, `name` from `ndata` where `id`=1;
+select `id`, `name`, `create_time` from `cdata`;
+
+insert into `cdata<U>` select `name`, 1 as `id<pk>` from `ndata` where `id`=2;
+select `id`, `name`, `create_time` from `cdata`;
+
+insert into `cdata<U>` select '豆角' as `name`, 1 as `id<pk>`;
+select `id`, `name`, `create_time` from `cdata`;

@@ -390,7 +390,8 @@ class Compiler(object):
 
     def compile_select(self, expression, config, arguments):
         primary_table = {"db": None, "name": None, "table_name": None, "table_alias": None, "seted_primary_keys": False,
-                         "loader_primary_keys": [], "outputer_primary_keys": [], "columns": {}, "subquery": None, "select_columns": {}}
+                         "loader_primary_keys": [], "outputer_primary_keys": [], "alias_primary_keys": [],
+                         "columns": {}, "subquery": None, "select_columns": {}}
 
         from_expression = expression.args.get("from")
         if not from_expression:
@@ -460,9 +461,11 @@ class Compiler(object):
             if self.is_column(select_expression, config, arguments):
                 column_expression = select_expression
             elif isinstance(select_expression, sqlglot_expressions.Alias):
-                column_alias = select_expression.args["alias"].name if select_expression.args.get("alias") else None
-                if column_alias and column_alias in self.mapping:
-                    column_alias = self.mapping[column_alias]
+                column_alias = self.parse_column_alias(select_expression, config, arguments)
+                if column_alias is not None:
+                    if column_alias["typing_options"] and "pk" in column_alias["typing_options"]:
+                        primary_table["alias_primary_keys"].append(column_alias["column_alias"])
+                    column_alias = column_alias["column_alias"]
                 if self.is_const(select_expression.args["this"], config, arguments):
                     const_info = self.parse_const(select_expression.args["this"], config, arguments)
                     config["schema"][column_alias] = self.compile_const(select_expression.args["this"], config, arguments, const_info)
@@ -570,6 +573,8 @@ class Compiler(object):
                     if name in config["aggregate"]["schema"]:
                         continue
                     config["aggregate"]["distinct_keys"].append(copy.deepcopy(column))
+        if primary_table["alias_primary_keys"]:
+            primary_table["outputer_primary_keys"] = primary_table["alias_primary_keys"]
         if not from_expression and not primary_table["outputer_primary_keys"] and isinstance(config["schema"], dict):
             for column_alias in config["schema"]:
                 if not column_alias.isidentifier():
@@ -2760,6 +2765,26 @@ class Compiler(object):
             "value_getter": value_getter,
             "typing_filter": typing_filter,
             "expression": expression,
+        }
+
+    def parse_column_alias(self, expression, config, arguments):
+        if not expression.args.get("alias"):
+            return None
+        origin_alias = expression.args["alias"].name
+        if origin_alias and origin_alias in self.mapping:
+            column_alias = self.mapping[origin_alias]
+        else:
+            column_alias = origin_alias
+        try:
+            start_index, end_index = column_alias.index("<"), column_alias.rindex(">")
+            typing_options = column_alias[start_index + 1: end_index].split(",")
+            column_alias = column_alias[:start_index]
+        except ValueError:
+            typing_options = []
+        return {
+            "origin_alias": origin_alias,
+            "column_alias": column_alias,
+            "typing_options": typing_options,
         }
 
     def parse_cast_typing_filter(self, expression, config, arguments):
