@@ -184,10 +184,10 @@ class Compiler(object):
         config.update({
             "extends": ["context://session/config"],
             "name": self.name or "",
-            "input": "&.--.--::id",
+            "input": "&.--.--::-",
             "loader": "const_loader",
             "loader_arguments":  {"datas": []},
-            "output": "&.-.&1::id",
+            "output": "&.-.&1::-",
             "querys": {},
             "databases": [],
             "predicate": None,
@@ -213,8 +213,8 @@ class Compiler(object):
         config.update({
             "extends": ["context://session/config"],
             "name": self.name or "",
-            "input": "&.-.&1::id",
-            "output": "&.-.&1::id",
+            "input": "&.-.&1::-",
+            "output": "&.-.&1::-",
             "querys": {},
             "databases": [],
             "predicate": None,
@@ -304,7 +304,7 @@ class Compiler(object):
             raise SyncanySqlCompileException('unknown insert into, related sql "%s"' % self.to_sql(expression))
 
         if table_info["db"] == "-" and table_info["name"] == "_":
-            config["output"] = "&.-.&1::id use I"
+            config["output"] = "&.-.&1::- use I"
         else:
             update_type = "I"
             if table_info["typing_options"]:
@@ -313,8 +313,7 @@ class Compiler(object):
                         continue
                     update_type = typing_option
                     break
-            config["output"] = "".join(["&.", table_info["db"], ".", table_info["name"], "::",
-                                        "id", " use ", update_type])
+            config["output"] = "".join(["&.", table_info["db"], ".", table_info["name"], "::- use ", update_type])
 
         if isinstance(expression.args["expression"], (sqlglot_expressions.Select, sqlglot_expressions.Union)):
             select_expression = expression.args["expression"]
@@ -627,10 +626,10 @@ class Compiler(object):
                 primary_table["outputer_primary_keys"] = [column_alias]
                 break
         config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
-                                   "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id",
+                                   "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "-",
                                    (" use " + arguments["@use_input"]) if arguments.get("@use_input") else ""])
         config["output"] = "".join([config["output"].split("::")[0], "::",
-                                    "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "id",
+                                    "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "-",
                                     (" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else (
                                             " use " + (arguments.get("@use_output") or "I"))])
 
@@ -653,10 +652,10 @@ class Compiler(object):
             pipeline = pipeline[:1] + ["$.*|array"] + pipeline[1:]
         config["pipelines"].append(pipeline)
         config["input"] = "".join(["&.", primary_table["db"], ".", primary_table["name"], "::",
-                                   "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "id",
+                                   "+".join(primary_table["loader_primary_keys"]) if primary_table["loader_primary_keys"] else "-",
                                    (" use " + arguments["@use_input"]) if arguments.get("@use_input") else ""])
         config["output"] = "".join([config["output"].split("::")[0], "::",
-                                    "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "id",
+                                    "+".join(primary_table["outputer_primary_keys"]) if primary_table["outputer_primary_keys"] else "-",
                                     (" use " + config["output"].split(" use ")[-1]) if " use " in config["output"] else (
                                             " use " + (arguments.get("@use_output") or "I"))])
         arguments["@primary_order"] = False
@@ -822,7 +821,7 @@ class Compiler(object):
                     else:
                         primary_keys.append(primary_key)
             else:
-                primary_keys = ["id"]
+                primary_keys = ["-"]
             join_db_table = "&&." + join_table["db"] + "." + join_table["table"] + "::" + "+".join(primary_keys)
             if join_table["querys"]:
                 join_db_table = [join_db_table, join_table["querys"]]
