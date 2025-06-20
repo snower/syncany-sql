@@ -9,47 +9,47 @@ from ...utils import ensure_number, ensure_int
 
 @typing_filter(float)
 def mysql_add(x, y):
-    if x is None or y is None:
-        return None
     if x.__class__ is int or x.__class__ is float:
         if y.__class__ is int or y.__class__ is float:
             return x + y
+    if x is None or y is None:
+        return None
     return ensure_number(x) + ensure_number(y)
 
 @typing_filter(float)
 def mysql_sub(x, y):
-    if x is None or y is None:
-        return None
     if x.__class__ is int or x.__class__ is float:
         if y.__class__ is int or y.__class__ is float:
             return x - y
+    if x is None or y is None:
+        return None
     return ensure_number(x) - ensure_number(y)
 
 @typing_filter(float)
 def mysql_mul(x, y):
-    if x is None or y is None:
-        return None
     if x.__class__ is int or x.__class__ is float:
         if y.__class__ is int or y.__class__ is float:
             return x * y
+    if x is None or y is None:
+        return None
     return ensure_number(x) * ensure_number(y)
 
 @typing_filter(float)
 def mysql_div(x, y):
-    if x is None or y is None:
-        return None
     if x.__class__ is int or x.__class__ is float:
         if y.__class__ is int or y.__class__ is float:
             return x / y
+    if x is None or y is None:
+        return None
     return ensure_number(x) / ensure_number(y)
 
 @typing_filter(float)
 def mysql_mod(x, y):
-    if x is None or y is None:
-        return None
     if x.__class__ is int or x.__class__ is float:
         if y.__class__ is int or y.__class__ is float:
             return x % y
+    if x is None or y is None:
+        return None
     return ensure_number(x) % ensure_number(y)
 
 @typing_filter(int)
