@@ -47,7 +47,7 @@ def parse_number(x, is_float=False):
     return float(x[:index + 1]) if dot_index > 0 else int(x[:index + 1])
 
 def ensure_int(x):
-    if isinstance(x, int):
+    if x.__class__ is int:
         return x
     if x is None:
         raise ValueError('value is None')
@@ -55,6 +55,8 @@ def ensure_int(x):
         return 0
     if x is True:
         return 1
+    if isinstance(x, NumberTypes):
+        return int(x)
     if isinstance(x, datetime.date):
         if isinstance(x, datetime.datetime):
             return int(x.strftime("%Y%m%d%H%M%S"))
@@ -69,7 +71,7 @@ def ensure_int(x):
     return int(x)
 
 def ensure_float(x):
-    if isinstance(x, float):
+    if x.__class__ is float:
         return x
     if x is None:
         raise ValueError('value is None')
@@ -77,6 +79,8 @@ def ensure_float(x):
         return 0
     if x is True:
         return 1
+    if isinstance(x, NumberTypes):
+        return float(x)
     if isinstance(x, datetime.date):
         if isinstance(x, datetime.datetime):
             return float(x.strftime("%Y%m%d%H%M%S")) + x.microsecond / 1000
@@ -91,6 +95,8 @@ def ensure_float(x):
     return float(x)
 
 def ensure_number(x):
+    if x.__class__ is int or x.__class__ is float:
+        return x
     if isinstance(x, NumberDecimalTypes):
         return x
     if x is None:
@@ -118,7 +124,7 @@ def ensure_number(x):
     return ensure_int(x)
 
 def ensure_str(x):
-    if isinstance(x, str):
+    if x.__class__ is str:
         return x
     if x is None:
         raise ValueError('value is None')
@@ -126,6 +132,8 @@ def ensure_str(x):
         return '0'
     if x is True:
         return '1'
+    if isinstance(x, str):
+        return str(x)
     if isinstance(x, bytes):
         return x.decode("utf-8")
     if isinstance(x, datetime.date):
