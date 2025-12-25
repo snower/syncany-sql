@@ -541,7 +541,7 @@ class Compiler(object):
                                                  % self.to_sql(expression))
             if column_expression:
                 self.compile_select_column(column_expression, config, arguments, primary_table, column_alias,
-                                           self.parse_column(column_expression, config, arguments), join_tables)
+                                           self.parse_column(column_expression, config, arguments, primary_table), join_tables)
                 continue
             if window_aggregate_expression:
                 self.compile_window_column(window_aggregate_expression, config, arguments, primary_table, column_alias,
@@ -910,11 +910,11 @@ class Compiler(object):
 
             left_column = None
             if self.is_column(left_expression, config, arguments):
-                left_column = self.parse_column(left_expression, config, arguments)
+                left_column = self.parse_column(left_expression, config, arguments, primary_table)
                 if left_column["table_name"] and primary_table["table_name"] != left_column["table_name"]:
                     return None, None
             if left_column is None and self.is_column(right_expression, config, arguments):
-                right_column = self.parse_column(right_expression, config, arguments)
+                right_column = self.parse_column(right_expression, config, arguments, primary_table)
                 if right_column["table_name"] and primary_table["table_name"] != right_column["table_name"]:
                     return None, None
                 left_expression, right_expression, left_column = right_expression, left_expression, right_column
@@ -1015,7 +1015,7 @@ class Compiler(object):
 
     def compile_where_condition_column(self, expression, config, arguments, primary_table, join_tables):
         if self.is_column(expression, config, arguments):
-            expression_column = self.parse_column(expression, config, arguments)
+            expression_column = self.parse_column(expression, config, arguments, primary_table)
             if isinstance(config["schema"], dict) and not expression_column["table_name"] \
                     and expression_column["column_name"] in config["schema"]:
                 return config["schema"][expression_column["column_name"]]
@@ -1135,7 +1135,7 @@ class Compiler(object):
 
     def compile_query_condition_column(self, expression, config, arguments, primary_table, join_tables, expression_column=None, join_index=-1):
         if not expression_column and self.is_column(expression, config, arguments):
-            expression_column = self.parse_column(expression, config, arguments)
+            expression_column = self.parse_column(expression, config, arguments, primary_table)
         if expression_column:
             if isinstance(config["schema"], dict) and not expression_column["table_name"] \
                     and expression_column["column_name"] in config["schema"]:
@@ -1301,7 +1301,7 @@ class Compiler(object):
         group_column = []
         for group_expression in expression.args["expressions"]:
             if self.is_column(group_expression, config, arguments):
-                group_expression_column = self.parse_column(group_expression, config, arguments)
+                group_expression_column = self.parse_column(group_expression, config, arguments, primary_table)
                 if isinstance(config["schema"], dict) and not group_expression_column["table_name"] \
                         and group_expression_column["column_name"] in config["schema"]:
                     group_column.append(config["schema"][group_expression_column["column_name"]])
@@ -1494,7 +1494,7 @@ class Compiler(object):
         key_column = []
         for expression in expressions:
             if self.is_column(expression, config, arguments):
-                key_expression_column = self.parse_column(expression, config, arguments)
+                key_expression_column = self.parse_column(expression, config, arguments, primary_table)
                 if isinstance(config["schema"], dict) and not key_expression_column["table_name"] \
                         and key_expression_column["column_name"] in config["schema"]:
                     key_column.append(config["schema"][key_expression_column["column_name"]])
@@ -1782,7 +1782,7 @@ class Compiler(object):
                 "high_value": self.compile_calculate(expression.args["high"], config, arguments, primary_table, [])
             }, [":#if", ["@mysql::gte", "$.key_value", "$.low_value"], ["@mysql::lte", "$.key_value", "$.high_value"], ["#const", 0]]]
         elif self.is_column(expression, config, arguments):
-            join_column = self.parse_column(expression, config, arguments)
+            join_column = self.parse_column(expression, config, arguments, primary_table)
             return self.compile_join_column_field(expression, config, arguments, primary_table, join_index, 
                                                   join_column, column_join_tables)
         elif isinstance(expression, sqlglot_expressions.Star):
@@ -1893,7 +1893,7 @@ class Compiler(object):
             else:
                 left_expression, right_expression = expression.args["this"], expression.args.get("expression")
             if self.is_column(left_expression, config, arguments):
-                left_column = self.parse_column(left_expression, config, arguments)
+                left_column = self.parse_column(left_expression, config, arguments, primary_table)
                 if isinstance(config["schema"], dict) and left_column["column_name"] not in config["schema"]:
                     raise SyncanySqlCompileException('unknown having condition column, column must be in the query result, related sql "%s"'
                                                      % self.to_sql(expression))
@@ -1923,7 +1923,7 @@ class Compiler(object):
                                for value_expression_item in right_expression]
                 return left_calculater, ["#make", value_items]
             if self.is_column(right_expression, config, arguments):
-                right_column = self.parse_column(right_expression, config, arguments)
+                right_column = self.parse_column(right_expression, config, arguments, primary_table)
                 if isinstance(config["schema"], dict) and right_column["column_name"] not in config["schema"]:
                     raise SyncanySqlCompileException('unknown having condition column, column must be in the query result, related sql "%s"'
                                                      % self.to_sql(expression))
@@ -2004,7 +2004,7 @@ class Compiler(object):
                         continue
                 raise SyncanySqlCompileException('unknown order by column, the order by field must appear in the select field, related sql "%s"'
                                                  % self.to_sql(expression))
-            column = self.parse_column(order_expression.args["this"], config, arguments)
+            column = self.parse_column(order_expression.args["this"], config, arguments, primary_table)
             if not isinstance(config["schema"], dict) or (column["table_name"] and primary_table["table_name"] == column["table_name"]):
                 primary_sort_keys.append([column["column_name"], True if order_expression.args["desc"] else False])
             elif not column["table_name"] and not primary_table["table_alias"]:
@@ -2091,7 +2091,7 @@ class Compiler(object):
                         if not isinstance(item_expression, sqlglot_expressions.Expression):
                             return
                         if self.is_column(item_expression, config, arguments):
-                            item_column = self.parse_column(item_expression, config, arguments)
+                            item_column = self.parse_column(item_expression, config, arguments, primary_table)
                             if item_column["table_name"] and item_column["table_name"] == join_table["name"]:
                                 if item_column["column_name"] not in primary_keys:
                                     primary_keys.append(item_column["column_name"])
@@ -2165,9 +2165,9 @@ class Compiler(object):
 
             left_column, right_column = None, None
             if self.is_column(left_expression, config, arguments):
-                left_column = self.parse_column(left_expression, config, arguments)
+                left_column = self.parse_column(left_expression, config, arguments, primary_table)
             if self.is_column(right_expression, config, arguments):
-                right_column = self.parse_column(right_expression, config, arguments)
+                right_column = self.parse_column(right_expression, config, arguments, primary_table)
 
             condition_column, value_column, join_on_expression, value_expression = left_column, None, None, right_expression
             if isinstance(expression, sqlglot_expressions.EQ):
@@ -2342,7 +2342,7 @@ class Compiler(object):
         elif isinstance(expression, sqlglot_expressions.Paren):
             self.parse_calculate(expression.args["this"], config, arguments, primary_table, calculate_fields)
         elif self.is_column(expression, config, arguments):
-            column = self.parse_column(expression, config, arguments)
+            column = self.parse_column(expression, config, arguments, primary_table)
             if not column["table_name"] or primary_table["table_name"] == column["table_name"]:
                 primary_table["columns"][column["column_name"]] = column
             calculate_fields.append(column)
@@ -2430,7 +2430,7 @@ class Compiler(object):
 
         def parse_parent_calculate_condition(condition_expression, join_parent_columns):
             if self.is_column(condition_expression, config, arguments):
-                condition_column = self.parse_column(condition_expression, config, arguments)
+                condition_column = self.parse_column(condition_expression, config, arguments, primary_table)
                 if (not condition_column["table_name"] or condition_column["table_name"] in current_tables
                         or condition_column["table_name"] not in parent_tables):
                     return
@@ -2451,7 +2451,7 @@ class Compiler(object):
 
         def parse_calculate_condition(condition_expression, join_select_columns):
             if self.is_column(condition_expression, config, arguments):
-                condition_column = self.parse_column(condition_expression, config, arguments)
+                condition_column = self.parse_column(condition_expression, config, arguments, primary_table)
                 if condition_column["table_name"] and condition_column["table_name"] not in current_tables:
                     return
                 column_key = self.generate_sql(condition_expression)
@@ -2492,8 +2492,8 @@ class Compiler(object):
             if (isinstance(condition_expression, sqlglot_expressions.EQ) and
                     self.is_column(condition_expression.args["this"], config, arguments) and
                     self.is_column(condition_expression.args["expression"], config, arguments)):
-                left_condition_column = self.parse_column(condition_expression.args["this"], config, arguments)
-                right_condition_column = self.parse_column(condition_expression.args["expression"], config, arguments)
+                left_condition_column = self.parse_column(condition_expression.args["this"], config, arguments, primary_table)
+                right_condition_column = self.parse_column(condition_expression.args["expression"], config, arguments, primary_table)
                 if ((not left_condition_column["table_name"] or left_condition_column["table_name"] in current_tables) and
                         right_condition_column["table_name"] and right_condition_column["table_name"] in parent_tables and
                         not left_condition_column["convert_typing_filter"]):
@@ -2690,7 +2690,7 @@ class Compiler(object):
             "typing_options": typing_options,
         }
         
-    def parse_column(self, expression, config, arguments):
+    def parse_column(self, expression, config, arguments, primary_table):
         dot_keys, convert_typing_filter = [], None
         if isinstance(expression, sqlglot_expressions.Dot):
             def parse_dot(dot_expression):
@@ -3227,11 +3227,11 @@ class Compiler(object):
                 raise SyncanySqlCompileException('error set expression, only supports the = sign assignment operation, related sql "%s"' % self.to_sql(expression))
             if not isinstance(set_expression.args["this"], sqlglot_expressions.Column):
                 raise SyncanySqlCompileException('error set expression, the assigned item must be a table field, related sql "%s"' % self.to_sql(expression))
-            column = self.parse_column(set_expression.args["this"], config, arguments)
+            column = self.parse_column(set_expression.args["this"], config, arguments, primary_table)
             if column["table_name"] and column["table_name"] != primary_table["table_name"]:
                 raise SyncanySqlCompileException('error set expression, the assigned item must be a table field, related sql "%s"' % self.to_sql(expression))
             if self.is_column(set_expression.args["expression"], config, arguments):
-                value_column = self.parse_column(set_expression.args["expression"], config, arguments)
+                value_column = self.parse_column(set_expression.args["expression"], config, arguments, primary_table)
                 if ((not value_column["table_name"] or column["table_name"] == value_column["table_name"])
                         and column["column_name"] == value_column["column_name"]):
                     primary_keys.append(column["column_name"])
@@ -3295,16 +3295,16 @@ class Compiler(object):
 
             left_column, condition_column, value_expression = None, None, left_expression
             if self.is_column(left_expression, config, arguments):
-                left_column = self.parse_column(left_expression, config, arguments)
+                left_column = self.parse_column(left_expression, config, arguments, primary_table)
                 if left_column["table_name"] == table_name:
                     if can_on_expressions_tables and self.is_column(right_expression, config, arguments):
-                        right_column = self.parse_column(right_expression, config, arguments)
+                        right_column = self.parse_column(right_expression, config, arguments, primary_table)
                         if right_column["table_name"] in can_on_expressions_tables:
                             condition_column, value_expression = left_column, right_expression
                     else:
                         condition_column, value_expression = left_column, right_expression
             if not condition_column and self.is_column(right_expression, config, arguments):
-                right_column = self.parse_column(right_expression, config, arguments)
+                right_column = self.parse_column(right_expression, config, arguments, primary_table)
                 if right_column["table_name"] == table_name:
                     if can_on_expressions_tables and left_column:
                         if left_column["table_name"] in can_on_expressions_tables:
