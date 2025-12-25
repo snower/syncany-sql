@@ -4,7 +4,7 @@
 
 import copy
 import datetime
-from syncany.main import beautify_print
+from syncany.logger import get_verbose_logger
 
 
 class ExplainTasker(object):
@@ -16,10 +16,10 @@ class ExplainTasker(object):
     def start(self, name, executor, session_config, manager, arguments):
         self.config = copy.deepcopy(self.tasker.config)
         if self.sql:
-            beautify_print("%s tasker %s execute sql:\n%s" % (datetime.datetime.now(), self.config["name"], self.sql))
+            get_verbose_logger()("%s tasker %s execute sql:\n%s" % (datetime.datetime.now(), self.config["name"], self.sql))
             print()
-        beautify_print("%s tasker %s compiled config:" % (datetime.datetime.now(), self.config["name"]))
-        beautify_print(self.config)
+        get_verbose_logger()("%s tasker %s compiled config:" % (datetime.datetime.now(), self.config["name"]))
+        get_verbose_logger()(self.config)
         print()
 
         for key in list(arguments.keys()):

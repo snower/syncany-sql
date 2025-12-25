@@ -68,7 +68,7 @@ class ExecuterContext(object):
         return self.engine.pop_memory_datas(name)
 
     def push_memory_datas(self, name, datas):
-        return self.engine.push_datas(name, datas)
+        return self.engine.push_memory_datas(name, datas)
 
     def terminal(self):
         if not self.executor:
@@ -249,7 +249,7 @@ def pop_memory_datas(name):
 
 
 def push_memory_datas(name, datas):
-    return ScriptEngine.instance().push_datas(name, datas)
+    return ScriptEngine.instance().push_memory_datas(name, datas)
 
 
 def terminal():
