@@ -177,6 +177,12 @@ class Compiler(object):
                 value = self.generate_sql(set_item_expression).split("=")
                 config = {"key": value[0].strip(), "value": "=".join(value[1:]).strip()}
                 return SetCommandTasker(config)
+        elif isinstance(expression, sqlglot_expressions.Alias):
+            if expression.args.get("this") and expression.args["this"].name.lower() == "import":
+                use_info = expression.alias
+                if use_info in self.mapping:
+                    use_info = self.mapping[use_info]
+                return UseCommandTasker({"use": use_info})
         raise SyncanySqlCompileException('unknown sql "%s"' % self.to_sql(expression))
 
     def compile_delete(self, expression, arguments):
