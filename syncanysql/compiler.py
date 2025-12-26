@@ -53,6 +53,25 @@ class CompilerDialect(sqlglot_dialects.Dialect):
             expression = self._parse_conjunction() or self._parse_function() or self._parse_id_var()
             return self.expression(AssignParameter, this=this, expression=expression, wrapped=wrapped)
 
+        def _parse_update(self):
+            table_expressions = self._parse_csv(lambda: self._parse_table(alias_tokens=self.UPDATE_ALIAS_TOKENS))
+            for table_expression in table_expressions[1:]:
+                table_expressions[0].append("table_expressions", table_expression)
+            while self._match(sqlglot_parser.TokenType.JOIN):
+                join_expression = self._parse_join(True)
+                if join_expression:
+                    table_expressions[0].append("join_expressions", join_expression)
+            return self.expression(
+                sqlglot_expressions.Update,
+                **{  # type: ignore
+                    "this": table_expressions[0],
+                    "expressions": self._match(sqlglot_parser.TokenType.SET) and self._parse_csv(self._parse_equality),
+                    "from": self._parse_from(),
+                    "where": self._parse_where(),
+                    "returning": self._parse_returning(),
+                },
+            )
+
         def _parse_limit(self, this=None, top=False):
             if top or not self._match(sqlglot_parser.TokenType.LIMIT, False):
                 return sqlglot_parser.Parser._parse_limit(self, this, top)
@@ -94,6 +113,17 @@ class CompilerDialect(sqlglot_dialects.Dialect):
             this = self.sql(expression, "this")
             this = f"{{{this}}}" if expression.args.get("wrapped") else f"{this}"
             return f"""{self.PARAMETER_TOKEN}{this} := {self.sql(expression, "expression")}"""
+
+        def update_sql(self, expression):
+            this = ", ".join([self.sql(expression, "this")] + [self.sql(table_expression) for table_expression in expression.args["this"].args["table_expressions"]]) \
+                if expression.args["this"].args.get("table_expressions") else self.sql(expression, "this")
+            join_sql = self.expressions(expression.args.get("this"), "join_expressions", flat=True, sep="")
+            set_sql = self.expressions(expression, flat=True)
+            from_sql = self.sql(expression, "from")
+            where_sql = self.sql(expression, "where")
+            returning = self.sql(expression, "returning")
+            sql = f"UPDATE {this} {join_sql} SET {set_sql}{from_sql}{where_sql}{returning}"
+            return self.prepend_ctes(expression, sql)
 
 
 class Compiler(object):
@@ -2704,7 +2734,7 @@ class Compiler(object):
             "primary_keys": [],
         }
         
-    def parse_column(self, expression, config, arguments, primary_table):
+    def parse_column(self, expression, config, arguments, primary_table=None):
         dot_keys, convert_typing_filter = [], None
         if isinstance(expression, sqlglot_expressions.Dot):
             def parse_dot(dot_expression):
@@ -3067,6 +3097,9 @@ class Compiler(object):
             on_expressions  = join_table["on_expressions"] + join_table["const_expressions"]
             if on_expressions:
                 sql.append("ON " + " AND ".join([self.generate_sql(on_expression) for on_expression in on_expressions]))
+        if expression.args.get("joins"):
+            for join_expression in expression.args["joins"]:
+                sql.append(self.generate_sql(join_expression))
 
         if expression.args.get("where"):
             sql.append(self.generate_sql(expression.args["where"]))
@@ -3153,6 +3186,9 @@ class Compiler(object):
             on_expressions = join_table["on_expressions"] + join_table["const_expressions"] + join_table["calculate_expressions"]
             if on_expressions:
                 sql.append("ON " + " AND ".join([self.generate_sql(on_expression) for on_expression in on_expressions]))
+        if expression.args.get("joins"):
+            for join_expression in expression.args["joins"]:
+                sql.append(self.generate_sql(join_expression))
 
         where_expressions = selected_table["const_expressions"] + primary_table["calculate_expressions"] + selected_table["calculate_expressions"]
         if where_expressions:
@@ -3208,6 +3244,9 @@ class Compiler(object):
             sql.append("LEFT JOIN " + self.generate_sql(join_expression.args["this"]))
             if join_expression.args.get("on"):
                 sql.append("ON " + self.generate_sql(join_expression.args["on"]))
+        if expression.args.get("joins"):
+            for join_expression in expression.args["joins"]:
+                sql.append(self.generate_sql(join_expression))
 
         inner_condition_sql = " AND ".join(["%s.%s IS NOT NULL" % (calculate_field["table_name"], calculate_field["column_name"])
                                             for calculate_field in inner_calculate_fields])
@@ -3231,27 +3270,41 @@ class Compiler(object):
         return maybe_parse(" ".join(sql), dialect=CompilerDialect)
 
     def optimize_rewrite_update(self, expression, config, arguments):
-        primary_table = self.optimize_rewrite_parse_table(expression, config, arguments, expression.args["this"])
-        if not primary_table["table_name"]:
+        primary_tables = [self.optimize_rewrite_parse_table(expression, config, arguments, expression.args["this"])]
+        if not primary_tables[0]["table_name"]:
             return expression
+        if expression.args["this"].args.get("table_expressions"):
+            for table_expression in expression.args["this"].args["table_expressions"]:
+                primary_table = self.optimize_rewrite_parse_table(expression, config, arguments, table_expression)
+                if not primary_table["table_name"]:
+                    return expression
+                primary_tables.append(primary_table)
 
-        primary_keys, set_expressions = [], []
+        primary_table, primary_keys, set_expressions = (primary_tables[0] if len(primary_tables) == 1 else None), [], []
         for set_expression in expression.args["expressions"]:
             if not isinstance(set_expression, sqlglot_expressions.EQ):
                 raise SyncanySqlCompileException('error set expression, only supports the = sign assignment operation, related sql "%s"' % self.to_sql(expression))
             if not isinstance(set_expression.args["this"], sqlglot_expressions.Column):
                 raise SyncanySqlCompileException('error set expression, the assigned item must be a table field, related sql "%s"' % self.to_sql(expression))
-            column = self.parse_column(set_expression.args["this"], config, arguments, primary_table)
-            if column["table_name"] and column["table_name"] != primary_table["table_name"]:
+            column = self.parse_column(set_expression.args["this"], config, arguments, None)
+            if primary_table is None:
+                for pt in primary_tables:
+                    if column["table_name"] != pt["table_name"]:
+                        continue
+                    primary_table = pt
+                    break
+            if not primary_table or (column["table_name"] and column["table_name"] != primary_table["table_name"]):
                 raise SyncanySqlCompileException('error set expression, the assigned item must be a table field, related sql "%s"' % self.to_sql(expression))
             if self.is_column(set_expression.args["expression"], config, arguments):
-                value_column = self.parse_column(set_expression.args["expression"], config, arguments, primary_table)
+                value_column = self.parse_column(set_expression.args["expression"], config, arguments, None)
                 if ((not value_column["table_name"] or column["table_name"] == value_column["table_name"])
                         and column["column_name"] == value_column["column_name"]):
                     primary_keys.append(column["column_name"])
                     continue
             set_expressions.append({"column": column, "expression": set_expression.args["expression"]})
 
+        if not primary_table:
+            raise SyncanySqlCompileException('unknown primary table, related sql "%s"' % self.to_sql(expression))
         if not primary_keys and not primary_table.get("primary_keys"):
             raise SyncanySqlCompileException('unknown primary key, related sql "%s"' % self.to_sql(expression))
         sql = ["INSERT INTO"]
@@ -3286,7 +3339,14 @@ class Compiler(object):
         sql.append("SELECT")
         sql.append(", ".join(select_sql))
         sql.append("FROM")
-        sql.append(self.generate_sql(expression.args["this"]))
+        if expression.args["this"].args.get("table_expressions"):
+            sql.append(", ".join([self.generate_sql(expression.args["this"])] +
+                               [self.generate_sql(table_expression) for table_expression in expression.args["this"].args["table_expressions"]]))
+        else:
+            sql.append(self.generate_sql(expression.args["this"]))
+        if expression.args["this"].args.get("join_expressions"):
+            for join_expression in expression.args["this"].args.get("join_expressions"):
+                sql.append(self.generate_sql(join_expression))
         if expression.args.get("where"):
             sql.append(self.generate_sql(expression.args["where"]))
         return maybe_parse(" ".join(sql), dialect=CompilerDialect)
