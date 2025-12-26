@@ -3267,11 +3267,13 @@ class Compiler(object):
         primary_tables = [self.optimize_rewrite_parse_table(expression, config, arguments, expression.args["this"])]
         if not primary_tables[0]["table_name"]:
             return expression
+        primary_tables[0]["expression"] = expression.args["this"]
         if expression.args["this"].args.get("table_expressions"):
             for table_expression in expression.args["this"].args["table_expressions"]:
                 primary_table = self.optimize_rewrite_parse_table(expression, config, arguments, table_expression)
                 if not primary_table["table_name"]:
                     return expression
+                primary_table["expression"] = table_expression
                 primary_tables.append(primary_table)
 
         primary_table, primary_keys, set_expressions = (primary_tables[0] if len(primary_tables) == 1 else None), [], []
@@ -3334,8 +3336,8 @@ class Compiler(object):
         sql.append(", ".join(select_sql))
         sql.append("FROM")
         if expression.args["this"].args.get("table_expressions"):
-            sql.append(", ".join([self.generate_sql(expression.args["this"])] +
-                               [self.generate_sql(table_expression) for table_expression in expression.args["this"].args["table_expressions"]]))
+            sql.append(", ".join([self.generate_sql(primary_table["expression"])] +
+                               [self.generate_sql(pt["expression"]) for pt in primary_tables if pt is not primary_table]))
         else:
             sql.append(self.generate_sql(expression.args["this"]))
         if expression.args["this"].args.get("join_expressions"):
