@@ -36,3 +36,9 @@ select `id`, `name`, `create_time` from `cdata`;
 
 insert into `cdata<U>` select '豆角' as `name`, 1 as `id<pk>`;
 select `id`, `name`, `create_time` from `cdata`;
+
+update `cdata` a, `ndata` b set a.id=a.id, a.name=b.name where a.id=6 and a.id=b.id;
+select `id`, `name`, `create_time` from `cdata`;
+
+update `cdata` a join `ndata` b on a.id=b.id set a.id=a.id, a.name=b.name where a.id=2;
+select `id`, `name`, `create_time` from `cdata`;
