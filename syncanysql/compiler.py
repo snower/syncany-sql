@@ -3186,9 +3186,6 @@ class Compiler(object):
             on_expressions = join_table["on_expressions"] + join_table["const_expressions"] + join_table["calculate_expressions"]
             if on_expressions:
                 sql.append("ON " + " AND ".join([self.generate_sql(on_expression) for on_expression in on_expressions]))
-        if expression.args.get("joins"):
-            for join_expression in expression.args["joins"]:
-                sql.append(self.generate_sql(join_expression))
 
         where_expressions = selected_table["const_expressions"] + primary_table["calculate_expressions"] + selected_table["calculate_expressions"]
         if where_expressions:
@@ -3244,9 +3241,6 @@ class Compiler(object):
             sql.append("LEFT JOIN " + self.generate_sql(join_expression.args["this"]))
             if join_expression.args.get("on"):
                 sql.append("ON " + self.generate_sql(join_expression.args["on"]))
-        if expression.args.get("joins"):
-            for join_expression in expression.args["joins"]:
-                sql.append(self.generate_sql(join_expression))
 
         inner_condition_sql = " AND ".join(["%s.%s IS NOT NULL" % (calculate_field["table_name"], calculate_field["column_name"])
                                             for calculate_field in inner_calculate_fields])
