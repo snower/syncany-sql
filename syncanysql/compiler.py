@@ -103,8 +103,8 @@ class Compiler(object):
                    "char": "str", "varchar": "str", "nchar": "str", "text": "str", "mediumtext": "str", "tinytext": "str",
                    "bigint": "int", "mediumint": "int", "smallint": "int", "tinyint": "int", "decimal": "decimal", "double": "float",
                    "boolean": "bool", "binary": "bytes", "varbinary": "bytes", "blob": "bytes", "timestamp": "datetime"}
-    PRIMARY_TABLE = {"db": None, "name": None, "table_name": None, "table_alias": None, "seted_primary_keys": False,
-                     "loader_primary_keys": [], "outputer_primary_keys": [], "alias_primary_keys": [],
+    PRIMARY_TABLE = {"db": None, "name": None, "table_name": None, "table_alias": None, "primary_keys": [],
+                     "seted_primary_keys_type": 0, "loader_primary_keys": [], "outputer_primary_keys": [], "alias_primary_keys": [],
                      "columns": {}, "subquery": None, "select_columns": {}}
 
     def __init__(self, config, env_variables, name):
@@ -211,7 +211,8 @@ class Compiler(object):
             if where_calculate_expression is not None:
                 raise SyncanySqlCompileException('unknown where expression, related sql "%s"' % self.to_sql(expression))
             self.parse_condition_typing_filter(expression, config, arguments)
-        config["output"] = "".join(["&.", table_info["db"], ".", table_info["name"], "::id use DI"])
+        config["output"] = "".join(["&.", table_info["db"], ".", table_info["name"], "::",
+                                    "".join(table_info["primary_keys"]) if table_info.get("primary_keys") else "-", " use DI"])
         return config
 
     def compile_query(self, expression, arguments):
@@ -464,6 +465,7 @@ class Compiler(object):
                 primary_table["name"] = table_info["name"]
                 primary_table["table_alias"] = table_info["table_alias"]
                 primary_table["table_name"] = table_info["table_name"]
+                primary_table["primary_keys"] = table_info["primary_keys"]
             elif isinstance(from_expression, sqlglot_expressions.Subquery):
                 if "alias" not in from_expression.args:
                     raise SyncanySqlCompileException('error subquery, must have an alias name, related sql "%s"'
@@ -733,12 +735,17 @@ class Compiler(object):
         if not column_info["column_name"].isidentifier() or not column_alias.isidentifier():
             return None
         if "pk" in column_info["typing_options"]:
-            if not primary_table["seted_primary_keys"]:
-                primary_table["loader_primary_keys"], primary_table["outputer_primary_keys"], primary_table["seted_primary_keys"] = [], [], True
+            if primary_table["seted_primary_keys_type"] < 2:
+                primary_table["loader_primary_keys"], primary_table["outputer_primary_keys"], primary_table["seted_primary_keys_type"] = [], [], 2
             primary_table["loader_primary_keys"].append(column_info["column_name"])
             primary_table["outputer_primary_keys"].append(column_alias)
-        elif not primary_table["seted_primary_keys"] and not primary_table["loader_primary_keys"]:
-            if not column_info["table_name"] or column_info["table_name"] == primary_table["table_name"]:
+        elif primary_table["seted_primary_keys_type"] < 2 and not column_info["table_name"] or column_info["table_name"] == primary_table["table_name"]:
+            if column_info["column_name"] in primary_table["primary_keys"]:
+                if primary_table["seted_primary_keys_type"] < 1:
+                    primary_table["loader_primary_keys"], primary_table["outputer_primary_keys"], primary_table["seted_primary_keys_type"] = [], [], 1
+                primary_table["loader_primary_keys"].append(column_info["column_name"])
+                primary_table["outputer_primary_keys"].append(column_alias)
+            elif not primary_table["loader_primary_keys"]:
                 primary_table["loader_primary_keys"] = [column_info["column_name"]]
                 if not primary_table["outputer_primary_keys"]:
                     primary_table["outputer_primary_keys"] = [column_alias]
@@ -765,7 +772,7 @@ class Compiler(object):
         else:
             config["schema"][column_alias] = self.compile_calculate(expression, config, arguments, primary_table, [])
         primary_table["select_columns"][column_alias] = expression
-        if parse_primary_key and not primary_table["seted_primary_keys"] and not primary_table["outputer_primary_keys"] and column_alias.isidentifier():
+        if parse_primary_key and not primary_table["seted_primary_keys_type"] and not primary_table["outputer_primary_keys"] and column_alias.isidentifier():
             loader_primary_keys = [calculate_field["column_name"] for calculate_field in calculate_fields
                                    if calculate_field["column_name"].isidentifier() and
                                    (not calculate_field["table_name"] or calculate_field["table_name"] == primary_table["table_name"])]
@@ -2694,6 +2701,7 @@ class Compiler(object):
             "table_alias": table_alias,
             "origin_name": origin_name,
             "typing_options": typing_options,
+            "primary_keys": [],
         }
         
     def parse_column(self, expression, config, arguments, primary_table):
@@ -3244,6 +3252,8 @@ class Compiler(object):
                     continue
             set_expressions.append({"column": column, "expression": set_expression.args["expression"]})
 
+        if not primary_keys:
+            primary_keys = primary_table.get("primary_keys")
         if not primary_keys:
             raise SyncanySqlCompileException('unknown primary key, related sql "%s"' % self.to_sql(expression))
         sql = ["INSERT INTO"]
