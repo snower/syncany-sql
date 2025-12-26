@@ -212,7 +212,7 @@ class Compiler(object):
                 raise SyncanySqlCompileException('unknown where expression, related sql "%s"' % self.to_sql(expression))
             self.parse_condition_typing_filter(expression, config, arguments)
         config["output"] = "".join(["&.", table_info["db"], ".", table_info["name"], "::",
-                                    "".join(table_info["primary_keys"]) if table_info.get("primary_keys") else "-", " use DI"])
+                                    "".join(table_info["primary_keys"]) if table_info.get("primary_keys") else "id", " use DI"])
         return config
 
     def compile_query(self, expression, arguments):
