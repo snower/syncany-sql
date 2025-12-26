@@ -3252,23 +3252,37 @@ class Compiler(object):
                     continue
             set_expressions.append({"column": column, "expression": set_expression.args["expression"]})
 
-        if not primary_keys:
-            primary_keys = primary_table.get("primary_keys")
-        if not primary_keys:
+        if not primary_keys and not primary_table.get("primary_keys"):
             raise SyncanySqlCompileException('unknown primary key, related sql "%s"' % self.to_sql(expression))
         sql = ["INSERT INTO"]
         if primary_table.get("db"):
-            sql.append("`" + primary_table["db"] + "`." + '`' + primary_table["name"] + "<U>`")
+            sql.append("`" + primary_table["db"] + "`.`" + primary_table["name"] + "<U>`")
         else:
             sql.append('`' + primary_table["name"] + "<U>`")
         select_sql = []
-        for primary_key in primary_keys:
-            if primary_table.get("table_alias"):
-                select_sql.append(primary_table["table_alias"] + "." + "`" + primary_key + "<pk>`")
-            else:
-                select_sql.append("`" + primary_key + "<pk>`")
-        for set_expression in set_expressions:
-            select_sql.append(self.generate_sql(set_expression["expression"]) + ' as ' + set_expression["column"]["column_name"])
+        if primary_keys:
+            for primary_key in primary_keys:
+                if [set_expression for set_expression in set_expressions if set_expression["column"]["column_name"] == primary_key]:
+                    continue
+                if primary_table.get("table_alias"):
+                    select_sql.append(primary_table["table_alias"] + ".`" + primary_key + "<pk>`")
+                else:
+                    select_sql.append("`" + primary_key + "<pk>`")
+            for set_expression in set_expressions:
+                if set_expression["column"]["column_name"] in primary_keys:
+                    select_sql.append(self.generate_sql(set_expression["expression"]) + ' as `' + set_expression["column"]["column_name"] + "<pk>`")
+                else:
+                    select_sql.append(self.generate_sql(set_expression["expression"]) + ' as ' + set_expression["column"]["column_name"])
+        elif primary_table.get("primary_keys"):
+            for primary_key in primary_table["primary_keys"]:
+                if [set_expression for set_expression in set_expressions if set_expression["column"]["column_name"] == primary_key]:
+                    continue
+                if primary_table.get("table_alias"):
+                    select_sql.append(primary_table["table_alias"] + ".`" + primary_key + "`")
+                else:
+                    select_sql.append("`" + primary_key + "`")
+            for set_expression in set_expressions:
+                select_sql.append(self.generate_sql(set_expression["expression"]) + ' as ' + set_expression["column"]["column_name"])
         sql.append("SELECT")
         sql.append(", ".join(select_sql))
         sql.append("FROM")
