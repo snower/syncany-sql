@@ -86,3 +86,4 @@ def register_pyeval_module(name, module):
     if PyEvalCalculater.globals is None:
         PyEvalCalculater.init_globals()
     PyEvalCalculater.globals[name] = module
+eval('[{"v": i["v"] * args[0]} for i in this]', {}, {"this": [{"v": 0}, {"v": 1}], "args": (2,)})
