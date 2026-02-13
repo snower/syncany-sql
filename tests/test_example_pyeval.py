@@ -15,3 +15,5 @@ class PyEvalExampleTestCase(ExampleTestCase):
                          "data error")
 
         self.assert_data(6, [{'a': 1}], "data error")
+
+        self.assert_data(8, [{'v': 0}, {'v': 2}], "data error")

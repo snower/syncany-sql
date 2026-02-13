@@ -60,12 +60,23 @@ class PyEvalCalculater(Calculater):
 
         if self.globals is None:
             self.init_globals()
+        if self.name == "pyevalt":
+            self.calculate = self.calculate_eval_this
 
     def calculate(self, *args):
         if not args or not args[0]:
             return None
         try:
             return eval(args[0], self.globals, {"args": args[1:]})
+        except Exception as e:
+            get_logger().warning("pyeval calculater execute %s error: %s\n%s", args, e, traceback.format_exc())
+            return None
+
+    def calculate_eval_this(self, *args):
+        if not args or len(args) < 2 or not args[0] or not args[1]:
+            return None
+        try:
+            return eval(args[1], self.globals, {"this": args[0], "args": args[2:]})
         except Exception as e:
             get_logger().warning("pyeval calculater execute %s error: %s\n%s", args, e, traceback.format_exc())
             return None

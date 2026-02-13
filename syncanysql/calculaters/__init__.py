@@ -54,6 +54,7 @@ CALCULATERS.update(SQL_CALCULATERS)
 if not os.environ.get("SYNCANY_PYEVAL_DISABLED"):
     from .pyeval_calculater import PyEvalCalculater, register_pyeval_module
     CALCULATERS["pyeval"] = PyEvalCalculater
+    CALCULATERS["pyevalt"] = PyEvalCalculater
 
 
 def is_mysql_func(name):
