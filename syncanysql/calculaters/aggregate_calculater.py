@@ -15,6 +15,9 @@ class AggregateKeyCalculater(Calculater):
             return tuple(args[0]) if isinstance(args[0], list) else args[0]
         return args
 
+    def is_same_filter(self):
+        return True
+
 
 class AggregateCalculater(Calculater):
     def __init__(self, *args, **kwargs):
@@ -162,6 +165,9 @@ class AggregateMaxCalculater(AggregateCalculater):
             return data_value
         return max(state_value, data_value)
 
+    def is_same_filter(self):
+        return True
+
 
 class AggregateMinCalculater(AggregateCalculater):
     def aggregate(self, state_value, data_value):
@@ -183,6 +189,9 @@ class AggregateMinCalculater(AggregateCalculater):
         if state_value is None:
             return data_value
         return min(state_value, data_value)
+
+    def is_same_filter(self):
+        return True
 
 
 class AggregateAvgCalculater(StateAggregateCalculater):
@@ -242,6 +251,9 @@ class AggregateGroupConcatCalculater(StateAggregateCalculater):
         if not state_value:
             return ""
         return ",".join(state_value)
+
+    def get_final_filter(self):
+        return StringFilter.default()
 
 
 class AggregateGroupArrayCalculater(StateAggregateCalculater):
@@ -457,3 +469,6 @@ class AggregateAnyValueCalculater(StateAggregateCalculater):
         if state_value is None:
             return None
         return state_value["value"]
+
+    def is_same_filter(self):
+        return True

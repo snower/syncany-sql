@@ -19,6 +19,9 @@ class RowIndexCalculater(Calculater):
         self.row_index += 1
         return self.row_index
 
+    def is_same_filter(self):
+        return True
+
 
 class RowLastCalculater(Calculater):
     @classmethod
@@ -33,3 +36,6 @@ class RowLastCalculater(Calculater):
     def calculate(self, *args):
         row_last, self.row_last = self.row_last, (args[0] if len(args) == 1 else args)
         return row_last
+
+    def is_same_filter(self):
+        return True

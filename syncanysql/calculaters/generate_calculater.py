@@ -16,3 +16,6 @@ class GenerateYieldArrayCalculater(GenerateCalculater):
                 yield value
         else:
             yield values
+
+    def is_same_filter(self):
+        return True

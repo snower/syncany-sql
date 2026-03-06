@@ -120,6 +120,9 @@ class WindowAggregateFirstValueCalculater(WindowAggregateCalculater):
                 return partition_calculater.value
         return None
 
+    def is_same_filter(self):
+        return True
+
 
 class WindowAggregateLastValueCalculater(WindowAggregateCalculater):
     def order_aggregate(self, state_value, data_value, context):
@@ -128,6 +131,9 @@ class WindowAggregateLastValueCalculater(WindowAggregateCalculater):
             if partition_calculater.calculate_valuer.valuer_id == valuer_id:
                 return partition_calculater.value
         return None
+
+    def is_same_filter(self):
+        return True
 
 
 class WindowAggregateNthValueCalculater(WindowAggregateCalculater):
@@ -150,6 +156,9 @@ class WindowAggregateNthValueCalculater(WindowAggregateCalculater):
                 return partition_calculater.value
         return None
 
+    def is_same_filter(self):
+        return True
+
 
 class WindowAggregateNtileCalculater(WindowAggregateCalculater):
     def order_aggregate(self, state_value, data_value, context):
@@ -160,6 +169,9 @@ class WindowAggregateNtileCalculater(WindowAggregateCalculater):
         if n <= 0:
             return None
         return int(context.current_index / (len(context.datas) / n)) + 1
+
+    def get_final_filter(self):
+        return IntFilter.default()
 
 
 class WindowAggregateLagCalculater(WindowAggregateCalculater):
@@ -184,6 +196,9 @@ class WindowAggregateLagCalculater(WindowAggregateCalculater):
                 return partition_calculater.value
         return None
 
+    def is_same_filter(self):
+        return True
+
 
 class WindowAggregateLeadCalculater(WindowAggregateCalculater):
     def order_aggregate(self, state_value, data_value, context):
@@ -206,6 +221,9 @@ class WindowAggregateLeadCalculater(WindowAggregateCalculater):
             if partition_calculater.calculate_valuer.valuer_id == valuer_id:
                 return partition_calculater.value
         return None
+
+    def is_same_filter(self):
+        return True
 
 
 class WindowAggregateCumeDistCalculater(WindowAggregateCalculater):
