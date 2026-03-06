@@ -2,5 +2,5 @@
 # 2023/2/27
 # create by: snower
 
-version = "0.1.28"
-version_info = (0, 1, 28)
+version = "0.1.29"
+version_info = (0, 1, 29)
