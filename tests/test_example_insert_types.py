@@ -2,6 +2,7 @@
 # 2023/4/21
 # create by: snower
 
+import datetime
 from .example import ExampleTestCase
 
 
@@ -61,22 +62,58 @@ class InsertTypesExampleTestCase(ExampleTestCase):
         self.execute("update_insert.sql")
 
         self.assert_data(17, [{'create_time': '2023-03-12 10:12:34', 'id': 1, 'name': '萝卜'},
-                              {'create_time': '2023-03-12 10:12:34', 'id': 2, 'name': '青菜'},
-                              {'create_time': '2023-03-12 10:12:34', 'id': 4, 'name': '花菜'},
-                              {'create_time': '2023-03-12 10:12:34', 'id': 5, 'name': '白菜'},
-                              {'create_time': '2023-03-12 10:12:34', 'id': 6, 'name': '青菜'},
-                              {'create_time': '2023-03-12 10:12:34', 'id': 8, 'name': '花菜'},
-                              {'create_time': '2023-03-12 10:12:34', 'id': 3, 'name': '油麦菜'},
-                              {'create_time': '2023-03-12 10:12:34', 'id': 7, 'name': '油麦菜'}], "data error")
+                             {'create_time': '2023-03-12 10:12:34', 'id': 2, 'name': '青菜'},
+                             {'create_time': '2023-03-12 10:12:34', 'id': 4, 'name': '花菜'},
+                             {'create_time': '2023-03-13 10:12:34', 'id': 5, 'name': '白菜'},
+                             {'create_time': '2023-03-12 10:12:34', 'id': 6, 'name': '青菜'},
+                             {'create_time': '2023-03-13 10:12:34', 'id': 8, 'name': '花菜'},
+                             {'create_time': '2023-03-12 10:12:34', 'id': 3, 'name': '油麦菜'},
+                             {'create_time': '2023-03-12 10:12:34', 'id': 7, 'name': '油麦菜'}], "data error")
 
         self.assert_data(20, [{'create_time': '2023-03-12 10:12:34', 'id': 1, 'name': '萝卜'},
-                              {'create_time': '2023-03-12 10:12:34', 'id': 2, 'name': '玉米'},
-                              {'create_time': '2023-03-12 10:12:34', 'id': 4, 'name': '花菜'},
-                              {'create_time': '2023-03-12 10:12:34', 'id': 5, 'name': '玉米'},
-                              {'create_time': '2023-03-12 10:12:34', 'id': 6, 'name': '玉米'},
-                              {'create_time': '2023-03-12 10:12:34', 'id': 8, 'name': '花菜'},
-                              {'create_time': '2023-03-12 10:12:34', 'id': 3, 'name': '玉米'},
-                              {'create_time': '2023-03-12 10:12:34', 'id': 7, 'name': '玉米'}], "data error")
+                             {'create_time': '2023-03-12 10:12:34', 'id': 2, 'name': '玉米'},
+                             {'create_time': '2023-03-12 10:12:34', 'id': 4, 'name': '花菜'},
+                             {'create_time': '2023-03-13 10:12:34', 'id': 5, 'name': '玉米'},
+                             {'create_time': '2023-03-12 10:12:34', 'id': 6, 'name': '玉米'},
+                             {'create_time': '2023-03-13 10:12:34', 'id': 8, 'name': '花菜'},
+                             {'create_time': '2023-03-12 10:12:34', 'id': 3, 'name': '玉米'},
+                             {'create_time': '2023-03-12 10:12:34', 'id': 7, 'name': '玉米'}], "data error")
+
+        self.assert_data(25, [{'cnt': 1, 'create_date': datetime.date(2023, 3, 12), 'name': '萝卜'},
+                             {'cnt': 4, 'create_date': datetime.date(2023, 3, 12), 'name': '玉米'},
+                             {'cnt': 1, 'create_date': datetime.date(2023, 3, 12), 'name': '花菜'},
+                             {'cnt': 1, 'create_date': datetime.date(2023, 3, 13), 'name': '玉米'},
+                             {'cnt': 1, 'create_date': datetime.date(2023, 3, 13), 'name': '花菜'}], "data error")
+
+        self.assert_data(30, [{'cnt': 1, 'create_date': datetime.date(2023, 3, 12), 'name': '萝卜'},
+                             {'cnt': 4, 'create_date': datetime.date(2023, 3, 12), 'name': '玉米'},
+                             {'cnt': 1, 'create_date': datetime.date(2023, 3, 12), 'name': '花菜'},
+                             {'cnt': 1, 'create_date': datetime.date(2023, 3, 13), 'name': '玉米'},
+                             {'cnt': 1, 'create_date': datetime.date(2023, 3, 13), 'name': '花菜'},
+                             {'cnt': 1, 'create_date': datetime.date(2023, 3, 12), 'name': '白菜'},
+                             {'cnt': 2, 'create_date': datetime.date(2023, 3, 12), 'name': '青菜'},
+                             {'cnt': 2, 'create_date': datetime.date(2023, 3, 12), 'name': '油麦菜'},
+                             {'cnt': 1, 'create_date': datetime.date(2023, 3, 13), 'name': '白菜'}], "data error")
+
+        self.assert_data(35, [{'cnt': 2, 'create_date': datetime.date(2023, 3, 12), 'name': '萝卜'},
+                             {'cnt': 8, 'create_date': datetime.date(2023, 3, 12), 'name': '玉米'},
+                             {'cnt': 2, 'create_date': datetime.date(2023, 3, 12), 'name': '花菜'},
+                             {'cnt': 2, 'create_date': datetime.date(2023, 3, 13), 'name': '玉米'},
+                             {'cnt': 2, 'create_date': datetime.date(2023, 3, 13), 'name': '花菜'},
+                             {'cnt': 1, 'create_date': datetime.date(2023, 3, 12), 'name': '白菜'},
+                             {'cnt': 2, 'create_date': datetime.date(2023, 3, 12), 'name': '青菜'},
+                             {'cnt': 2, 'create_date': datetime.date(2023, 3, 12), 'name': '油麦菜'},
+                             {'cnt': 1, 'create_date': datetime.date(2023, 3, 13), 'name': '白菜'}], "data error")
+
+        self.assert_data(40, [{'cnt': 2, 'create_date': datetime.date(2023, 3, 12), 'name': '萝卜'},
+                             {'cnt': 8, 'create_date': datetime.date(2023, 3, 12), 'name': '玉米'},
+                             {'cnt': 2, 'create_date': datetime.date(2023, 3, 12), 'name': '花菜'},
+                             {'cnt': 2, 'create_date': datetime.date(2023, 3, 13), 'name': '玉米'},
+                             {'cnt': 2, 'create_date': datetime.date(2023, 3, 13), 'name': '花菜'},
+                             {'cnt': 2, 'create_date': datetime.date(2023, 3, 12), 'name': '白菜'},
+                             {'cnt': 4, 'create_date': datetime.date(2023, 3, 12), 'name': '青菜'},
+                             {'cnt': 4, 'create_date': datetime.date(2023, 3, 12), 'name': '油麦菜'},
+                             {'cnt': 2, 'create_date': datetime.date(2023, 3, 13), 'name': '白菜'}], "data error")
 
     def test_update(self):
         self.execute("update.sql")
