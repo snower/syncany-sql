@@ -1,113 +1,101 @@
-# Syncany-SQL：SQL 语言参考
+# Syncany-SQL SQL 语言参考
 
-> **范围声明：** Syncany-SQL 使用 MySQL 风格的语法结构，但它不是完整的 MySQL 实现。应把它当作由本项目编译器和执行器定义的 SQL 子集：本章只列出仓库文档、示例、测试或实现中已经核实的能力；未列出的 MySQL 语法（即使解析器可能接受）均**不应假定可用**。
+> **适用范围：** 本参考介绍 Syncany-SQL 的常用查询与数据操作写法。它采用部分 MySQL 风格语法，但**不是完整 MySQL**；未在本页说明的语法、函数和行为均不应假定可用。函数、NULL 与类型转换规则请同时阅读[内置函数参考](built-in-functions.md)。
 
-## 先理解执行方式
+## 使用前须知
 
-一条 `SELECT` 通常先以数据源可表达的简单条件和排序加载数据，再由本地执行器完成其余工作。尤其是：
+- 一条查询可能从不同数据源读取数据，并在本地完成连接、分组、去重或排序。请先用 `WHERE` 尽早减少数据量。
+- 跨数据源的 `JOIN` 会在本地匹配数据；大表连接、分组和全局排序可能占用较多内存。
+- 请为表和计算列起别名，尤其是在连接、子查询和聚合中。
+- 使用参数化方式或受控输入构造条件值；不要把未经验证的用户输入直接拼接进 SQL 文本。
+- 本页不承诺 `EXECUTE`、`SHOW`、DDL（如 `CREATE`、`ALTER`、`DROP`）或完整 MySQL 方言可用。
 
-- `JOIN` 会使用 `IN` 查询加载关联数据，随后在内存中匹配；因此可以跨库、跨主机、跨数据库类型关联。
-- `GROUP BY`、`DISTINCT` 和不能完全落到主表字段的 `ORDER BY` 在内存中完成。
-- 仅由主表字段组成的排序可由数据源完成；其他排序在内存中完成。
-- 配置批量执行时，带聚合或 `HAVING` 的查询会通过 reduce 合并结果；执行器也有流式执行选项。不要把批处理理解为普通数据库的事务语义。
-
-这意味着 SQL 应优先将可下推的加载条件写成简单条件；跨源 `JOIN`、内存聚合和全局排序会占用本地内存。数据源加载只保证“简单查询条件和排序”，不要依赖复杂表达式一定由远端数据库执行。
-
-来源：[功能限制](../../../docs/feature-restrictions.md)、[README](../../../README.md)、[查询 tasker 的批量/reduce 逻辑](../../../syncanysql/taskers/query.py)、[编译器](../../../syncanysql/compiler.py)。
-
-## 已核实支持矩阵
-
-| 类别 | 已核实的写法/能力 | 证据 |
-| --- | --- | --- |
-| 基础查询 | `SELECT`、常量查询、`FROM`、别名、反引号标识符、`WHERE`、`ORDER BY`、`LIMIT` | [README 查询示例](../../../README.md)、[编译器的 `compile_select`](../../../syncanysql/compiler.py) |
-| 行与表达式 | 列引用、字面量、算术/比较/逻辑条件、`IN (...)`、`IS NULL`、`CASE`/常用 MySQL 函数 | [逻辑示例](../../../examples/logic_operation/logic_operation.sql)、[聚合示例](../../../examples/aggregate/aggregate.sql)、[函数文档](../../../docs/functions.md) |
-| 去重与聚合 | `DISTINCT`、`GROUP BY`、`HAVING`；`COUNT`（含 `DISTINCT`）、`SUM`、`AVG`、`MIN`、`MAX`，及已注册的聚合计算器 | [聚合示例](../../../examples/aggregate/aggregate.sql)、[聚合编译](../../../syncanysql/compiler.py)、[聚合测试](../../../tests/test_example_aggregate.py) |
-| 连接 | `JOIN`/`INNER JOIN`、`LEFT JOIN`、`RIGHT JOIN`；`ON` 内可有复合条件和子查询结果 | [连接示例](../../../examples/joins)、[连接测试](../../../tests/test_example_joins.py)、[功能限制](../../../docs/feature-restrictions.md) |
-| 子查询 | `FROM (SELECT ...) AS alias`、相关标量子查询、`EXISTS`、`IN (SELECT ...)`；可用于 `WHERE`、`JOIN ON`、`HAVING` 的条件值 | [子查询示例](../../../examples/subquery/subquery.sql)、[子查询测试](../../../tests/test_example_subquery.py)、[功能限制](../../../docs/feature-restrictions.md) |
-| 窗口 | `函数(...) OVER (PARTITION BY ... ORDER BY ...)`；示例验证 `LEAD` | [窗口聚合示例](../../../examples/aggregate/window_aggregate.sql)、[窗口测试](../../../tests/test_example_aggregate.py)、[窗口编译](../../../syncanysql/compiler.py) |
-| 写入 | `INSERT INTO ... SELECT`、`INSERT INTO (...) VALUES (...)`；合并模式 `I`、`U`、`UI`、`UDI`、`DI` | [写入示例](../../../examples/insert_types)、[写入测试](../../../tests/test_example_insert_types.py)、[README](../../../README.md) |
-| 更新/删除 | `UPDATE ... SET ... WHERE ...`，包括已测试的多表/`JOIN` 更新；`DELETE` 有专用编译分支 | [更新示例](../../../examples/insert_types/update.sql)、[写入测试](../../../tests/test_example_insert_types.py)、[编译入口](../../../syncanysql/compiler.py) |
-| 命令 | 已实现并有编译分支：`SET`、`USE`、`EXPLAIN` | [编译命令分发](../../../syncanysql/compiler.py)、[功能限制](../../../docs/feature-restrictions.md) |
-
-**DDL：本章不列支持项。** 项目示例和测试中未找到 `CREATE`、`ALTER`、`DROP` 或 `TRUNCATE` 的已核实用例，编译入口也没有将它们列为可执行表达式；请不要将它们当作 Syncany-SQL 的语言能力。
-
-## 1. 从单表查询开始
-
-使用数据源表名（可为文件路径或配置的数据源）和明确别名。为输出表达式取别名可避免结果列名难以使用。
+## SELECT：查询、筛选、排序与限制
 
 ```sql
-SELECT seg0 AS ip, COUNT(*) AS cnt
-FROM `file://data/access.log?sep= `
-GROUP BY seg0
-ORDER BY cnt DESC
-LIMIT 3;
-```
-
-可在 `WHERE` 使用比较、`AND`/`OR`、`IN`、空值判断和已注册函数。以下是已在示例中出现的模式：
-
-```sql
-SELECT order_id, amount
-FROM `data/orders.json`
-WHERE status = 0
-  AND amount > 5
-ORDER BY order_id DESC
+SELECT order_id, uid, amount AS order_amount
+FROM orders AS o
+WHERE o.status = 0
+  AND o.amount > 5
+ORDER BY o.order_id DESC
 LIMIT 10;
 ```
 
-函数集合和函数语义请查 [内置函数文档](../../../docs/functions.md)，不要因函数名与 MySQL 相同而推断其参数、类型转换或边界行为也完全相同。
-
-## 2. 连接：本地匹配，不是远端联表 SQL
-
-为每个表使用别名，并在 `ON` 中写出关联键与右表过滤条件：
+常用组成：
 
 ```sql
-SELECT a.order_id, b.name, c.goods_name
-FROM `data/orders.json` AS a
-JOIN `data/users.json` AS b
-  ON a.uid = b.uid AND b.status = 0
-LEFT JOIN `data/goodses.json` AS c
-  ON a.goods_id = c.goods_id AND c.status = 0
-WHERE a.status = 0;
+SELECT DISTINCT uid
+FROM orders
+WHERE status IN (0, 1)
+  AND deleted_at IS NULL
+ORDER BY uid
+LIMIT 100;
 ```
 
-`INNER JOIN`、`LEFT JOIN`、`RIGHT JOIN` 均有示例和测试。跨数据源关联时，关联键的类型必须相容；项目示例专门提示 MongoDB `_id` 等值在另一数据源保存后可能需显式类型转换。
+- 使用 `WHERE` 进行比较、逻辑组合、`IN (...)` 和 `IS NULL` / `IS NOT NULL` 判断。
+- `ORDER BY` 建议优先使用主表字段；复杂表达式或聚合结果排序可能在本地完成。
+- `LIMIT` 用于限制返回行数；在试运行大查询时应优先添加它。
+- 标识符可使用反引号，例如 `` `order` ``；字符串字面量使用单引号。
 
-**限制与排错：** 由于关联数据经 `IN` 加载后再在内存匹配，复杂连接会扩大本地工作集。优先过滤主表和各关联表，并将跨源键统一类型。不要假定任意 SQL join 变体（例如未在矩阵列出的 `FULL OUTER JOIN`）可用。
+## JOIN：关联数据
 
-来源：[连接示例](../../../examples/joins)、[类型注解说明](../../../examples/README.md)、[功能限制](../../../docs/feature-restrictions.md)。
-
-## 3. 子查询：派生表、标量值与存在性
-
-`FROM` 中的派生表必须起别名：
+支持常用的 `JOIN` / `INNER JOIN`、`LEFT JOIN` 和 `RIGHT JOIN`：
 
 ```sql
-SELECT uid, total_amount
+SELECT o.order_id, u.name, g.goods_name
+FROM orders AS o
+JOIN users AS u
+  ON o.uid = u.uid AND u.status = 0
+LEFT JOIN goods AS g
+  ON o.goods_id = g.goods_id AND g.status = 0
+WHERE o.status = 0;
+```
+
+兼容性与性能提示：
+
+- 连接键两侧应具有相同或可明确转换的类型；例如字符串 ID 与数字 ID 不应依赖隐式匹配。
+- 跨源关联不是远端数据库的联表执行。过滤每个参与表，避免无条件连接大数据集。
+- 不要假定 `FULL OUTER JOIN` 或其他未列出的连接变体可用。
+
+## 子查询
+
+### 派生表
+
+`FROM` 中的子查询必须使用别名：
+
+```sql
+SELECT t.uid, t.total_amount
 FROM (
   SELECT uid, SUM(amount) AS total_amount
-  FROM `data/orders.json`
+  FROM orders
+  WHERE status = 0
   GROUP BY uid
-) AS totals
-WHERE total_amount > 20;
+) AS t
+WHERE t.total_amount > 20;
 ```
 
-已测试的相关子查询和 `EXISTS`：
+### 标量子查询、EXISTS 与 IN
 
 ```sql
-SELECT a.order_id,
+SELECT o.order_id,
        (SELECT COUNT(*)
-        FROM `data/order_historys.json` AS h
-        WHERE h.order_id = a.order_id AND h.status = 0) AS history_count,
-       EXISTS(SELECT COUNT(*)
-              FROM `data/order_historys.json` AS h
-              WHERE h.order_id = a.order_id AND h.status = 0) AS has_history
-FROM `data/orders.json` AS a;
+        FROM order_history AS h
+        WHERE h.order_id = o.order_id) AS history_count
+FROM orders AS o
+WHERE EXISTS (
+  SELECT 1
+  FROM users AS u
+  WHERE u.uid = o.uid AND u.status = 0
+);
+
+SELECT order_id
+FROM orders
+WHERE uid IN (SELECT uid FROM users WHERE status = 0);
 ```
 
-子查询返回值可作为 `WHERE`、`JOIN ON` 和 `HAVING` 的条件值。相关子查询会按外层行求值；调试时先单独运行内层查询，确认它对每个外层键返回预期的单值或存在性结果。
+相关子查询会按外层行求值。先单独验证内层查询的结果范围：作为标量使用时，应确保它为每个外层行产生一个可预期的单值。
 
-## 4. 去重、分组与聚合
-
-`DISTINCT` 和分组聚合均在内存完成。基础写法：
+## DISTINCT、GROUP BY 与 HAVING
 
 ```sql
 SELECT uid,
@@ -115,82 +103,91 @@ SELECT uid,
        COUNT(DISTINCT goods_id) AS goods_count,
        SUM(amount) AS total_amount,
        AVG(amount) AS average_amount
-FROM `data/orders.json`
+FROM orders
 WHERE status = 0
 GROUP BY uid
 HAVING total_amount > 20
 ORDER BY total_amount DESC;
 ```
 
-已核实的内建聚合包括 `COUNT`、`SUM`、`AVG`、`MIN`、`MAX`、`GROUP_CONCAT`、`GROUP_ARRAY`、`GROUP_UNIQ_ARRAY`、`GROUP_BIT_AND`、`GROUP_BIT_OR`、`GROUP_BIT_XOR`。另有由运行时注册的自定义聚合计算器；其可用性取决于配置，不能视为默认 SQL 标准能力。
+常用聚合包括 `COUNT`、`SUM`、`AVG`、`MIN`、`MAX`，以及 `GROUP_CONCAT`、`GROUP_ARRAY`、`GROUP_UNIQ_ARRAY` 等。具体函数及 NULL 规则见[内置函数参考](built-in-functions.md)。
 
-`HAVING` 的执行位置有特殊规则：只引用聚合计算字段时，在聚合之前运行；否则在聚合之后运行。若结果意外，先把过滤条件分别放在 `WHERE` 与 `HAVING` 验证，并避免依赖其他数据库对 `HAVING` 的优化方式。
+分组、去重和聚合可能在本地完成。对大数据集，先筛选、只选择需要的列，并避免不必要的高基数分组键。
 
-## 5. 窗口表达式
+## 窗口计算
 
-窗口查询使用 `OVER`，已验证 `PARTITION BY` 与窗口内 `ORDER BY`，以及 `LEAD`：
-
-```sql
-SELECT order_id, create_time,
-       LEAD(history_type) OVER (
-         PARTITION BY order_id
-         ORDER BY create_time
-       ) AS next_history_type
-FROM `data/order_historys.json`;
-```
-
-窗口函数由本地聚合/窗口执行路径处理。编译器对窗口中的 `DISTINCT` 有额外限制：只有 `COUNT(DISTINCT ...)` 可使用；其他窗口聚合的 `DISTINCT` 会编译失败。未在示例或测试中出现的 frame 子句、窗口函数或命名窗口不在本章承诺范围内。
-
-## 6. 写入、更新与删除
-
-### `INSERT INTO`
-
-已测试两种来源：`SELECT` 结果与 `VALUES` 行。`SELECT` 写入的最小形式为：
+窗口函数使用 `OVER (...)`。排序相关函数应在窗口中提供 `ORDER BY`：
 
 ```sql
-INSERT INTO `target_table`
-SELECT id, name
-FROM `source_table`
-WHERE status = 0;
+SELECT order_id,
+       uid,
+       ROW_NUMBER() OVER (
+         PARTITION BY uid
+         ORDER BY amount DESC
+       ) AS row_no,
+       LAG(amount, 1, 0) OVER (
+         PARTITION BY uid
+         ORDER BY order_id
+       ) AS previous_amount
+FROM orders;
 ```
 
-`VALUES` 也有已测试用法：
+可用窗口函数与边界行为见[内置函数参考](built-in-functions.md)。窗口计算会保留分区数据，使用前应评估分区规模。
+
+## INSERT、UPDATE 与 DELETE
+
+### INSERT
 
 ```sql
-INSERT INTO `target_table` (`id`, `name`, `value`)
-VALUES (1, 'a', 1), (2, 'b', 4);
+INSERT INTO order_summary (uid, total_amount)
+SELECT uid, SUM(amount)
+FROM orders
+WHERE status = 0
+GROUP BY uid;
+
+INSERT INTO order_summary (uid, total_amount)
+VALUES (1001, 99.50);
 ```
 
-目标表名可带合并模式：`<I>` 仅插入、`<U>` 更新、`<UI>` 存在则更新否则插入、`<UDI>` 更新/插入并删除本次结果中不存在的记录、`<DI>` 先删除再插入。合并行为依赖主键：示例默认第一列为主键，也演示了将投影列标为 ``<pk>`` 的方式。写入 Excel、JSON、CSV 的能力由功能限制文档声明；目标连接与格式配置见其他指南。
-
-### `UPDATE` 与 `DELETE`
-
-已测试的单表更新：
+### UPDATE
 
 ```sql
-UPDATE `cdata`
-SET name = '花生'
-WHERE id IN (1, 3) AND create_time = '2023-03-12 10:12:34';
+UPDATE orders
+SET status = 1
+WHERE order_id = 10001
+  AND status = 0;
 ```
 
-示例还验证了逗号表和 `JOIN` 形式的更新。`DELETE` 由专门的 `DeleteTasker` 编译/执行路径处理，但本仓库没有可作为用户教程最小语法依据的 `DELETE` 示例或测试断言。因此，除非在你的目标版本中先用本地测试验证，否则不要把任意 `DELETE` 写法推广到生产脚本。
+### DELETE
 
-## 硬性边界清单
+```sql
+DELETE FROM orders
+WHERE order_id = 10001
+  AND status = 0;
+```
 
-1. 这不是完整 MySQL；仅使用本章矩阵和链接证据覆盖的语法。
-2. 远端数据加载仅支持简单条件与排序；复杂条件、连接、分组、去重和许多排序会在本地执行。
-3. 跨源 `JOIN` 要显式处理关联键类型，并控制输入规模。
-4. 分组、去重、连接与窗口都可能消耗本地内存；大数据量使用批处理或流式执行前，应先在代表性数据上验证结果与资源占用。
-5. 子查询、`HAVING` 和窗口表达式的行为以项目测试和编译器为准，不以 MySQL 文档为准。
-6. 不承诺 DDL，也不承诺未列出的连接类型、集合运算、窗口 frame 或 MySQL 专有语法。
+写操作安全建议：
 
-## 继续核对的源文件
+- 执行前先将同一 `WHERE` 条件改写为 `SELECT`，核对影响范围。
+- 对 `UPDATE` 和 `DELETE` 始终写明确的 `WHERE`，除非确实需要处理全部数据。
+- 批量写入、跨源写入和冲突处理的实际效果取决于所连接数据源的能力；不要将其视为传统数据库事务。
 
-- [支持特性与数据加载限制](../../../docs/feature-restrictions.md)
-- [项目定位、执行特性和最小查询](../../../README.md)
-- [连接 SQL 与断言](../../../examples/joins) / [测试](../../../tests/test_example_joins.py)
-- [子查询 SQL 与断言](../../../examples/subquery/subquery.sql) / [测试](../../../tests/test_example_subquery.py)
-- [聚合、窗口 SQL 与断言](../../../examples/aggregate) / [测试](../../../tests/test_example_aggregate.py)
-- [写入/合并/更新 SQL 与断言](../../../examples/insert_types) / [测试](../../../tests/test_example_insert_types.py)
-- [语句分发、查询/聚合/窗口编译](../../../syncanysql/compiler.py)
-- [批处理、依赖子查询与 reduce 执行](../../../syncanysql/taskers/query.py)
+## SET、USE 与 EXPLAIN
+
+可使用 `SET`、`USE` 和 `EXPLAIN` 管理会话或检查查询；其可接受的选项与输出内容取决于当前运行环境。建议先对目标环境中的简单语句验证配置和解释结果，再用于自动化流程。
+
+```sql
+EXPLAIN
+SELECT order_id, amount
+FROM orders
+WHERE status = 0
+LIMIT 10;
+```
+
+## 常见兼容性检查清单
+
+1. 只使用本参考及[内置函数参考](built-in-functions.md)中列出的语法和函数。
+2. 对 NULL 明确写出处理策略；比较或拼接前可使用 `IFNULL` 或 `COALESCE`。
+3. 对跨源连接键显式统一类型。
+4. 先以 `LIMIT` 验证查询，再运行全量查询或写操作。
+5. 不因语法外观类似 MySQL，就推断函数参数、类型转换、正则、JSON 或错误处理完全兼容。

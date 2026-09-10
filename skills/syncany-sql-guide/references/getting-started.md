@@ -1,103 +1,96 @@
 # 开始使用 Syncany-SQL
 
-**何时加载：**需要判断项目用途、安装、第一次运行 SQL 文件、从标准输入执行 SQL、进入交互界面，或在 Python 中调用 `ScriptEngine` 时阅读本章。配置和数据源见[配置、数据源与运行时状态](configuration-and-sources.md)，SQL 结构见[SQL 语言参考](sql-language.md)。
+Syncany-SQL 是面向本地数据处理和多数据源查询的 SQL 执行引擎。它适合临时分析文件数据、连接不同来源的数据、完成筛选、聚合、排序和连接查询，也可从 Python 程序执行 SQL。
 
-## 1. 项目用途与适用场景
+它使用 MySQL 风格的 SQL 结构，但只支持其中一部分语法和函数，不承诺完整 MySQL 兼容性。编写查询前，请查阅[SQL 语言参考](sql-language.md)；函数列表见[内置函数参考](built-in-functions.md)。
 
-Syncany-SQL 是一个简单易用的 SQL 执行引擎。本地执行 MySQL 风格语法结构的 SQL，可读取常见数据库和 Excel、CSV、JSON、普通文本文件；本地还能完成跨源 `JOIN`、分组聚合和排序。仓库提供了查询 Nginx 日志、查询 JSON 文件、临时内存结果、聚合和跨源连接等示例。
+## 安装
 
-SQL 支持由当前实现定义，是 **MySQL 风格子集**，不是完整 MySQL 兼容层。写查询前请看[SQL 语言参考](sql-language.md)，只使用其中有证据的结构和函数。
-
-## 2. 安装
-
-项目 README 给出的安装命令是：
+在已安装 Python 和 pip 的环境中运行：
 
 ```bash
-pip3 install syncanysql
+pip install syncanysql
 ```
 
-安装包注册的命令名是 `syncany-sql`。部分外部数据库驱动是可选依赖，先在[配置、数据源与运行时状态](configuration-and-sources.md)确认目标 driver 及其依赖，别假定基础安装已包含全部连接驱动。
+安装后，命令行程序名为 `syncany-sql`。如果要连接外部数据库，可能还需要安装相应数据库驱动，并在[配置、数据源与运行时状态](configuration-and-sources.md)中配置数据源。
 
-## 3. 三个命令行入口
-
-### 执行文件
-
-命令行接受 `.sql`、`.sqlx` 或 `.prql` 文件。仓库 demo 的已验证运行方式如下，先进入示例目录，使 SQL 中的相对 `data/` 路径可被找到：
+可用下面的命令确认安装：
 
 ```bash
-cd examples/demo
-syncany-sql demo.sql
+syncany-sql --help
 ```
 
-`examples/demo/demo.sql` 查询同目录的 JSON 数据，并使用 `JOIN`、`GROUP BY`、`IF`、`MAX` 和 `YIELD_ARRAY`。对应的 `tests/test_example_demo.py` 会加载此文件并断言结果，因此它适合作为首次文件执行的可追溯样例。
+## 从 SQL 文件运行
 
-### 从标准输入执行
+CLI 可执行 `.sql`、`.sqlx` 和 `.prql` 文件。先新建一个 `first.sql` 文件，写入以下内容：
 
-当标准输入不是终端，且首个参数不是 `.sql`、`.sqlx` 或 `.prql` 文件时，CLI 会进入读取标准输入 SQL 的分支。不过当前无参数管道调用存在已验证的缺陷：该分支在执行 SQL 前访问缺失的 `sys.argv[1]`，因此会抛出 `IndexError`。
+```sql
+-- 示例：计算一个表达式
+SELECT 1 + 2 AS total;
+```
+
+再在该文件所在目录运行：
+
+```bash
+syncany-sql first.sql
+```
+
+这是首次使用 CLI 的推荐方式。SQL 中使用相对文件路径时，路径按当前工作目录解析。为避免找不到数据文件，建议从 SQL 文件所在目录启动命令，或改用清晰的绝对路径。
+
+要处理 CSV、JSON、Excel、文本文件或数据库数据源，请先阅读[配置、数据源与运行时状态](configuration-and-sources.md)，然后按[SQL 语言参考](sql-language.md)中的数据源和查询语法编写文件。
+
+## 标准输入的限制
+
+不要把无参数的管道调用当作可用入口：
 
 ```bash
 echo "SELECT 1;" | syncany-sql
 ```
 
-上述命令当前不能正常执行，不能作为可用的标准输入入口推荐。在缺陷修复前，请改用 SQL 文件入口，或使用下面的 Python `ScriptEngine` 入口；本章不提供未经验证的命令行替代方案。
+当前版本中，这种无参数且从管道读取标准输入的调用会触发 `IndexError`，不能正常执行 SQL。请改用 SQL 文件，或使用下面的 Python API。不要依赖该限制在未来版本中的行为保持不变。
 
-### 交互式使用
+## 交互式使用
 
-不提供文件参数并从终端启动时，CLI 会创建并运行 `CliPrompt`：
+在终端中不带文件参数启动，可进入交互界面：
 
 ```bash
 syncany-sql
 ```
 
-本章只确认该交互入口存在。提示符命令、补全和输出格式不在这里推断，需要时以 `syncanysql/prompt.py` 的实现为准。
+交互界面适合试验短查询。需要可重复执行、需要保存查询记录，或查询包含多条语句时，优先使用 SQL 文件。
 
-## 4. Python 入口
+## 在 Python 中执行 SQL
 
-README 提供 `ScriptEngine` 作为 Python API。下面保留其已给出的调用模式，并读取内存表 `top_ips`：
+`ScriptEngine` 是 Python API 的主要入口。下面的示例完全在内存中运行，把查询结果写入内存表后读回：
 
 ```python
 from syncanysql import ScriptEngine
 
+sql = """
+INSERT INTO `result`
+SELECT
+    1 + 2 AS total,
+    'hello' AS message;
+"""
+
 with ScriptEngine() as engine:
-    engine.execute('''
-        INSERT INTO `top_ips` SELECT
-            ip, cnt
-        FROM
-            (SELECT
-                seg0 AS ip, COUNT(*) AS cnt
-            FROM
-                `file:///var/log/nginx/access.log?sep= `
-            GROUP BY seg0) a
-        ORDER BY cnt DESC
-        LIMIT 3;
-    ''')
-    print(engine.pop_memory_datas("top_ips"))
+    engine.execute(sql)
+    rows = engine.pop_memory_datas("result")
+
+print(rows)
 ```
 
-`ScriptEngine.execute(sql)` 会在尚未初始化时先完成设置，然后解析并执行 SQL。`ScriptEngine` 支持上下文管理器。Python 绑定模块或函数、自定义计算和 `PYEVAL` 相关内容见[自定义 Python 函数](python-extensions.md)。
+`ScriptEngine.execute()` 接收 SQL 字符串并执行。`pop_memory_datas("result")` 读取示例中 `result` 内存表的结果。实际程序可把 SQL 放在字符串、模板或已读取的 SQL 文件中，但应验证输入内容和结果格式。
 
-## 5. 最小首次运行流程
+如需调用 Python 函数、导入模块或使用 Python 表达式扩展，请阅读[自定义 Python 函数](python-extensions.md)。这类能力会执行 Python 代码，只应对可信脚本开放。
 
-1. 安装 `syncanysql`。
-2. 进入 `examples/demo`。
-3. 运行 `syncany-sql demo.sql`。
-4. 如需理解该示例中的 SQL，再加载[SQL 语言参考](sql-language.md)。
-5. 如需连接自己的数据库或配置日志、变量、扩展，再加载[配置、数据源与运行时状态](configuration-and-sources.md)。
+## 下一步
 
-## 限制与证据
+按当前目标继续阅读：
 
-- CLI 对交互式文件参数只接受 `.sql`、`.sqlx`、`.prql`，其他扩展名会报错。
-- 相对文件路径依赖当前工作目录，demo SQL 使用 `data/demo.json`、`data/sites.json`、`data/orders.json`。
-- 不要把 README 的“MySQL 语法结构”表述扩展为完整 MySQL 兼容，具体范围始终以[SQL 语言参考](sql-language.md)为准。
+1. [配置、数据源与运行时状态](configuration-and-sources.md)：设置配置文件、变量、数据源和外部连接。
+2. [SQL 语言参考](sql-language.md)：确认可用语句、查询结构和限制。
+3. [内置函数参考](built-in-functions.md)：查找已提供函数及其行为。
+4. [自定义 Python 函数](python-extensions.md)：在 SQL 中使用自定义 Python 能力。
 
-本章事实来源：[README](../../../README.md)、[打包入口](../../../setup.py)、[CLI 实现](../../../syncanysql/main.py)、[`ScriptEngine` 实现](../../../syncanysql/__init__.py)、[demo SQL](../../../examples/demo/demo.sql)、[demo 测试](../../../tests/test_example_demo.py)。
-
-## 五章边界
-
-按问题只加载一章，跨边界时再继续：
-
-1. [开始使用](getting-started.md)：安装与各入口。
-2. [配置、数据源与运行时状态](configuration-and-sources.md)：配置文件、连接和运行时设置。
-3. [SQL 语言参考](sql-language.md)：已核实的 SQL 子集与执行限制。
-4. [内置函数参考](built-in-functions.md)：函数名称与行为证据。
-5. [自定义 Python 函数](python-extensions.md)：模块导入、扩展和 Python 执行风险。
+首次处理真实数据时，建议先用一个小文件或限制结果行数验证查询，再扩展到完整数据集。

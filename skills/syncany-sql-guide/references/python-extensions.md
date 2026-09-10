@@ -1,160 +1,172 @@
-# 自定义 Python 函数
+# 使用 Python 扩展 Syncany-SQL
 
-## 何时加载本章
+本章说明怎样在 Syncany-SQL 中调用 Python 模块、通过配置加载扩展、从 Python 绑定对象，以及怎样安全地使用 `PYEVAL` 和 `PYEVALT`。这些能力都会执行 Python 代码，只应对受信任的 SQL、模块和运行环境开放。
 
-在 SQL 中需要调用自己的 Python 函数、标准库或已安装模块时加载本章。按需求选择最小入口：
+## 选择入口
 
-| 需求 | 入口 |
+| 目标 | 入口 |
 | --- | --- |
-| 仅在一段 SQL 中调用模块函数 | `USE` 导入模块 |
-| 每次启动都注册一个无前缀的 SQL 函数 | 配置 `extensions`，模块导入时注册计算器 |
-| 在 Python 调用方预先绑定模块或函数 | `ScriptEngine.use()` 或 `engine.context().use()` |
-| 临时计算一个简短、完全受信任的表达式 | `PYEVAL` |
-| 对查询行集合写一个 Python 表达式 | `PYEVALT` |
+| 在一段 SQL 中调用已安装模块的函数 | `USE` |
+| 启动时注册无前缀 SQL 函数 | 配置 `extensions` |
+| 在嵌入式 Python 调用方绑定模块或函数 | `ScriptEngine.use()` 或 `engine.context().use()` |
+| 计算简短且完全受信任的 Python 表达式 | `PYEVAL` |
+| 用 Python 表达式处理查询行集合 | `PYEVALT` |
 
-不要把本章当作 Syncany 底层扩展 API 的完整参考。这里说明的是 Syncany-SQL 当前源码明确暴露或加载的路径。
+## 用 `USE` 导入 Python 模块
 
-## 先用 `USE` 导入模块
+`USE` 按 Python 的普通导入规则导入模块，并将模块保存到当前 SQL 会话。模块必须已经可以被该 Python 进程导入，例如标准库模块、通过包管理器安装的包，或作为应用程序正式安装的一部分。
 
-`USE` 的实现会先执行 Python 的 `__import__`，再将模块名写入当前会话的 `imports`。别名存在时使用别名，没有别名时取模块路径最后一段。因此模块必须已经位于 Python 的可导入路径中。SQL 示例使用反引号包住模块文本。
-
-```sql
-USE `utils`;
-
-SELECT utils$add_number(1, 2) AS total;
-```
-
-对应的最小模块：
-
-```python
-# utils.py
-def add_number(left, right):
-    return left + right
-```
-
-这会调用 `utils.add_number(1, 2)`。嵌套属性以多个 `$` 表示，例如仓库示例中的 `python_datetime$datetime$now()`。别名也可减少 SQL 中的前缀：
+不要把任意文件系统路径当成模块名，也不要假设 SQL 文件所在目录会自动加入 Python 导入路径。应先安装或部署模块，再用其包名导入。
 
 ```sql
-USE `datetime as python_datetime`;
-SELECT python_datetime$datetime$now();
+USE `math`;
+
+SELECT math$sqrt(81) AS result;
 ```
 
-`USE` 的作用域是当前会话。可用 `SHOW IMPORTS` 查看会话记录的别名和模块路径。
+SQL 中以 `$` 访问模块属性。上例等价于 Python 的 `math.sqrt(81)`。多层属性也使用多个 `$`：
 
-### 在配置或 Python 中预设导入
+```sql
+USE `datetime as py_datetime`;
 
-若不想在每个 SQL 文件中写 `USE`，配置中的 `imports` 是别名到模块路径的映射：
-
-```yaml
-imports:
-  math: math
+SELECT py_datetime$datetime$now() AS current_time;
 ```
 
-也可以从 Python 绑定。`ScriptEngine.use(name, func_or_module)` 与 `engine.context().use(name, func_or_module)` 都把值写入会话的 `imports`，不会替你验证路径或导入模块。
+`as` 为会话中的模块别名。别名有助于缩短函数名，也能避免模块名冲突。
 
-```python
-from syncanysql import ScriptEngine
-import math
-
-with ScriptEngine() as engine:
-    engine.use("math", math)
-    engine.execute("SELECT math$pow(2, 3) AS value;")
+```sql
+USE `json as js`;
+SELECT js$dumps('hello') AS encoded;
+SHOW IMPORTS;
 ```
 
-## 注册无前缀 SQL 函数
+`SHOW IMPORTS` 可检查当前会话已登记的模块和别名。`USE` 只影响当前会话，新的会话需要再次导入，或改用后面的配置和 Python 绑定方式。
 
-当函数应以 `my_sum(1, 2)` 形式出现，而不是 `module$my_sum(1, 2)`，定义一个 `Calculater` 子类，在模块导入时注册它：
+### `USE` 排错
 
-```python
-# my_extension.py
-from syncanysql import Calculater, register_calculater
+若 `USE` 失败，请按以下顺序检查：
 
+1. 使用启动 Syncany-SQL 的同一个 Python 解释器运行 `python -c "import 模块名"`，确认模块确实可导入。
+2. 确认使用的是包名或模块名，不是 `.py` 文件名、相对路径或任意本地路径。
+3. 导入成功后执行 `SHOW IMPORTS`，确认 SQL 中使用的别名与登记的名称一致。
+4. 函数找不到时，检查 `$` 的层级是否对应 Python 属性层级，例如 `package$submodule$function`。
 
-@register_calculater("my_sum")
-class MySumCalculater(Calculater):
-    def calculate(self, left, right):
-        return left + right
-```
+## 通过配置加载扩展
 
-把模块加入启动配置：
+如果某个函数应当在每次启动时都可用，可把一个可导入的 Python 扩展模块列入配置的 `extensions`。引擎启动时会导入列表中的模块，因此模块顶层的注册代码会执行。
 
 ```yaml
 extensions:
-  - my_extension
+  - acme_syncany_functions
 ```
 
-之后可执行：
+配置项必须是列表。每一项都必须是该运行环境能正常 `import` 的模块名。部署扩展时，将其作为已安装的 Python 包的一部分交付，而不是依赖某个任意工作目录或临时文件路径。
+
+下面是一个最小扩展模块。安装后其导入名为 `acme_syncany_functions`：
+
+```python
+from syncanysql import Calculater, register_calculater
+
+
+@register_calculater("discounted_price")
+class DiscountedPriceCalculater(Calculater):
+    def calculate(self, price, rate):
+        return price * (1 - rate)
+```
+
+加载配置后，注册名可直接作为 SQL 函数调用：
 
 ```sql
-SELECT my_sum(1, 2) AS total;
+SELECT discounted_price(100, 0.2) AS final_price;
 ```
 
-`GlobalConfig.load_extensions()` 只接受列表，并逐项调用 `__import__`。`ScriptEngine.setup()` 和命令行入口都会在建立任务管理器前调用它。导入失败会记为 warning，进程继续运行，因此函数缺失时应先检查启动日志和模块的 Python 导入路径。
+扩展加载失败时，进程可能仍会继续启动，函数却不会注册。遇到“函数不存在”时，应先检查启动日志中的扩展导入警告，再用相同解释器验证 `import acme_syncany_functions`。同时确认模块顶层导入没有因缺少依赖或配置错误而抛出异常。
 
-### 本项目暴露的 API，与下层 Syncany 的边界
+### 设计自定义函数
 
-下面的区分避免把依赖库的能力误写成 Syncany-SQL 自己的接口。
+`Calculater` 的 `calculate()` 参数按 SQL 调用位置传入。函数应尽量保持无副作用，并明确处理 `NULL` 可能映射出的 Python `None`、类型转换和业务异常。把网络访问、文件写入和隐式全局状态留在函数外，便于测试、排错和权限控制。
 
-| 名称 | 本项目中的状态 | 使用建议 |
-| --- | --- | --- |
-| `syncanysql.Calculater`、`syncanysql.register_calculater` | `syncanysql/__init__.py` 从 `syncany.calculaters` 导入并重新导出 | 可以按上面的扩展示例直接导入 |
-| `syncanysql.calculaters.register_calculater` | 由 `syncanysql/calculaters/__init__.py` 重新导出 | 可用，但根包路径更短 |
-| `StateAggregateCalculater`、`GenerateCalculater`、窗口计算器类 | 在 `syncanysql.calculaters` 导出，并有仓库示例 | 仅在确实需要聚合、生成或窗口生命周期时使用 |
-| `Loader`、`Outputer`、`Valuer`、`Filter`、`DataBase` 及对应 `register_*` | 根包从 `syncany.*` 导入后重新导出 | 它们是 Syncany 的低层扩展能力，本文不定义其生命周期或签名 |
-| `TransformCalculater` | 根包从 `syncany.calculaters` 重新导出 | 同样属于下层计算器体系，先以现有 transform 示例核实需求 |
+注册名属于 SQL 名称空间。选择稳定且具有业务前缀的名称，例如 `acme_discounted_price`，避免覆盖内置函数或与其他扩展冲突。
 
-注册装饰器与基类来自 Syncany 依赖，但 Syncany-SQL 确实在两个公开导入路径重新导出了它们。本文不推断其它 Syncany 装饰器、配置字段或方法签名。
+## 在 Python 中预先绑定模块或函数
+
+嵌入式调用 Syncany-SQL 时，可直接向会话绑定 Python 对象，无需让 SQL 自己执行导入。绑定后的名称同样通过 `$` 访问。
+
+```python
+import math
+
+from syncanysql import ScriptEngine
+
+
+with ScriptEngine() as engine:
+    engine.use("math", math)
+    engine.execute("SELECT math$pow(2, 8) AS value;")
+```
+
+也可以绑定单个可调用对象：
+
+```python
+from syncanysql import ScriptEngine
+
+
+def normalize_name(value):
+    return value.strip().title()
+
+
+with ScriptEngine() as engine:
+    engine.context().use("normalize_name", normalize_name)
+    engine.execute("SELECT normalize_name('  ada lovelace  ') AS name;")
+```
+
+绑定 API 不会替你验证对象的行为、权限或可序列化性。调用方应在绑定前完成依赖初始化，并只绑定明确允许 SQL 调用的对象。会话结束后，绑定不会自动成为其他会话的全局能力。
 
 ## `PYEVAL` 和 `PYEVALT`
 
-这两个函数只在没有设置环境变量 `SYNCANY_PYEVAL_DISABLED` 时注册。它们使用 Python 内建 `eval`，异常会写 warning 并返回 `NULL`，不会将 Python 异常直接作为 SQL 错误抛出。
+`PYEVAL` 与 `PYEVALT` 使用 Python 的 `eval` 执行表达式，不是沙箱。它们只能处理完全受信任的表达式，绝不能用于用户提交的 SQL、报表公式、租户配置或任何其他不受信任输入。
 
-`PYEVAL` 的第一个参数是表达式字符串，后续参数作为局部变量 `args` 传入：
+设置环境变量 `SYNCANY_PYEVAL_DISABLED` 会禁用 `PYEVAL` 和 `PYEVALT` 的注册。这是控制这两个函数可用性的开关：
 
-```sql
-SELECT PYEVAL('args[0] + args[1]', 1, 2) AS total;
+```text
+SYNCANY_PYEVAL_DISABLED=1
 ```
 
-在当前实现中，表达式可访问预置模块 `sys`、`os`、`datetime`、`time`、`math`、`random`、`string`、`uuid`、`base64`、`hashlib`、`pickle`、`json`、`re`。若环境安装了 `requests`，它也会加入。还可调用 `current_tasker()`、`current_executor()`、`current_manager()`、`current_session()` 和 `current_env_variables()`。
+在启动 Syncany-SQL 的进程环境中设置该变量。设置后，任何依赖这两个函数的 SQL 都应被视为不可用，并在部署前改写或移除。
 
-`PYEVALT` 用于查询数据集合。编译后的调用会把查询数据作为第一个参数传给实现，并将其绑定为 `this`，表达式作为第二个参数，余下参数仍放入 `args`。仓库已覆盖的 SQL 用法是：
+### `PYEVAL`
+
+第一个参数是 Python 表达式字符串，后续参数以局部变量 `args` 提供：
 
 ```sql
-SELECT PYEVALT('[{"v": item["v"] * 2} for item in this]')
+SELECT PYEVAL('args[0] + args[1]', 20, 22) AS answer;
+```
+
+表达式可使用 Python 的求值能力和运行时提供的对象，其中可能包括 `os`、`sys`、日期时间、序列化和正则相关模块，安装了可选依赖时还可能出现其他模块。因此即使表达式看似简单，也可能读写文件、启动进程、访问网络或取得运行时上下文。
+
+执行表达式出错时，函数会记录警告并返回 `NULL`。若结果为 `NULL`，查看运行日志中的 PYEVAL 错误，再检查表达式、参数类型和 `SYNCANY_PYEVAL_DISABLED` 是否已设置。不要依赖未说明的变量、语句块或任何隔离行为。
+
+### `PYEVALT`
+
+`PYEVALT` 面向查询结果集合。表达式中的 `this` 表示当前查询行集合，额外参数仍通过 `args` 访问。下例将每一行的 `amount` 翻倍：
+
+```sql
+SELECT PYEVALT('[{"amount": row["amount"] * 2} for row in this]') AS doubled_rows
 FROM (
-    SELECT YIELD_ARRAY(PYEVAL('list(range(2))')) AS v
+    SELECT 10 AS amount
+    UNION ALL
+    SELECT 25 AS amount
 );
 ```
 
-不要依赖表达式内未记录的名字、语句块或沙箱行为。这里的实现调用的是 `eval`，不是受限解释器。
+与 `PYEVAL` 一样，`PYEVALT` 运行任意 Python 表达式并在异常时返回 `NULL`。它不是行级隔离机制，也不能使不受信任代码变得安全。
 
-## 测试与排错
+## 安全基线
 
-1. 先让 Python 函数保持纯粹，直接在 Python 单元测试中覆盖参数、空值和异常边界。
-2. 为 SQL 接口再加一条最小查询，例如 `SELECT my_sum(1, 2)`，确认注册名、加载时机和 SQL 参数顺序。
-3. 对 `USE` 故障，确认当前工作目录或安装环境能让 Python 导入模块，再执行 `SHOW IMPORTS` 检查别名。
-4. 对 `extensions` 故障，查看 `import extension ... error ...` warning。该加载器会吞掉导入异常，所以“进程启动成功”不代表扩展已注册。
-5. 对 `PYEVAL` 或 `PYEVALT` 的 `NULL`，查看 `pyeval calculater execute ... error ...` warning，并确认未设置 `SYNCANY_PYEVAL_DISABLED`。
+将以下入口都当作本机代码执行入口：
 
-仓库的回归用例会执行 `examples/import_python/import_python.sql` 和 `examples/pyeval/pyeval.sql`，并断言模块函数、注册函数、`PYEVAL` 参数及 `PYEVALT` 结果。这些示例适合作为本地扩展的最小对照。
+* `USE` 会导入模块，模块顶层代码会执行。
+* `extensions` 会在引擎初始化时导入模块，模块顶层代码会执行。
+* `PYEVAL` 和 `PYEVALT` 会直接求值 Python 表达式。
 
-## 信任边界
+不要允许不受信任用户提交 SQL、PYEVAL 表达式、扩展模块名，或写入 Python 导入路径中的文件。对多租户、共享服务或需要权限隔离的部署，应设置 `SYNCANY_PYEVAL_DISABLED`，只安装经过审查的扩展，并使用权限最小化的操作系统账户、受限容器或独立进程运行 Syncany-SQL。
 
-把 `USE`、`extensions` 和 `PYEVAL` 都视为执行本机 Python 代码的入口：
-
-* `USE` 导入模块，模块顶层代码会在导入时执行。
-* `extensions` 在引擎初始化阶段导入模块，模块顶层代码同样会执行。
-* `PYEVAL` 与 `PYEVALT` 直接执行表达式，且当前全局环境包含 `os`、`sys`，并可能包含网络库 `requests`。
-
-因此，不要让不受信任的用户提交 SQL、表达式、扩展模块名或可写入导入路径的文件。多租户或需要隔离的场景应设置环境变量 [`SYNCANY_PYEVAL_DISABLED`](#pyeval-和-pyevalt) 禁用 `PYEVAL` 和 `PYEVALT`，只部署审查过的扩展，并在受限进程、容器或操作系统账户中运行 Syncany-SQL。
-
-## 证据与继续阅读
-
-* [`examples/import_python/import_python.sql`](../../../examples/import_python/import_python.sql)，`USE`、别名和 `$` 调用语法。
-* [`examples/import_python/utils.py`](../../../examples/import_python/utils.py)，最小模块函数。
-* [`examples/import_python/config.yaml`](../../../examples/import_python/config.yaml) 与 [`syncany_ext.py`](../../../examples/import_python/syncany_ext.py)，扩展加载和注册示例。
-* [`syncanysql/taskers/use.py`](../../../syncanysql/taskers/use.py)，`USE` 的真实导入及会话映射行为。
-* [`syncanysql/config.py`](../../../syncanysql/config.py)，`extensions` 的列表加载逻辑。
-* [`syncanysql/__init__.py`](../../../syncanysql/__init__.py) 与 [`syncanysql/calculaters/__init__.py`](../../../syncanysql/calculaters/__init__.py)，公开重导出与 `PYEVAL` 的条件注册。
-* [`syncanysql/calculaters/pyeval_calculater.py`](../../../syncanysql/calculaters/pyeval_calculater.py)，表达式上下文、返回 `NULL` 的异常处理和 `PYEVALT` 参数绑定。
-* [`tests/test_example_import_python.py`](../../../tests/test_example_import_python.py) 与 [`tests/test_example_pyeval.py`](../../../tests/test_example_pyeval.py)，仓库实际断言的行为。
+禁用 PYEVAL 并不会使任意 SQL 自动安全。若攻击者仍能控制 `USE` 的模块名、扩展配置或可导入文件，仍可能执行 Python 代码。安全边界应同时限制 SQL 提交者、配置修改权限、软件包来源、文件写入权限和进程权限。

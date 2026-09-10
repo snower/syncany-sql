@@ -1,97 +1,166 @@
 # 配置、数据源与运行时状态
 
-> **何时加载：**需要找 `config.yaml`、连接已配置数据库、导入可由 Python 导入的模块、设置 `@` 变量，或判断扩展是否会生效时加载本章。SQL 语法范围见 [SQL 语言](sql-language.md)；编写或审查 Python 扩展见 [Python 扩展](python-extensions.md)。
+本章说明如何为 `syncany-sql` 配置数据库、Python 导入和扩展，以及如何在当前会话中用 `SET`、`USE` 调整状态。SQL 查询与表达式写法见[SQL 语言](sql-language.md)，Python 扩展的编写方式见[Python 扩展](python-extensions.md)。
 
-## 1. 配置文件从哪里来
+## 配置文件
 
-`syncany-sql` 接受 JSON 或 YAML 配置。默认候选文件为当前工作目录与 `SYNCANY_HOME`（未设置时为 `~/.syncany`）下的 `config.json`、`config.yaml`；配置目录也会加入 Python 的模块搜索路径。候选文件间的冲突优先级不可靠，因为当前实现先将候选文件放入集合；把同一设置只放在一个位置最稳妥。
+`syncany-sql` 接受 YAML 或 JSON 配置。它会查找以下默认位置中的 `config.yaml` 和 `config.json`：
 
-这是**文档约定而非可依赖的冲突解决 API**：当前实现把四个候选文件先放入集合再加入 `extends`，集合遍历本身不表达稳定顺序。因此不要让同一个键同时出现在这些默认文件中来赌覆盖次序。`extends` 中的文件会先递归加载，随后当前文件合并；Python `ScriptEngine(custom_config=...)` 提供的字典在文件加载后再合并。
+- 当前工作目录
+- `SYNCANY_HOME` 指定的目录
+- 未设置 `SYNCANY_HOME` 时，`~/.syncany`
 
-最小项目配置可以从仓库根目录的 [`config.yaml.example`](../../../config.yaml.example) 复制为工作目录的 `config.yaml`。不要提交真实口令。
+不要在多个默认配置文件中定义同一个设置并依赖覆盖顺序。默认候选文件的冲突顺序不是稳定的配置接口，版本、环境或运行细节都可能让结果不同。一个设置只放在一个默认配置文件中。
+
+如果需要拆分配置，可用 `extends`。被扩展的文件会先加载，再合并当前文件。例如：
+
+```yaml
+# config.yaml
+extends:
+  - common.yaml
+
+loglevel: INFO
+```
+
+常用全局项如下：
 
 ```yaml
 logfile: '-'
 loglevel: INFO
 encoding: utf-8
+timezone: Asia/Shanghai
+datetime_format: '%Y-%m-%d %H:%M:%S'
+date_format: '%Y-%m-%d'
+time_format: '%H:%M:%S'
+```
 
+`logfile` 未设置、为空或为 `-` 时，日志写到标准输出。常用 `loglevel` 为 `CRITICAL`、`ERROR`、`WARNING`、`INFO` 和 `DEBUG`。
+
+配置合并时，`imports`、`defines`、`variables`、`sources`、`options` 等映射按键合并。`databases` 和 `caches` 按各项的 `name` 合并，同名项只更新给出的字段。`states` 和 `executes` 会追加。其他顶层项由后加载的值替换。
+
+## 数据库连接
+
+在 `databases` 中为每个连接设置唯一的 `name` 与 `driver`。SQL 中使用的数据库名应与 `name` 一致，其余字段取决于所选 driver。
+
+```yaml
 databases:
-  - name: mysql_example
+  - name: orders_mysql
     driver: mysql
     host: 127.0.0.1
     port: 3306
-    user: root
-    passwd: '***'
-    db: example
+    user: report_user
+    passwd: '${MYSQL_PASSWORD}'
+    db: orders
+
+  - name: local_cache
+    driver: sqlite
+    database: ./cache.db
 ```
 
-示例文件明确给出的全局键为 `logfile`、`logformat`、`loglevel`、`encoding`、`datetime_format`、`date_format`、`time_format`、`databases` 与（注释掉的）`extensions`。`logfile` 未设、为空或为 `-` 时输出到标准输出；`loglevel` 的示例值为 `CRITICAL`、`ERROR`、`WARNING`、`INFO`、`DEBUG`。实现还会读取 `timezone`、`pypackage_paths`、`executes` 和 `extends`；它们不是示例中的通用连接参数，应按本章的边界使用。
+将口令放在部署环境提供的配置中，避免把真实凭据提交到代码库。所用 driver 及其 Python 依赖必须已安装，否则连接不能建立。
 
-## 2. 合并规则与 `config.yaml` 的边界
+运行环境自带两个特殊数据库名：`-` 对应文本行数据源，`--` 对应内存数据源。通常不必在配置中再次声明它们。
 
-合并按键类型进行，而不是简单地整份覆盖：
+`executes` 可列出启动时运行的 SQL 文件：
 
-| 配置类别 | 合并方式 |
-| --- | --- |
-| `imports`、`defines`、`variables`、`sources`、`options`（以及 `arguments`、`logger`） | 字典按键更新；后加载的同名项替换前项。 |
-| `databases`、`caches` | 列表按每项的 `name` 合并；同名数据库仅更新给出的字段。 |
-| `states`、`executes` | 追加为列表。 |
-| 其他键 | 后加载值整体替换。 |
+```yaml
+executes:
+  - bootstrap.sql
+```
 
-启动后，运行时还保证两个内部数据库名：`-` 使用 `textline`，`--` 使用 `memory`；它们不是必须写进你的 YAML 的连接配置。数据库项的 `name` 和 `driver` 是 syncany-sql 所需的标识；其余连接字段由对应 driver 决定。仅使用示例中有依据的 driver/字段组合（MySQL、MongoDB、PostgreSQL、SQL Server、ClickHouse、InfluxDB、Elasticsearch、SQLite；完整清单以 [`config.yaml.example`](../../../config.yaml.example) 和 [`docs/configure.md`](../../../docs/configure.md) 为准）。驱动依赖并非默认全部安装，参见 [`docs/使用教程/2、安装和配置.md`](../../../docs/使用教程/2、安装和配置.md)。
+文件必须可找到，否则启动会失败。把初始化文件与配置放在清晰、固定的位置，避免依赖不明确的工作目录。
 
-`executes` 是初始化 SQL 文件列表：文件先按给定路径查找，再查 `SYNCANY_HOME`；找不到会使启动失败。仓库的 [`examples/import_python/config.yaml`](../../../examples/import_python/config.yaml) 给出了 `extensions`、`imports`、`executes` 的组合实例。
+## 导入、sources 与变量初值
 
-## 3. 数据库、source 与 import 不是一回事
+`databases`、`imports` 与 `sources` 用途不同：
 
-- **`databases`**：具名 driver 连接定义。查询实际取得数据库时按 `name` 查找并用该项的 `driver` 创建连接；因此 SQL 中引用的数据库名必须与配置的 `name` 对应。
-- **`imports`**：别名到 Python 模块/对象名称的映射；示例配置把 `math` 映射到 `math`。这是供 SQL 调用导入对象的名称表，不是数据库连接。
-- **`sources`**：别名到源路径的映射。`USE` 会先按 Python 名称导入目标，导入成功后才按目标是否为本机已有路径，分别写入 `sources` 或 `imports`。因此 `sources` 的登记条件不让 `USE` 导入任意本地路径。本仓库没有把任意 `sources` YAML 结构列为公开配置示例，故不要把底层 Syncany 的 source/loader 配置逐项当作 syncany-sql 已文档化功能。
+- `databases` 定义具名数据库连接。
+- `imports` 将别名映射到可由 Python 导入的模块或对象名称，供 SQL 调用。
+- `sources` 保存已登记的数据源路径或别名，不等同于数据库连接。
 
-这一区分也适用于 Python 代码：底层 Syncany 确实提供 `register_database`、`register_loader`、`register_outputer`、`register_valuer`、`register_filter`、`register_calculater` 等注册 API，但 syncany-sql 的 `config.yaml` 只会读取 `extensions` 列表并 `import` 其中模块；它不会根据 YAML 自动调用这些注册函数。若扩展模块自行注册了能力，才可能在导入后可用。注册方式与风险留给 [Python 扩展](python-extensions.md)。
+例如，配置 Python 标准库模块和变量初值：
 
-## 4. 变量与 `SET`
+```yaml
+imports:
+  math: math
+  python_datetime: datetime
 
-SQL 环境变量以 `@` 开头，默认属于当前执行器/上下文。仓库示例可作为最小写法：
+variables:
+  report_limit: 100
+  region: cn
+```
+
+配置中的变量可作为运行开始时的默认值。运行期赋值属于当前会话，下一次新建会话时应重新从配置或启动代码提供所需值。
+
+## 用 `SET` 修改当前会话
+
+SQL 环境变量以 `@` 开头。可以引用已赋值变量，也可以用查询结果赋值：
 
 ```sql
-set @aaa = 1;
-set @bbb = @aaa + 1;
-select @aaa, @bbb;
+SET @limit = 100;
+SET @next_limit = @limit + 50;
+SET @enabled = true;
+SET @note = 'monthly report';
+SET @empty_value = null;
+
+SELECT @limit, @next_limit, @enabled, @note;
+SELECT count(*) INTO @row_count FROM orders_mysql.orders;
 ```
 
-`SET` 会识别带 `@` 的普通变量；`set global @aaa=1;` 会写到全局环境变量，测试覆盖了该形式。变量也可由 `SELECT ... INTO @name` 赋值；参见 [`examples/parameter_variable/parameter_variable.sql`](../../../examples/parameter_variable/parameter_variable.sql)。任务器直接接受带引号的字符串、`true`/`false`、`null`、整数和小数；示例中的 `@aaa + 1` 由 SQL 编译阶段处理。不要把 `SET` 的右侧误当作任意 YAML 或 Python 文字量。
+`SET` 可处理带引号字符串、`true`、`false`、`null`、整数和小数。把右侧写成 SQL 可识别的值或表达式，不要把它当成任意 YAML 或 Python 字面量。
 
-`SET` 还接受配置命名空间 `@databases`、`@imports`、`@sources`、`@defines`、`@variables`、`@options`、`@caches`，`@virtual_views`（映射到数据库的 `virtual_views`）和 `@config`；前缀 `global` 让对应修改进入全局配置。它是会话配置修改接口，不是 `config.yaml` 的落盘工具。尤其对整个 `@databases` 项赋值时，底层 setter 会先清空该项，再解析 JSON 并更新它。JSON 解析异常会被吞掉，不会回滚已清空的配置；不要用它替代经过审查的 YAML 数据库连接定义。
-
-## 5. `USE` 的实际行为
-
-`USE` 会先导入目标 Python 名称，成功后才登记别名：
+可通过以下配置命名空间调整会话中的配置：
 
 ```sql
-use `datetime as python_datetime`;
-use `utils`;
+SET @variables = '{"report_limit": 200, "region": "us"}';
+SET @imports = '{"math": "math"}';
+SET @options = '{"batch_size": 500}';
 ```
 
-若不写 `as`，别名取目标最后一个 `.` 分段。目标必须先能按 Python 名称在当前 `sys.path` 中导入，不能借由本机路径存在而导入任意本地文件。导入成功后，目标为本机已有路径时登记为 `sources`，否则登记为 `imports`。例如 [`examples/import_python/import_python.sql`](../../../examples/import_python/import_python.sql) 使用 `use \`datetime as python_datetime\`;` 后以 `python_datetime$datetime$now()` 调用。不要把它当作选择已配置数据库的 SQL 方言命令。
+可用的命名空间包括 `@databases`、`@imports`、`@sources`、`@defines`、`@variables`、`@options`、`@caches`、`@virtual_views` 和 `@config`。`SET global ...` 修改全局运行时环境，例如：
 
-## 6. 扩展：启用，不等于配置能力
+```sql
+SET global @variables = '{"report_limit": 500}';
+```
 
-在配置中仅能声明要导入的模块名：
+这些命令修改运行时状态，不会把变更写回配置文件。
+
+> **警告：**不要把 `SET @databases = '...'` 当作安全的数据库配置编辑方式。为整个 `@databases` 赋值时，现有内容会先被清空，再解析 JSON。若 JSON 无效，解析错误不会恢复已清空的内容，当前会话的数据库配置可能因此丢失。需要改动连接定义时，优先修改并检查配置文件，或只在可重建的会话中测试。
+
+## 用 `USE` 导入模块
+
+`USE` 用于导入 Python 模块或可导入对象，不是切换已配置数据库的命令：
+
+```sql
+USE `datetime as python_datetime`;
+USE `math`;
+
+SELECT python_datetime$datetime$now();
+SELECT math$sqrt(9);
+```
+
+未写 `as` 时，别名取目标名称最后一个 `.` 分段。目标必须能按 Python 模块名从当前 Python 搜索路径导入。`USE` 不能因为某个本地文件路径存在，就导入任意本地文件。
+
+导入成功后，运行时会根据目标是否是本机已有路径，登记为 `sources` 或 `imports`。因此，先确保模块可被 Python 正常导入，再使用 `USE`；本地代码应安装为包、放入明确的模块搜索路径，或在启动配置中设置合适的 `pypackage_paths`。
+
+## 扩展
+
+在 `extensions` 中列出启动时需要导入的模块：
 
 ```yaml
 extensions:
-  - syncany_ext
+  - my_company.syncany_extensions
 ```
 
-引擎完成配置加载和日志设置后才逐项导入 `extensions`。导入异常会记录 warning 并继续；因此“配置了扩展”不等于扩展已成功注册或其 driver 已安装。扩展的依赖、导入路径、注册以及不可信代码边界见 [Python 扩展](python-extensions.md)；本章不把 Syncany 的底层注册 API 扩写成 syncany-sql 的 YAML 键。
+引擎会在加载配置后导入这些模块。扩展导入失败时会记录警告并继续运行，所以“已经写入 `extensions`”不表示扩展一定可用。遇到功能缺失时，检查模块是否可导入、依赖是否已安装，以及扩展自身是否完成了所需注册。
 
-## 本地证据
+扩展代码会在你的 Python 进程中执行。只启用可信来源的扩展，并将其版本与依赖固定在可复现的部署环境中。
 
-- [`config.yaml.example`](../../../config.yaml.example)：公开示例键、driver 样例与 `extensions` 注释。
-- [`docs/configure.md`](../../../docs/configure.md)：配置示例、`imports` 与 `executes` 的用户说明。
-- [`docs/使用教程/2、安装和配置.md`](../../../docs/使用教程/2、安装和配置.md)：默认发现位置、文档化优先级与 driver 依赖说明。
-- [`syncanysql/config.py`](../../../syncanysql/config.py)：发现、递归 `extends`、合并、初始化 SQL、扩展导入和会话配置实现。
-- [`syncanysql/taskers/set.py`](../../../syncanysql/taskers/set.py)、[`syncanysql/taskers/use.py`](../../../syncanysql/taskers/use.py)、[`syncanysql/compiler.py`](../../../syncanysql/compiler.py)：`SET`/`USE` 的解析与修改范围。
-- [`tests/test_script_engine.py`](../../../tests/test_script_engine.py)、[`examples/parameter_variable/parameter_variable.sql`](../../../examples/parameter_variable/parameter_variable.sql)、[`examples/import_python/`](../../../examples/import_python/)：变量、导入与初始化扩展示例。
-- 相邻 Syncany 实现：[`../syncany/syncany/database/__init__.py`](../../../../syncany/syncany/database/__init__.py)、[`../syncany/syncany/loaders/__init__.py`](../../../../syncany/syncany/loaders/__init__.py)、[`../syncany/syncany/calculaters/__init__.py`](../../../../syncany/syncany/calculaters/__init__.py)，用于区分底层注册 API 与本项目的 YAML 加载行为。
+## 排查清单
+
+1. 找不到配置时，确认工作目录、`SYNCANY_HOME` 与文件名。
+2. 配置结果不符合预期时，移除默认位置中重复的同名设置，不要依赖冲突覆盖顺序。
+3. 数据库连接失败时，核对 `name`、`driver`、连接字段、网络可达性和 driver 依赖。
+4. `USE` 失败时，先在相同 Python 环境中确认目标模块可导入，不要传入任意文件路径。
+5. 扩展功能未出现时，查看警告日志，并核对扩展模块及其依赖。
+6. 会话中误设了整个 `@databases` 后，重新建立已知配置的会话，不要期待无效 JSON 自动恢复旧值。
